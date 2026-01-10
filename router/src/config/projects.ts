@@ -30,13 +30,16 @@ export interface ProjectConfig {
     };
     github?: {
       issues: boolean;
-      labels?: string[];         // Only trigger on these labels
+      labels?: string[];           // Only trigger on issues with these labels
+      requireLabel?: boolean;      // If true, issue MUST have one of the specified labels
+      commentTrigger?: string;     // Trigger via comment (e.g., "/claude fix")
+      allowedUsers?: string[];     // GitHub usernames allowed to trigger via comment
     };
     circleci?: {
       projectSlug: string;
       enabled: boolean;
     };
-    [key: string]: any;          // Allow custom source configs
+    [key: string]: any;            // Allow custom source configs
   };
 
   constraints?: {
@@ -66,7 +69,13 @@ export const projects: ProjectConfig[] = [
   //   },
   //   triggers: {
   //     sentry: { projectSlug: 'my-app-prod', enabled: true },
-  //     github: { issues: true, labels: ['bug', 'auto-fix'] }
+  //     github: {
+  //       issues: true,
+  //       labels: ['bug', 'ai-fix'],
+  //       requireLabel: true,           // Only process issues with specified labels
+  //       commentTrigger: '/claude fix', // Or manually trigger via comment
+  //       allowedUsers: ['alice', 'bob'] // Only these users can trigger via comment
+  //     }
   //   },
   //   constraints: {
   //     maxAttemptsPerDay: 10,
