@@ -2,14 +2,14 @@ import { TriggerPlugin, TriggerEvent, FixStatus } from '../triggers/base';
 import { findProjectById } from '../config/projects';
 import { generateAndMountTools, generateToolsReadme, validateTools } from './tools';
 import { buildInvestigationPrompt } from './prompts';
-import { runClaudeInContainer, isDockerAvailable, isClaudeRunnerImageAvailable } from './claude';
+import { getRunner, RunnerPlugin } from './base';
 import { getVCSPlugin } from '../vcs';
 import { formatPRBody } from '../vcs/base';
 import { GitHubVCS } from '../vcs/github';
 
 /**
  * Main orchestrator for the fix workflow
- * Coordinates: tools → prompt → Claude → analysis → PR
+ * Coordinates: tools → prompt → runner → analysis → PR
  */
 export async function orchestrateFix(
   trigger: TriggerPlugin,
@@ -26,8 +26,17 @@ export async function orchestrateFix(
 
     console.log(`[Orchestrator] Project: ${project.id}`);
 
+    // Get runner (default to 'claude-code' if not specified)
+    const runnerId = project.runner?.type || 'claude-code';
+    const runner = getRunner(runnerId);
+    if (!runner) {
+      throw new Error(`Runner plugin not found: ${runnerId}`);
+    }
+
+    console.log(`[Orchestrator] Using runner: ${runner.name} (${runner.id})`);
+
     // Pre-flight checks
-    await performPreflightChecks();
+    await performPreflightChecks(runner);
 
     // Generate tools
     const tools = trigger.getTools(event);
@@ -44,12 +53,14 @@ export async function orchestrateFix(
     const prompt = buildInvestigationPrompt(trigger, event, tools);
     console.log(`[Orchestrator] Built investigation prompt (${prompt.length} chars)`);
 
-    // Run Claude
-    const result = await runClaudeInContainer({
+    // Run AI agent via runner plugin
+    const result = await runner.run({
       repoUrl: project.repo,
       branch: project.branch,
       prompt,
-      timeoutMs: 600000, // 10 minutes
+      tools,
+      timeoutMs: project.runner?.timeout || 600000, // 10 minutes default
+      env: project.runner?.env,
     });
 
     // Handle failure
@@ -61,7 +72,7 @@ export async function orchestrateFix(
 
       return {
         fixed: false,
-        reason: 'claude_execution_failed',
+        reason: 'runner_execution_failed',
         analysis: undefined,
       };
     }
@@ -202,17 +213,17 @@ export async function orchestrateFix(
 /**
  * Perform pre-flight checks
  */
-async function performPreflightChecks(): Promise<void> {
-  // Check Docker is available
-  const dockerAvailable = await isDockerAvailable();
-  if (!dockerAvailable) {
-    throw new Error('Docker is not available');
+async function performPreflightChecks(runner: RunnerPlugin): Promise<void> {
+  // Validate runner configuration
+  const validation = await runner.validate();
+  if (!validation.valid) {
+    throw new Error(`Runner validation failed: ${validation.error}`);
   }
 
-  // Check claude-runner image exists
-  const imageAvailable = await isClaudeRunnerImageAvailable();
-  if (!imageAvailable) {
-    throw new Error('claude-runner:latest image not found. Run: docker compose --profile build-only build');
+  // Check runner availability
+  const available = await runner.isAvailable();
+  if (!available) {
+    throw new Error(`Runner ${runner.name} is not available`);
   }
 }
 

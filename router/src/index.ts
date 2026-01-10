@@ -5,6 +5,7 @@ import { statusRouter } from './webhooks/status';
 import { initializeQueue, closeQueue } from './queue';
 import { createWorker, shutdownWorker } from './queue/worker';
 import { initializeVCS } from './vcs';
+import { initRunners } from './runner';
 import { Worker } from 'bullmq';
 
 // Load environment variables
@@ -40,6 +41,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 async function main() {
   // Initialize VCS plugins
   initializeVCS();
+
+  // Initialize runner plugins
+  initRunners();
 
   // Initialize queue
   await initializeQueue();
