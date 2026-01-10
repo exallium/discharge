@@ -104,7 +104,7 @@ services:
 
       # Docker
       - HOST_USER=${USER}
-      - DOCKER_NETWORK=claude-agent_internal
+      - DOCKER_NETWORK=ai-bug-fixer_internal
 
     # Volumes
     volumes:
@@ -229,7 +229,7 @@ services:
 # =============================================================================
 networks:
   internal:
-    name: claude-agent_internal
+    name: ai-bug-fixer_internal
     driver: bridge
     ipam:
       config:
