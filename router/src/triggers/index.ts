@@ -1,6 +1,7 @@
 import { TriggerPlugin } from './base';
 import { SentryTrigger } from './sentry';
 import { CircleCITrigger } from './circleci';
+import { GitHubIssuesTrigger } from './github-issues';
 
 /**
  * Registry of all available trigger plugins
@@ -9,7 +10,7 @@ import { CircleCITrigger } from './circleci';
 export const triggers: TriggerPlugin[] = [
   new SentryTrigger(),
   new CircleCITrigger(),
-  // new GitHubIssuesTrigger(),
+  new GitHubIssuesTrigger(),
 ];
 
 /**
