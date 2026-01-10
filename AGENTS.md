@@ -775,6 +775,169 @@ async parseWebhook(payload: any): Promise<SourceEvent | null> {
 
 ---
 
+## VCS Plugins
+
+VCS (Version Control System) plugins are separate from source plugins. Source plugins handle bug tracking systems (Sentry, GitHub Issues), while VCS plugins handle code hosting platforms (GitHub, GitLab, Bitbucket).
+
+### Why Separate?
+
+A Sentry issue could be fixed in a GitLab repository. A Linear task could be fixed in a GitHub repository. Source and VCS are independent concerns.
+
+### VCS Interface
+
+```typescript
+interface VCSPlugin {
+  id: string;
+  type: 'github' | 'gitlab' | 'bitbucket' | 'self-hosted';
+
+  // Create a pull/merge request
+  createPullRequest(
+    owner: string,
+    repo: string,
+    head: string,
+    base: string,
+    title: string,
+    body: string
+  ): Promise<PullRequest>;
+
+  // Get compare URL (fallback if PR creation fails)
+  getCompareUrl(owner: string, repo: string, base: string, head: string): string;
+
+  // Format repository identifier
+  formatRepoIdentifier(owner: string, repo: string): string;
+
+  // Validate configuration
+  validate(): Promise<{ valid: boolean; error?: string }>;
+}
+```
+
+### Creating a VCS Plugin
+
+Example: GitLab VCS plugin
+
+```typescript
+import { VCSPlugin, PullRequest } from './base';
+import { Gitlab } from '@gitbeaker/rest';
+
+export class GitLabVCS implements VCSPlugin {
+  id = 'gitlab';
+  type = 'gitlab' as const;
+
+  private client: InstanceType<typeof Gitlab>;
+
+  constructor(token: string, host = 'https://gitlab.com') {
+    this.client = new Gitlab({ host, token });
+  }
+
+  async createPullRequest(
+    owner: string,
+    repo: string,
+    head: string,
+    base: string,
+    title: string,
+    body: string
+  ): Promise<PullRequest> {
+    const projectId = `${owner}/${repo}`;
+
+    const mr = await this.client.MergeRequests.create(
+      projectId,
+      head,
+      base,
+      title,
+      { description: body }
+    );
+
+    return {
+      number: mr.iid,
+      url: mr.web_url,
+      htmlUrl: mr.web_url,
+      title: mr.title,
+      body: mr.description || '',
+      head,
+      base,
+    };
+  }
+
+  getCompareUrl(owner: string, repo: string, base: string, head: string): string {
+    return `https://gitlab.com/${owner}/${repo}/-/compare/${base}...${head}`;
+  }
+
+  formatRepoIdentifier(owner: string, repo: string): string {
+    return `${owner}/${repo}`;
+  }
+
+  async validate(): Promise<{ valid: boolean; error?: string }> {
+    try {
+      await this.client.Users.showCurrentUser();
+      return { valid: true };
+    } catch (error: any) {
+      return {
+        valid: false,
+        error: error.message || 'GitLab authentication failed',
+      };
+    }
+  }
+}
+```
+
+### Registering VCS Plugin
+
+Add to `router/src/vcs/index.ts`:
+
+```typescript
+import { GitLabVCS } from './gitlab';
+
+export function initializeVCS(): void {
+  // ... existing GitHub setup
+
+  // GitLab VCS
+  const gitlabToken = process.env.GITLAB_TOKEN;
+  if (gitlabToken) {
+    const gitlab = new GitLabVCS(gitlabToken, process.env.GITLAB_HOST);
+    vcsPlugins.set('gitlab', gitlab);
+    console.log('✓ GitLab VCS initialized');
+  }
+}
+```
+
+### Project Configuration
+
+Specify VCS in project config:
+
+```typescript
+{
+  id: 'my-app',
+  repo: 'git@gitlab.com:mycompany/my-app.git',
+  repoFullName: 'mycompany/my-app',
+  branch: 'main',
+  vcs: {
+    type: 'gitlab',
+    owner: 'mycompany',
+    repo: 'my-app',
+    reviewers: ['alice', 'bob'],
+    labels: ['automated-fix']
+  },
+  triggers: {
+    sentry: { projectSlug: 'my-app-prod', enabled: true }
+  }
+}
+```
+
+### Official Plugins
+
+**GitHub VCS** (Included)
+- Uses Octokit (@octokit/rest)
+- Supports PAT and GitHub Apps
+- Auto-add labels and reviewers
+- Located: `router/src/vcs/github.ts`
+
+**Future Official Plugins:**
+- GitLab (using @gitbeaker/rest)
+- Bitbucket (using @atlassian/bitbucket)
+- Self-hosted Git (using direct API calls)
+
+---
+
 ## Additional Extension Points
 
 ### Custom Analysis Strategies (Future)

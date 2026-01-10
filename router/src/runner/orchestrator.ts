@@ -3,6 +3,9 @@ import { findProjectById } from '../config/projects';
 import { generateAndMountTools, generateToolsReadme, validateTools } from './tools';
 import { buildInvestigationPrompt } from './prompts';
 import { runClaudeInContainer, isDockerAvailable, isClaudeRunnerImageAvailable } from './claude';
+import { getVCSPlugin } from '../vcs';
+import { formatPRBody } from '../vcs/base';
+import { GitHubVCS } from '../vcs/github';
 
 /**
  * Main orchestrator for the fix workflow
@@ -110,20 +113,65 @@ export async function orchestrateFix(
       };
     }
 
-    // Success! Create PR
+    // Success! Create PR using VCS plugin
     console.log(`[Orchestrator] Creating PR for branch ${result.branchName}`);
 
-    const prUrl = `https://github.com/${project.repoFullName}/compare/${project.branch}...${result.branchName}`;
+    // Get VCS plugin
+    const vcs = getVCSPlugin(project.vcs.type);
+    if (!vcs) {
+      throw new Error(`VCS plugin not found: ${project.vcs.type}`);
+    }
 
-    // TODO: Create PR using GitHub API (will implement in next step)
-    // For now, just log the URL and add comment
-    console.log(`[Orchestrator] PR URL: ${prUrl}`);
+    let prUrl: string;
+    let prNumber: number | undefined;
+
+    try {
+      // Create PR
+      const sourceLink = source.getLink(event);
+      const prBody = formatPRBody(analysis, sourceLink);
+
+      const pr = await vcs.createPullRequest(
+        project.vcs.owner,
+        project.vcs.repo,
+        result.branchName,
+        project.branch,
+        `fix: ${analysis.summary}`,
+        prBody
+      );
+
+      prUrl = pr.htmlUrl;
+      prNumber = pr.number;
+
+      console.log(`[Orchestrator] PR created: ${prUrl}`);
+
+      // Add labels if configured (GitHub specific)
+      if (project.vcs.labels && project.vcs.labels.length > 0 && vcs instanceof GitHubVCS) {
+        await vcs.addLabels(project.vcs.owner, project.vcs.repo, pr.number, project.vcs.labels);
+      }
+
+      // Request reviewers if configured (GitHub specific)
+      if (project.vcs.reviewers && project.vcs.reviewers.length > 0 && vcs instanceof GitHubVCS) {
+        await vcs.requestReviewers(project.vcs.owner, project.vcs.repo, pr.number, project.vcs.reviewers);
+      }
+    } catch (error: any) {
+      console.error(`[Orchestrator] Failed to create PR:`, error.message);
+
+      // Fall back to compare URL
+      prUrl = vcs.getCompareUrl(
+        project.vcs.owner,
+        project.vcs.repo,
+        project.branch,
+        result.branchName
+      );
+
+      console.log(`[Orchestrator] Using compare URL: ${prUrl}`);
+    }
 
     // Update source status
     await source.updateStatus(event, { fixed: true, analysis, prUrl });
     await source.addComment(
       event,
-      `✅ Automated fix submitted!\n\n${formatAnalysisComment(analysis)}\n\n**Branch:** \`${result.branchName}\`\n**Create PR:** ${prUrl}`
+      `✅ Automated fix ${prNumber ? `submitted in #${prNumber}` : 'created'}!\n\n${formatAnalysisComment(analysis)}\n\n**Branch:** \`${result.branchName}\`\n**${prNumber ? 'Pull Request' : 'Compare'}:** ${prUrl}`
     );
 
     return {
