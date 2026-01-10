@@ -6,6 +6,7 @@ This guide covers deploying the AI Bug Fixer to production with best practices f
 
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
+- [Exposing to External Services](#exposing-to-external-services)
 - [Environment Setup](#environment-setup)
 - [Docker Deployment](#docker-deployment)
 - [Kubernetes Deployment](#kubernetes-deployment)
@@ -58,6 +59,84 @@ docker-compose -f docker-compose.prod.yml up -d
 
 # 5. Verify deployment
 curl http://localhost:3000/health
+```
+
+## Exposing to External Services
+
+**If deploying at home (Mac Mini, Raspberry Pi, etc.) or behind a firewall:**
+
+External services like GitHub, Sentry, and CircleCI need to send webhooks to your server. Since your home network typically doesn't have a public IP, you'll need to expose your service using a tunnel.
+
+### Recommended: Cloudflare Tunnel
+
+**Why Cloudflare Tunnel?**
+- ✅ **Free** - No cost for unlimited bandwidth
+- ✅ **Secure** - No open ports, encrypted tunnel
+- ✅ **Custom domain** - Use your own subdomain
+- ✅ **HTTPS included** - Automatic SSL certificates
+- ✅ **No router config** - Works through NAT/firewall
+
+### Quick Setup (Mac Mini)
+
+```bash
+# 1. Install cloudflared
+brew install cloudflared
+
+# 2. Authenticate with Cloudflare
+cloudflared tunnel login
+
+# 3. Create tunnel
+cloudflared tunnel create ai-bug-fixer
+
+# 4. Create config file at ~/.cloudflared/config.yml:
+tunnel: <TUNNEL-ID>
+credentials-file: /Users/yourusername/.cloudflared/<TUNNEL-ID>.json
+
+ingress:
+  - hostname: ai-bug-fixer.yourdomain.com
+    service: http://localhost:3000
+  - service: http_status:404
+
+# 5. Route DNS
+cloudflared tunnel route dns ai-bug-fixer ai-bug-fixer.yourdomain.com
+
+# 6. Start tunnel
+cloudflared tunnel run ai-bug-fixer
+```
+
+### Run as Background Service
+
+For Mac Mini, create `~/Library/LaunchAgents/com.cloudflare.cloudflared.plist` to auto-start on boot.
+
+**Full guide:** See [EXPOSING-WEBHOOKS.md](./EXPOSING-WEBHOOKS.md) for complete setup instructions including:
+- Cloudflare Tunnel (recommended for home deployments)
+- Ngrok (quick testing)
+- Direct port forwarding
+- Tailscale Funnel
+- Mac Mini specific optimizations
+- Security considerations
+- Troubleshooting
+
+**Cost:** ~$1/month (domain name only, Cloudflare Tunnel is free)
+
+### Configure Webhooks
+
+Once your tunnel is running, configure your services:
+
+**GitHub:**
+- URL: `https://ai-bug-fixer.yourdomain.com/webhooks/github-issues`
+- Secret: Your `GITHUB_WEBHOOK_SECRET` from `.env`
+
+**Sentry:**
+- URL: `https://ai-bug-fixer.yourdomain.com/webhooks/sentry`
+
+**CircleCI:**
+- URL: `https://ai-bug-fixer.yourdomain.com/webhooks/circleci`
+
+**Verify it works:**
+```bash
+# From anywhere on the internet
+curl https://ai-bug-fixer.yourdomain.com/health
 ```
 
 ## Environment Setup
