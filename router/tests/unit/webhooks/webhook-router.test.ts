@@ -2,14 +2,32 @@ import express from 'express';
 import request from 'supertest';
 import { webhookRouter } from '../../../src/webhooks';
 import { triggers } from '../../../src/triggers';
+import { TriggerPlugin } from '../../../src/triggers/base';
 import { createMockTrigger } from '../../mocks/mock-trigger';
 import { mockWebhookPayloads } from '../../fixtures/webhook-payloads';
+
+// Mock the queue module to avoid Redis dependency
+jest.mock('../../../src/queue', () => ({
+  queueFixJob: jest.fn().mockResolvedValue('mock-job-id-123'),
+  getQueueStats: jest.fn().mockResolvedValue({
+    waiting: 0,
+    active: 0,
+    completed: 0,
+    failed: 0,
+    delayed: 0,
+    paused: false,
+  }),
+}));
 
 describe('Webhook Router', () => {
   let app: express.Application;
   let mockTrigger: ReturnType<typeof createMockTrigger>;
+  let originalTriggers: TriggerPlugin[];
 
   beforeEach(() => {
+    // Save original triggers
+    originalTriggers = [...triggers];
+
     // Create test app
     app = express();
     app.use(express.json());
@@ -19,6 +37,13 @@ describe('Webhook Router', () => {
     mockTrigger = createMockTrigger();
     triggers.length = 0; // Clear triggers array
     triggers.push(mockTrigger);
+  });
+
+  afterEach(() => {
+    // Restore original triggers
+    triggers.length = 0;
+    triggers.push(...originalTriggers);
+    jest.clearAllMocks();
   });
 
   describe('POST /webhooks/:triggerId', () => {
