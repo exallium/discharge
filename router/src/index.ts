@@ -71,7 +71,7 @@ async function main() {
   // Start HTTP server
   const port = process.env.PORT || 3000;
   app.listen(port, () => {
-    logger.info('Claude Agent Router started', {
+    logger.info('AI Bug Fixer Router started', {
       port,
       nodeEnv: process.env.NODE_ENV || 'development',
       endpoints: {

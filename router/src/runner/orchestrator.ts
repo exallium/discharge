@@ -249,6 +249,6 @@ ${analysis.proposedFix ? `**Proposed Fix:** ${analysis.proposedFix}\n` : ''}
 ${analysis.filesInvolved.map((f: string) => `- \`${f}\``).join('\n')}
 
 ---
-*This analysis was generated automatically by Claude Agent*
+*This analysis was generated automatically by AI Bug Fixer*
   `.trim();
 }

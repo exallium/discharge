@@ -1,7 +1,7 @@
 {
-  "name": "claude-agent-router",
+  "name": "ai-bug-fixer-router",
   "version": "1.0.0",
-  "description": "Generic webhook router and orchestrator for Claude Agent",
+  "description": "Generic webhook router and orchestrator for AI Bug Fixer",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

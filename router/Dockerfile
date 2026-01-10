@@ -63,4 +63,4 @@ CMD ["node", "dist/index.js"]
 # Labels for metadata
 LABEL maintainer="ai-bug-fixer"
 LABEL version="1.0.0"
-LABEL description="Claude Agent Router - Webhook orchestrator and job queue"
+LABEL description="AI Bug Fixer Router - Webhook orchestrator and job queue"

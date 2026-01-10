@@ -79,7 +79,7 @@ webhookRouter.get('/', (req, res) => {
   }));
 
   res.json({
-    message: 'Claude Agent Webhook Router',
+    message: 'AI Bug Fixer Webhook Router',
     endpoints
   });
 });
