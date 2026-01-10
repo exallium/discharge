@@ -1,5 +1,5 @@
 import { Octokit } from '@octokit/rest';
-import { VCSPlugin, PullRequest } from './base';
+import { VCSPlugin, PullRequest } from '../base';
 
 /**
  * GitHub VCS plugin using Octokit
