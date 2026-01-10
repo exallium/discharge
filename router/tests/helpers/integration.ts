@@ -96,22 +96,52 @@ export function createTestEnvironment(): IntegrationTestEnvironment {
 }
 
 /**
+ * Check if Docker is available
+ */
+export async function isDockerAvailable(): Promise<boolean> {
+  try {
+    await execAsync('docker info');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Skip integration tests if Docker is not available
+ *
+ * Usage in test files:
+ * ```
+ * describe('My Integration Test', () => {
+ *   skipIfNoDocker();
+ *
+ *   // ... rest of tests
+ * });
+ * ```
+ *
+ * Note: If Docker is not available, tests will fail with a clear message
+ * rather than being skipped, as Jest doesn't support dynamic test skipping
+ * in the same way as Mocha. To truly skip integration tests, run:
+ * `npm test -- --testPathIgnorePatterns="integration"`
  */
 export function skipIfNoDocker(): void {
-  beforeAll(async () => {
-    try {
-      await execAsync('docker info');
-    } catch {
-      console.log('Docker not available, skipping integration tests');
-      // Skip all tests in this suite
-      (global as any).testSkipped = true;
-    }
-  });
+  let dockerAvailable = true;
 
-  beforeEach(function(this: any) {
-    if ((global as any).testSkipped) {
-      this.skip();
+  beforeAll(async () => {
+    dockerAvailable = await isDockerAvailable();
+    if (!dockerAvailable) {
+      console.warn('\n⚠️  Docker not available - integration tests will fail');
+      console.warn('   To run integration tests: install Docker and ensure it is running');
+      console.warn('   To skip integration tests: npm test -- --testPathIgnorePatterns="integration"\n');
+    }
+  }, 10000);
+
+  beforeEach(() => {
+    if (!dockerAvailable) {
+      throw new Error(
+        'Docker not available. Integration tests require Docker to be installed and running. ' +
+        'To skip these tests, run: npm test -- --testPathIgnorePatterns="integration"'
+      );
     }
   });
 }

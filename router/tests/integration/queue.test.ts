@@ -1,7 +1,29 @@
-import { queueFixJob, getQueueStats, pauseQueue, resumeQueue } from '../../../src/queue';
+import { queueFixJob, getQueueStats, pauseQueue, resumeQueue, initializeQueue, closeQueue } from '../../../src/queue';
 import { FixJobData } from '../../../src/queue/types';
+import { createTestEnvironment, skipIfNoDocker } from '../../helpers/integration';
 
-describe('Queue', () => {
+describe('Queue Integration', () => {
+  const env = createTestEnvironment();
+
+  skipIfNoDocker();
+
+  beforeAll(async () => {
+    await env.setup();
+
+    // Initialize queue with test Redis
+    process.env.REDIS_URL = 'redis://localhost:6380/15';
+    await initializeQueue();
+  }, 60000);
+
+  afterAll(async () => {
+    await closeQueue();
+    await env.teardown();
+  }, 30000);
+
+  beforeEach(async () => {
+    await env.clearRedis();
+  });
+
   describe('queueFixJob', () => {
     it('should queue a fix job', async () => {
       const jobData: FixJobData = {
