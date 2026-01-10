@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  # Redis for testing (uses different DB and port)
+  redis-test:
+    image: redis:7-alpine
+    container_name: claude-agent-redis-test
+    ports:
+      - "6380:6379"
+    networks:
+      - test
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 5
+    command: redis-server --databases 16
+
+  # Mock external service for testing webhooks
+  mock-service:
+    image: kennethreitz/httpbin
+    container_name: claude-agent-mock-service
+    ports:
+      - "8080:80"
+    networks:
+      - test
+
+networks:
+  test:
+    driver: bridge

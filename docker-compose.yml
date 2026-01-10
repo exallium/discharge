@@ -1,0 +1,96 @@
+version: "3.8"
+
+services:
+  # ─────────────────────────────────────────────
+  # Infrastructure
+  # ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ─────────────────────────────────────────────
+  # Main Application
+  # ─────────────────────────────────────────────
+  router:
+    build: ./router
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+      - SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
+      - SENTRY_ORG=${SENTRY_ORG}
+      - CIRCLECI_TOKEN=${CIRCLECI_TOKEN}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      - HOST_USER=${USER}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - workspaces:/workspaces
+      - /Users/${USER}/.claude:/claude-creds:ro
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # Claude Runner (image only, spawned dynamically)
+  # ─────────────────────────────────────────────
+  claude-runner:
+    build: ./claude-runner
+    image: claude-runner:latest
+    profiles:
+      - build-only
+
+  # ─────────────────────────────────────────────
+  # Tunnel
+  # ─────────────────────────────────────────────
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel run
+    volumes:
+      - ./cloudflared:/etc/cloudflared:ro
+    networks:
+      - internal
+    depends_on:
+      - router
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # Monitoring
+  # ─────────────────────────────────────────────
+  portainer:
+    image: portainer/portainer-ce:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - internal
+    restart: unless-stopped
+
+  dozzle:
+    image: amir20/dozzle:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - internal
+    restart: unless-stopped
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  redis_data:
+  portainer_data:
+  workspaces:
