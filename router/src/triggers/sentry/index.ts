@@ -1,7 +1,7 @@
 import { Request } from 'express';
 import crypto from 'crypto';
-import { TriggerPlugin, TriggerEvent, Tool, FixStatus } from './base';
-import { findProjectsBySource } from '../config/projects';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus } from '../base';
+import { findProjectsBySource } from '../../config/projects';
 
 /**
  * Sentry trigger plugin
