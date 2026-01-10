@@ -1,5 +1,5 @@
 import { validateTool, validateTools } from '../../../src/runner/tools';
-import { Tool } from '../../../src/sources/base';
+import { Tool } from '../../../src/triggers/base';
 
 describe('Tools', () => {
   describe('validateTool', () => {

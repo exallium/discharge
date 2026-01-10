@@ -1,4 +1,4 @@
-import { SourcePlugin, SourceEvent, FixStatus } from '../sources/base';
+import { TriggerPlugin, TriggerEvent, FixStatus } from '../triggers/base';
 import { findProjectById } from '../config/projects';
 import { generateAndMountTools, generateToolsReadme, validateTools } from './tools';
 import { buildInvestigationPrompt } from './prompts';
@@ -12,10 +12,10 @@ import { GitHubVCS } from '../vcs/github';
  * Coordinates: tools → prompt → Claude → analysis → PR
  */
 export async function orchestrateFix(
-  source: SourcePlugin,
-  event: SourceEvent
+  trigger: TriggerPlugin,
+  event: TriggerEvent
 ): Promise<FixStatus> {
-  console.log(`[Orchestrator] Starting fix for ${event.sourceType}:${event.sourceId}`);
+  console.log(`[Orchestrator] Starting fix for ${event.triggerType}:${event.triggerId}`);
 
   try {
     // Get project configuration
@@ -30,7 +30,7 @@ export async function orchestrateFix(
     await performPreflightChecks();
 
     // Generate tools
-    const tools = source.getTools(event);
+    const tools = trigger.getTools(event);
     console.log(`[Orchestrator] Generated ${tools.length} tools`);
 
     // Validate tools
@@ -41,7 +41,7 @@ export async function orchestrateFix(
     }
 
     // Build prompt
-    const prompt = buildInvestigationPrompt(source, event, tools);
+    const prompt = buildInvestigationPrompt(trigger, event, tools);
     console.log(`[Orchestrator] Built investigation prompt (${prompt.length} chars)`);
 
     // Run Claude
@@ -54,7 +54,7 @@ export async function orchestrateFix(
 
     // Handle failure
     if (!result.success) {
-      await source.addComment(
+      await trigger.addComment(
         event,
         `⚠️ Auto-fix attempt failed:\n\`\`\`\n${result.error || result.output.slice(0, 500)}\n\`\`\``
       );
@@ -69,7 +69,7 @@ export async function orchestrateFix(
     // No analysis output
     const analysis = result.analysis;
     if (!analysis) {
-      await source.addComment(
+      await trigger.addComment(
         event,
         '⚠️ Investigation completed but no analysis output found'
       );
@@ -90,7 +90,7 @@ export async function orchestrateFix(
 
     // Low confidence or can't auto-fix - post analysis only
     if (!analysis.canAutoFix || analysis.confidence !== 'high') {
-      await source.addComment(event, formatAnalysisComment(analysis));
+      await trigger.addComment(event, formatAnalysisComment(analysis));
 
       return {
         fixed: false,
@@ -101,7 +101,7 @@ export async function orchestrateFix(
 
     // No commit made despite analysis saying it's fixable
     if (!result.hasCommit || !result.branchName) {
-      await source.addComment(
+      await trigger.addComment(
         event,
         '⚠️ Analysis indicated fix was possible but no commit was made'
       );
@@ -127,8 +127,8 @@ export async function orchestrateFix(
 
     try {
       // Create PR
-      const sourceLink = source.getLink(event);
-      const prBody = formatPRBody(analysis, sourceLink);
+      const triggerLink = trigger.getLink(event);
+      const prBody = formatPRBody(analysis, triggerLink);
 
       const pr = await vcs.createPullRequest(
         project.vcs.owner,
@@ -167,9 +167,9 @@ export async function orchestrateFix(
       console.log(`[Orchestrator] Using compare URL: ${prUrl}`);
     }
 
-    // Update source status
-    await source.updateStatus(event, { fixed: true, analysis, prUrl });
-    await source.addComment(
+    // Update trigger status
+    await trigger.updateStatus(event, { fixed: true, analysis, prUrl });
+    await trigger.addComment(
       event,
       `✅ Automated fix ${prNumber ? `submitted in #${prNumber}` : 'created'}!\n\n${formatAnalysisComment(analysis)}\n\n**Branch:** \`${result.branchName}\`\n**${prNumber ? 'Pull Request' : 'Compare'}:** ${prUrl}`
     );
@@ -183,7 +183,7 @@ export async function orchestrateFix(
     console.error('[Orchestrator] Error:', error);
 
     try {
-      await source.addComment(
+      await trigger.addComment(
         event,
         `❌ Auto-fix failed: ${error.message}`
       );

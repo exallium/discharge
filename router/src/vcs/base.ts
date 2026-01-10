@@ -1,4 +1,4 @@
-import { AnalysisResult } from '../sources/base';
+import { AnalysisResult } from '../triggers/base';
 
 /**
  * Pull Request data

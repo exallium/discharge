@@ -1,11 +1,11 @@
-import { SourceEvent } from '../sources/base';
+import { TriggerEvent } from '../triggers/base';
 
 /**
  * Job data structure for queued fix jobs
  */
 export interface FixJobData {
-  event: SourceEvent;
-  sourceType: string;
+  event: TriggerEvent;
+  triggerType: string;
   queuedAt: string;
 }
 

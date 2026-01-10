@@ -1,12 +1,12 @@
 import { Request } from 'express';
 
 /**
- * Normalized event from any bug tracking source
+ * Normalized event from any bug tracking trigger
  */
-export interface SourceEvent {
+export interface TriggerEvent {
   // Core identification
-  sourceType: string;           // 'sentry', 'github-issues', etc.
-  sourceId: string;              // Issue ID, event ID, job ID, etc.
+  triggerType: string;           // 'sentry', 'github-issues', etc.
+  triggerId: string;             // Issue ID, event ID, job ID, etc.
   projectId: string;             // Which project config to use
 
   // Display info
@@ -32,7 +32,7 @@ export interface SourceEvent {
 }
 
 /**
- * Tool definition for bash scripts dynamically generated per source
+ * Tool definition for bash scripts dynamically generated per trigger
  */
 export interface Tool {
   name: string;                  // CLI command name
@@ -66,28 +66,28 @@ export interface FixStatus {
 }
 
 /**
- * Source plugin interface - all bug sources implement this
+ * Trigger plugin interface - all bug tracking systems implement this
  */
-export interface SourcePlugin {
+export interface TriggerPlugin {
   // Identification
   id: string;
   type: string;
 
   // Webhook handling
   validateWebhook(req: Request): Promise<boolean>;
-  parseWebhook(payload: any): Promise<SourceEvent | null>;
+  parseWebhook(payload: any): Promise<TriggerEvent | null>;
 
   // Tool generation
-  getTools(event: SourceEvent): Tool[];
+  getTools(event: TriggerEvent): Tool[];
 
   // Context generation for prompts
-  getPromptContext(event: SourceEvent): string;
+  getPromptContext(event: TriggerEvent): string;
 
   // Post-processing
-  updateStatus(event: SourceEvent, status: FixStatus): Promise<void>;
-  addComment(event: SourceEvent, comment: string): Promise<void>;
-  getLink(event: SourceEvent): string;
+  updateStatus(event: TriggerEvent, status: FixStatus): Promise<void>;
+  addComment(event: TriggerEvent, comment: string): Promise<void>;
+  getLink(event: TriggerEvent): string;
 
   // Optional: Pre-filtering
-  shouldProcess?(event: SourceEvent): Promise<boolean>;
+  shouldProcess?(event: TriggerEvent): Promise<boolean>;
 }

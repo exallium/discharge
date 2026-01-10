@@ -1,24 +1,24 @@
-import { createMockSource, MockSource } from '../../mocks/mock-source';
+import { createMockTrigger, MockTrigger } from '../../mocks/mock-trigger';
 import { mockWebhookPayloads } from '../../fixtures/webhook-payloads';
-import { SourceEvent } from '../../../src/sources/base';
+import { TriggerEvent } from '../../../src/triggers/base';
 
-describe('MockSource', () => {
-  let source: MockSource;
+describe('MockTrigger', () => {
+  let trigger: MockTrigger;
 
   beforeEach(() => {
-    source = createMockSource();
+    trigger = createMockTrigger();
   });
 
   describe('validateWebhook', () => {
     it('should validate webhook by default', async () => {
-      const result = await source.validateWebhook({} as any);
+      const result = await trigger.validateWebhook({} as any);
       expect(result).toBe(true);
-      expect(source.calls.validateWebhook).toBe(1);
+      expect(trigger.calls.validateWebhook).toBe(1);
     });
 
     it('should allow configuration of validation result', async () => {
-      source.setValidation(false);
-      const result = await source.validateWebhook({} as any);
+      trigger.setValidation(false);
+      const result = await trigger.validateWebhook({} as any);
       expect(result).toBe(false);
     });
   });
@@ -26,27 +26,27 @@ describe('MockSource', () => {
   describe('parseWebhook', () => {
     it('should parse valid webhook payload', async () => {
       const payload = mockWebhookPayloads.mock.valid;
-      const event = await source.parseWebhook(payload);
+      const event = await trigger.parseWebhook(payload);
 
       expect(event).toBeTruthy();
-      expect(event?.sourceType).toBe('mock');
-      expect(event?.sourceId).toBe('mock-123');
+      expect(event?.triggerType).toBe('mock');
+      expect(event?.triggerId).toBe('mock-123');
       expect(event?.projectId).toBe('test-project');
       expect(event?.title).toBe('NullPointerException in UserService');
-      expect(source.calls.parseWebhook).toBe(1);
+      expect(trigger.calls.parseWebhook).toBe(1);
     });
 
     it('should return null for invalid payload', async () => {
       const payload = mockWebhookPayloads.mock.invalid;
-      const event = await source.parseWebhook(payload);
+      const event = await trigger.parseWebhook(payload);
 
       expect(event).toBeNull();
     });
 
     it('should use configured event', async () => {
-      const customEvent: SourceEvent = {
-        sourceType: 'custom',
-        sourceId: 'custom-123',
+      const customEvent: TriggerEvent = {
+        triggerType: 'custom',
+        triggerId: 'custom-123',
         projectId: 'custom-project',
         title: 'Custom Event',
         description: 'Custom description',
@@ -54,8 +54,8 @@ describe('MockSource', () => {
         raw: {},
       };
 
-      source.setEvent(customEvent);
-      const event = await source.parseWebhook({});
+      trigger.setEvent(customEvent);
+      const event = await trigger.parseWebhook({});
 
       expect(event).toEqual(customEvent);
     });
@@ -63,9 +63,9 @@ describe('MockSource', () => {
 
   describe('getTools', () => {
     it('should return default tools', () => {
-      const event: SourceEvent = {
-        sourceType: 'mock',
-        sourceId: 'test-123',
+      const event: TriggerEvent = {
+        triggerType: 'mock',
+        triggerId: 'test-123',
         projectId: 'test-project',
         title: 'Test',
         description: 'Test desc',
@@ -73,12 +73,12 @@ describe('MockSource', () => {
         raw: {},
       };
 
-      const tools = source.getTools(event);
+      const tools = trigger.getTools(event);
 
       expect(tools).toHaveLength(1);
       expect(tools[0].name).toBe('get-issue');
       expect(tools[0].script).toContain('test-123');
-      expect(source.calls.getTools).toBe(1);
+      expect(trigger.calls.getTools).toBe(1);
     });
 
     it('should use configured tools', () => {
@@ -90,8 +90,8 @@ describe('MockSource', () => {
         },
       ];
 
-      source.setTools(customTools);
-      const tools = source.getTools({} as any);
+      trigger.setTools(customTools);
+      const tools = trigger.getTools({} as any);
 
       expect(tools).toEqual(customTools);
     });
@@ -99,9 +99,9 @@ describe('MockSource', () => {
 
   describe('getPromptContext', () => {
     it('should generate prompt context', () => {
-      const event: SourceEvent = {
-        sourceType: 'mock',
-        sourceId: 'test-123',
+      const event: TriggerEvent = {
+        triggerType: 'mock',
+        triggerId: 'test-123',
         projectId: 'test-project',
         title: 'Test Issue',
         description: 'Test desc',
@@ -109,19 +109,19 @@ describe('MockSource', () => {
         raw: {},
       };
 
-      const context = source.getPromptContext(event);
+      const context = trigger.getPromptContext(event);
 
       expect(context).toContain('Test Issue');
       expect(context).toContain('test-123');
-      expect(source.calls.getPromptContext).toBe(1);
+      expect(trigger.calls.getPromptContext).toBe(1);
     });
   });
 
   describe('updateStatus', () => {
     it('should track status updates', async () => {
-      const event: SourceEvent = {
-        sourceType: 'mock',
-        sourceId: 'test-123',
+      const event: TriggerEvent = {
+        triggerType: 'mock',
+        triggerId: 'test-123',
         projectId: 'test-project',
         title: 'Test',
         description: 'Test desc',
@@ -131,18 +131,18 @@ describe('MockSource', () => {
 
       const status = { fixed: true };
 
-      await source.updateStatus(event, status);
+      await trigger.updateStatus(event, status);
 
-      expect(source.calls.updateStatus).toBe(1);
-      expect(source.lastStatusUpdate).toEqual({ event, status });
+      expect(trigger.calls.updateStatus).toBe(1);
+      expect(trigger.lastStatusUpdate).toEqual({ event, status });
     });
   });
 
   describe('addComment', () => {
     it('should track comments', async () => {
-      const event: SourceEvent = {
-        sourceType: 'mock',
-        sourceId: 'test-123',
+      const event: TriggerEvent = {
+        triggerType: 'mock',
+        triggerId: 'test-123',
         projectId: 'test-project',
         title: 'Test',
         description: 'Test desc',
@@ -152,18 +152,18 @@ describe('MockSource', () => {
 
       const comment = 'Test comment';
 
-      await source.addComment(event, comment);
+      await trigger.addComment(event, comment);
 
-      expect(source.calls.addComment).toBe(1);
-      expect(source.lastComment).toEqual({ event, comment });
+      expect(trigger.calls.addComment).toBe(1);
+      expect(trigger.lastComment).toEqual({ event, comment });
     });
   });
 
   describe('getLink', () => {
     it('should generate link markdown', () => {
-      const event: SourceEvent = {
-        sourceType: 'mock',
-        sourceId: 'test-123',
+      const event: TriggerEvent = {
+        triggerType: 'mock',
+        triggerId: 'test-123',
         projectId: 'test-project',
         title: 'Test',
         description: 'Test desc',
@@ -174,19 +174,19 @@ describe('MockSource', () => {
         raw: {},
       };
 
-      const link = source.getLink(event);
+      const link = trigger.getLink(event);
 
       expect(link).toContain('Mock Issue');
       expect(link).toContain('https://example.com/issues/123');
-      expect(source.calls.getLink).toBe(1);
+      expect(trigger.calls.getLink).toBe(1);
     });
   });
 
   describe('reset', () => {
     it('should reset all tracking state', async () => {
-      const event: SourceEvent = {
-        sourceType: 'mock',
-        sourceId: 'test-123',
+      const event: TriggerEvent = {
+        triggerType: 'mock',
+        triggerId: 'test-123',
         projectId: 'test-project',
         title: 'Test',
         description: 'Test desc',
@@ -195,19 +195,19 @@ describe('MockSource', () => {
       };
 
       // Make some calls
-      await source.validateWebhook({} as any);
-      await source.updateStatus(event, { fixed: true });
-      await source.addComment(event, 'Test');
+      await trigger.validateWebhook({} as any);
+      await trigger.updateStatus(event, { fixed: true });
+      await trigger.addComment(event, 'Test');
 
       // Reset
-      source.reset();
+      trigger.reset();
 
       // Check all counts are zero
-      expect(source.calls.validateWebhook).toBe(0);
-      expect(source.calls.updateStatus).toBe(0);
-      expect(source.calls.addComment).toBe(0);
-      expect(source.lastStatusUpdate).toBeUndefined();
-      expect(source.lastComment).toBeUndefined();
+      expect(trigger.calls.validateWebhook).toBe(0);
+      expect(trigger.calls.updateStatus).toBe(0);
+      expect(trigger.calls.addComment).toBe(0);
+      expect(trigger.lastStatusUpdate).toBeUndefined();
+      expect(trigger.lastComment).toBeUndefined();
     });
   });
 });

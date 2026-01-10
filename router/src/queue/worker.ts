@@ -1,7 +1,7 @@
 import { Worker, Job } from 'bullmq';
 import { connection } from './index';
 import { FixJobData, FixJobResult } from './types';
-import { getSourceByType } from '../sources';
+import { getTriggerByType } from '../triggers';
 import { orchestrateFix } from '../runner/orchestrator';
 
 /**
@@ -9,24 +9,24 @@ import { orchestrateFix } from '../runner/orchestrator';
  */
 async function processFixJob(job: Job<FixJobData>): Promise<FixJobResult> {
   const startTime = Date.now();
-  const { event, sourceType } = job.data;
+  const { event, triggerType } = job.data;
 
   console.log(`Processing job ${job.id}`, {
-    sourceType,
-    sourceId: event.sourceId,
+    triggerType,
+    triggerId: event.triggerId,
     projectId: event.projectId,
     title: event.title,
   });
 
   try {
-    // Get the source plugin
-    const source = getSourceByType(sourceType);
-    if (!source) {
-      throw new Error(`Unknown source type: ${sourceType}`);
+    // Get the trigger plugin
+    const trigger = getTriggerByType(triggerType);
+    if (!trigger) {
+      throw new Error(`Unknown trigger type: ${triggerType}`);
     }
 
     // Run orchestrator
-    const fixStatus = await orchestrateFix(source, event);
+    const fixStatus = await orchestrateFix(trigger, event);
 
     const result: FixJobResult = {
       success: true,

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { listSourceIds } from '../sources';
+import { listTriggerIds } from '../triggers';
 import { getQueueStats } from '../queue';
 
 export const statusRouter = Router();
@@ -12,7 +12,7 @@ statusRouter.get('/status', async (req, res) => {
 
   res.json({
     status: 'running',
-    sources: listSourceIds(),
+    triggers: listTriggerIds(),
     queue,
     timestamp: new Date().toISOString(),
   });
@@ -22,7 +22,7 @@ statusRouter.get('/status', async (req, res) => {
  * Simple HTML dashboard
  */
 statusRouter.get('/dashboard', async (req, res) => {
-  const sources = listSourceIds();
+  const triggers = listTriggerIds();
   const queue = await getQueueStats();
 
   res.send(`
@@ -89,17 +89,17 @@ statusRouter.get('/dashboard', async (req, res) => {
   </div>
 
   <div class="card">
-    <div class="label">Configured Sources (${sources.length})</div>
-    ${sources.length > 0 ? `
+    <div class="label">Configured Triggers (${triggers.length})</div>
+    ${triggers.length > 0 ? `
       <ul>
-        ${sources.map(id => `
+        ${triggers.map(id => `
           <li>
             <strong>${id}</strong>
             <div class="code">POST /webhooks/${id}</div>
           </li>
         `).join('')}
       </ul>
-    ` : '<p>No sources configured yet.</p>'}
+    ` : '<p>No triggers configured yet.</p>'}
   </div>
 
   <div class="card">

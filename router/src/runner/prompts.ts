@@ -1,16 +1,16 @@
-import { SourcePlugin, SourceEvent, Tool } from '../sources/base';
+import { TriggerPlugin, TriggerEvent, Tool } from '../triggers/base';
 
 /**
  * Build a generic investigation prompt for Claude
  *
- * @param source - Source plugin
+ * @param trigger - Trigger plugin
  * @param event - Normalized event
  * @param tools - Tools available for investigation
  * @returns Prompt string
  */
 export function buildInvestigationPrompt(
-  source: SourcePlugin,
-  event: SourceEvent,
+  trigger: TriggerPlugin,
+  event: TriggerEvent,
   tools: Tool[]
 ): string {
   const toolsSection = tools.length > 0
@@ -24,10 +24,10 @@ Run these tools to gather information before making any changes.
 `
     : '';
 
-  const context = source.getPromptContext(event);
+  const context = trigger.getPromptContext(event);
 
   return `
-You are an automated bug fixer investigating a ${event.sourceType} issue.
+You are an automated bug fixer investigating a ${event.triggerType} issue.
 
 ## Issue Details
 
@@ -106,7 +106,7 @@ Begin your investigation now.
 /**
  * Build a simple prompt for testing without tools
  */
-export function buildSimplePrompt(event: SourceEvent): string {
+export function buildSimplePrompt(event: TriggerEvent): string {
   return `
 Investigate this issue:
 

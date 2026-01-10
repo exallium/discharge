@@ -1,6 +1,6 @@
 import { writeFile, mkdir, chmod } from 'fs/promises';
 import { join } from 'path';
-import { Tool } from '../sources/base';
+import { Tool } from '../triggers/base';
 
 /**
  * Generate tool scripts and write them to a directory

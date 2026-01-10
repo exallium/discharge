@@ -1,11 +1,11 @@
 import { buildInvestigationPrompt, buildSimplePrompt } from '../../../src/runner/prompts';
-import { createMockSource } from '../../mocks/mock-source';
-import { SourceEvent, Tool } from '../../../src/sources/base';
+import { createMockTrigger } from '../../mocks/mock-trigger';
+import { TriggerEvent, Tool } from '../../../src/triggers/base';
 
 describe('Prompts', () => {
-  const mockEvent: SourceEvent = {
-    sourceType: 'mock',
-    sourceId: 'test-123',
+  const mockEvent: TriggerEvent = {
+    triggerType: 'mock',
+    triggerId: 'test-123',
     projectId: 'test-project',
     title: 'NullPointerException in UserService',
     description: 'UserService.getUser() throws NPE',
@@ -17,7 +17,7 @@ describe('Prompts', () => {
 
   describe('buildInvestigationPrompt', () => {
     it('should build prompt with tools', () => {
-      const source = createMockSource();
+      const trigger = createMockTrigger();
       const tools: Tool[] = [
         {
           name: 'get-issue',
@@ -31,7 +31,7 @@ describe('Prompts', () => {
         },
       ];
 
-      const prompt = buildInvestigationPrompt(source, mockEvent, tools);
+      const prompt = buildInvestigationPrompt(trigger, mockEvent, tools);
 
       expect(prompt).toContain('Available Tools');
       expect(prompt).toContain('get-issue');
@@ -44,10 +44,10 @@ describe('Prompts', () => {
     });
 
     it('should build prompt without tools section when no tools', () => {
-      const source = createMockSource();
+      const trigger = createMockTrigger();
       const tools: Tool[] = [];
 
-      const prompt = buildInvestigationPrompt(source, mockEvent, tools);
+      const prompt = buildInvestigationPrompt(trigger, mockEvent, tools);
 
       expect(prompt).not.toContain('Available Tools');
       expect(prompt).toContain('.claude/analysis.json');
@@ -55,21 +55,21 @@ describe('Prompts', () => {
     });
 
     it('should include source context', () => {
-      const source = createMockSource();
+      const trigger = createMockTrigger();
       const tools: Tool[] = [];
 
-      const prompt = buildInvestigationPrompt(source, mockEvent, tools);
+      const prompt = buildInvestigationPrompt(trigger, mockEvent, tools);
 
-      // Mock source includes issue ID in context
+      // Mock trigger includes issue ID in context
       expect(prompt).toContain('test-123');
       expect(prompt).toContain('NullPointerException');
     });
 
     it('should include decision criteria', () => {
-      const source = createMockSource();
+      const trigger = createMockTrigger();
       const tools: Tool[] = [];
 
-      const prompt = buildInvestigationPrompt(source, mockEvent, tools);
+      const prompt = buildInvestigationPrompt(trigger, mockEvent, tools);
 
       expect(prompt).toContain('DO auto-fix if');
       expect(prompt).toContain("DON'T auto-fix if");
@@ -78,10 +78,10 @@ describe('Prompts', () => {
     });
 
     it('should include output requirements', () => {
-      const source = createMockSource();
+      const trigger = createMockTrigger();
       const tools: Tool[] = [];
 
-      const prompt = buildInvestigationPrompt(source, mockEvent, tools);
+      const prompt = buildInvestigationPrompt(trigger, mockEvent, tools);
 
       expect(prompt).toContain('Output Requirements');
       expect(prompt).toContain('analysis.json');
@@ -103,10 +103,10 @@ describe('Prompts', () => {
     });
 
     it('should be shorter than investigation prompt', () => {
-      const source = createMockSource();
+      const trigger = createMockTrigger();
       const tools: Tool[] = [];
 
-      const investigationPrompt = buildInvestigationPrompt(source, mockEvent, tools);
+      const investigationPrompt = buildInvestigationPrompt(trigger, mockEvent, tools);
       const simplePrompt = buildSimplePrompt(mockEvent);
 
       expect(simplePrompt.length).toBeLessThan(investigationPrompt.length);
