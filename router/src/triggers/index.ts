@@ -1,12 +1,12 @@
 import { TriggerPlugin } from './base';
+import { SentryTrigger } from './sentry';
 
 /**
  * Registry of all available trigger plugins
  * Add new triggers here as they are implemented
  */
 export const triggers: TriggerPlugin[] = [
-  // Triggers will be added here as they are implemented
-  // new SentryTrigger(),
+  new SentryTrigger(),
   // new GitHubIssuesTrigger(),
   // new CircleCITrigger(),
 ];

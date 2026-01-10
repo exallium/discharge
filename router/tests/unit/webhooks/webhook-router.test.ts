@@ -1,13 +1,13 @@
 import express from 'express';
 import request from 'supertest';
 import { webhookRouter } from '../../../src/webhooks';
-import { sources } from '../../../src/sources';
-import { createMockSource } from '../../mocks/mock-source';
+import { triggers } from '../../../src/triggers';
+import { createMockTrigger } from '../../mocks/mock-trigger';
 import { mockWebhookPayloads } from '../../fixtures/webhook-payloads';
 
 describe('Webhook Router', () => {
   let app: express.Application;
-  let mockSource: ReturnType<typeof createMockSource>;
+  let mockTrigger: ReturnType<typeof createMockTrigger>;
 
   beforeEach(() => {
     // Create test app
@@ -15,13 +15,13 @@ describe('Webhook Router', () => {
     app.use(express.json());
     app.use('/webhooks', webhookRouter);
 
-    // Create and register mock source
-    mockSource = createMockSource();
-    sources.length = 0; // Clear sources array
-    sources.push(mockSource);
+    // Create and register mock trigger
+    mockTrigger = createMockTrigger();
+    triggers.length = 0; // Clear triggers array
+    triggers.push(mockTrigger);
   });
 
-  describe('POST /webhooks/:sourceId', () => {
+  describe('POST /webhooks/:triggerId', () => {
     it('should process valid webhook', async () => {
       const payload = mockWebhookPayloads.mock.valid;
 
@@ -32,28 +32,26 @@ describe('Webhook Router', () => {
 
       expect(response.body).toMatchObject({
         queued: true,
-        sourceType: 'mock',
-        sourceId: 'mock-123',
-        projectId: 'test-project',
+        triggerType: 'mock',
       });
 
-      // Verify source methods were called
-      expect(mockSource.calls.validateWebhook).toBe(1);
-      expect(mockSource.calls.parseWebhook).toBe(1);
+      // Verify trigger methods were called
+      expect(mockTrigger.calls.validateWebhook).toBe(1);
+      expect(mockTrigger.calls.parseWebhook).toBe(1);
     });
 
-    it('should return 404 for unknown source', async () => {
+    it('should return 404 for unknown trigger', async () => {
       const response = await request(app)
         .post('/webhooks/unknown')
         .send({})
         .expect(404);
 
-      expect(response.body.error).toBe('Unknown source');
+      expect(response.body.error).toBe('Unknown trigger');
       expect(response.body.available).toEqual(['mock']);
     });
 
     it('should return 401 for invalid signature', async () => {
-      mockSource.setValidation(false);
+      mockTrigger.setValidation(false);
 
       await request(app)
         .post('/webhooks/mock')
@@ -71,12 +69,12 @@ describe('Webhook Router', () => {
 
       expect(response.body).toMatchObject({
         ignored: true,
-        reason: 'Event filtered by source plugin',
+        reason: 'Event filtered by trigger plugin',
       });
     });
 
     it('should respect shouldProcess filter', async () => {
-      mockSource.shouldProcessResult = false;
+      mockTrigger.shouldProcessResult = false;
 
       const payload = mockWebhookPayloads.mock.valid;
 
@@ -91,9 +89,9 @@ describe('Webhook Router', () => {
       });
     });
 
-    it('should handle source errors gracefully', async () => {
+    it('should handle trigger errors gracefully', async () => {
       // Make parseWebhook throw an error
-      mockSource.parseWebhook = jest.fn().mockRejectedValue(new Error('Parse error'));
+      mockTrigger.parseWebhook = jest.fn().mockRejectedValue(new Error('Parse error'));
 
       await request(app)
         .post('/webhooks/mock')
@@ -117,8 +115,8 @@ describe('Webhook Router', () => {
       ]);
     });
 
-    it('should return empty list when no sources configured', async () => {
-      sources.length = 0;
+    it('should return empty list when no triggers configured', async () => {
+      triggers.length = 0;
 
       const response = await request(app)
         .get('/webhooks')
