@@ -4,44 +4,44 @@ This document describes how to create custom agents and components to extend the
 
 ## Table of Contents
 
-1. [Source Plugins](#source-plugins)
+1. [Trigger Plugins](#trigger-plugins)
 2. [Testing Your Agent](#testing-your-agent)
 3. [Example Implementations](#example-implementations)
 4. [Best Practices](#best-practices)
 
 ---
 
-## Source Plugins
+## Trigger Plugins
 
-Source plugins are the primary extension point for adding new bug sources (Sentry, GitHub, Linear, Jira, etc.).
+Trigger plugins are the primary extension point for adding new bug triggers (Sentry, GitHub, Linear, Jira, etc.).
 
 ### Interface
 
-All source plugins implement the `SourcePlugin` interface:
+All trigger plugins implement the `TriggerPlugin` interface:
 
 ```typescript
-interface SourcePlugin {
+interface TriggerPlugin {
   // Identification
   id: string;                    // Unique identifier (e.g., 'sentry', 'github-issues')
   type: string;                  // Type name for internal routing
 
   // Webhook handling
   validateWebhook(req: Request): Promise<boolean>;
-  parseWebhook(payload: any): Promise<SourceEvent | null>;
+  parseWebhook(payload: any): Promise<TriggerEvent | null>;
 
   // Tool generation
-  getTools(event: SourceEvent): Tool[];
+  getTools(event: TriggerEvent): Tool[];
 
   // Context generation
-  getPromptContext(event: SourceEvent): string;
+  getPromptContext(event: TriggerEvent): string;
 
   // Post-processing
-  updateStatus(event: SourceEvent, status: FixStatus): Promise<void>;
-  addComment(event: SourceEvent, comment: string): Promise<void>;
-  getLink(event: SourceEvent): string;
+  updateStatus(event: TriggerEvent, status: FixStatus): Promise<void>;
+  addComment(event: TriggerEvent, comment: string): Promise<void>;
+  getLink(event: TriggerEvent): string;
 
   // Optional: Pre-filtering
-  shouldProcess?(event: SourceEvent): Promise<boolean>;
+  shouldProcess?(event: TriggerEvent): Promise<boolean>;
 }
 ```
 
@@ -49,15 +49,15 @@ interface SourcePlugin {
 
 #### 1. Create Plugin File
 
-Create a new file in `router/src/sources/your-source.ts`:
+Create a new file in `router/src/triggers/your-trigger.ts`:
 
 ```typescript
 import { Request } from 'express';
-import { SourcePlugin, SourceEvent, Tool, FixStatus } from './base';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus } from './base';
 
-export class YourSource implements SourcePlugin {
-  id = 'your-source';
-  type = 'your-source';
+export class YourTrigger implements TriggerPlugin {
+  id = 'your-trigger';
+  type = 'your-trigger';
 
   async validateWebhook(req: Request): Promise<boolean> {
     // Verify webhook signature/authentication
@@ -69,8 +69,8 @@ export class YourSource implements SourcePlugin {
     return this.verifySignature(req.body, signature);
   }
 
-  async parseWebhook(payload: any): Promise<SourceEvent | null> {
-    // Parse webhook payload into normalized SourceEvent
+  async parseWebhook(payload: any): Promise<TriggerEvent | null> {
+    // Parse webhook payload into normalized TriggerEvent
     // Return null to ignore the webhook
 
     // Example: only handle specific actions
@@ -85,8 +85,8 @@ export class YourSource implements SourcePlugin {
     }
 
     return {
-      sourceType: 'your-source',
-      sourceId: payload.issue.id,
+      triggerType: 'your-trigger',
+      triggerId: payload.issue.id,
       projectId: project.id,
       title: payload.issue.title,
       description: payload.issue.description,
@@ -103,7 +103,7 @@ export class YourSource implements SourcePlugin {
     };
   }
 
-  getTools(event: SourceEvent): Tool[] {
+  getTools(event: TriggerEvent): Tool[] {
     // Return bash scripts that Claude can use to investigate
     return [
       {
@@ -111,7 +111,7 @@ export class YourSource implements SourcePlugin {
         description: 'Get full issue details including comments',
         script: `#!/bin/bash
 set -e
-curl -s "https://api.yourservice.com/issues/${event.sourceId}" \\
+curl -s "https://api.yourservice.com/issues/${event.triggerId}" \\
   -H "Authorization: Bearer \${YOUR_SERVICE_TOKEN}" \\
   | jq '{
     id: .id,
@@ -127,7 +127,7 @@ curl -s "https://api.yourservice.com/issues/${event.sourceId}" \\
         description: 'Get related or similar issues',
         script: `#!/bin/bash
 set -e
-curl -s "https://api.yourservice.com/issues/${event.sourceId}/related" \\
+curl -s "https://api.yourservice.com/issues/${event.triggerId}/related" \\
   -H "Authorization: Bearer \${YOUR_SERVICE_TOKEN}" \\
   | jq '.[]'
 `,
@@ -135,7 +135,7 @@ curl -s "https://api.yourservice.com/issues/${event.sourceId}/related" \\
     ];
   }
 
-  getPromptContext(event: SourceEvent): string {
+  getPromptContext(event: TriggerEvent): string {
     // Return formatted context for Claude's prompt
     return `**Issue:** ${event.title}
 **Description:** ${event.description}
@@ -144,10 +144,10 @@ curl -s "https://api.yourservice.com/issues/${event.sourceId}/related" \\
 **Link:** ${event.links?.web}`;
   }
 
-  async updateStatus(event: SourceEvent, status: FixStatus): Promise<void> {
+  async updateStatus(event: TriggerEvent, status: FixStatus): Promise<void> {
     // Update the issue status in your service
     if (status.fixed) {
-      await fetch(`https://api.yourservice.com/issues/${event.sourceId}`, {
+      await fetch(`https://api.yourservice.com/issues/${event.triggerId}`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${process.env.YOUR_SERVICE_TOKEN}`,
@@ -161,9 +161,9 @@ curl -s "https://api.yourservice.com/issues/${event.sourceId}/related" \\
     }
   }
 
-  async addComment(event: SourceEvent, comment: string): Promise<void> {
+  async addComment(event: TriggerEvent, comment: string): Promise<void> {
     // Add a comment to the issue
-    await fetch(`https://api.yourservice.com/issues/${event.sourceId}/comments`, {
+    await fetch(`https://api.yourservice.com/issues/${event.triggerId}/comments`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.YOUR_SERVICE_TOKEN}`,
@@ -173,13 +173,13 @@ curl -s "https://api.yourservice.com/issues/${event.sourceId}/related" \\
     });
   }
 
-  getLink(event: SourceEvent): string {
+  getLink(event: TriggerEvent): string {
     // Return markdown link for PR descriptions
-    return `[Issue #${event.sourceId}](${event.links?.web})`;
+    return `[Issue #${event.triggerId}](${event.links?.web})`;
   }
 
   // Optional: Pre-filtering
-  async shouldProcess(event: SourceEvent): Promise<boolean> {
+  async shouldProcess(event: TriggerEvent): Promise<boolean> {
     // Add custom logic to decide if this event should be processed
     // Example: only process high severity issues
     return event.metadata.severity === 'high' || event.metadata.severity === 'critical';
@@ -210,14 +210,14 @@ curl -s "https://api.yourservice.com/issues/${event.sourceId}/related" \\
 
 #### 2. Register Plugin
 
-Add your plugin to `router/src/sources/index.ts`:
+Add your plugin to `router/src/triggers/index.ts`:
 
 ```typescript
-import { YourSource } from './your-source';
+import { YourSource } from './your-trigger';
 
-export const sources: SourcePlugin[] = [
-  new YourSource(),
-  // ... other sources
+export const triggers: TriggerPlugin[] = [
+  new YourTrigger(),
+  // ... other triggers
 ];
 ```
 
@@ -240,7 +240,7 @@ services:
 
 #### 4. Configure Projects
 
-Add source configuration to `router/src/config/projects.ts`:
+Add trigger configuration to `router/src/config/projects.ts`:
 
 ```typescript
 export const projects: ProjectConfig[] = [
@@ -250,7 +250,7 @@ export const projects: ProjectConfig[] = [
     repoFullName: 'owner/my-app',
     branch: 'main',
     triggers: {
-      'your-source': {
+      'your-trigger': {
         projectSlug: 'my-app-prod',
         enabled: true,
       },
@@ -263,7 +263,7 @@ export const projects: ProjectConfig[] = [
 
 In your service, configure webhook to point to:
 ```
-https://your-domain.com/webhooks/your-source
+https://your-domain.com/webhooks/your-trigger
 ```
 
 ---
@@ -272,17 +272,17 @@ https://your-domain.com/webhooks/your-source
 
 ### Unit Tests
 
-Create a test file at `router/tests/unit/sources/your-source.test.ts`:
+Create a test file at `router/tests/unit/triggers/your-trigger.test.ts`:
 
 ```typescript
-import { YourSource } from '../../../src/sources/your-source';
+import { YourSource } from '../../../src/triggers/your-trigger';
 import { mockWebhookPayloads } from '../../fixtures/webhook-payloads';
 
 describe('YourSource', () => {
-  let source: YourSource;
+  let trigger: YourSource;
 
   beforeEach(() => {
-    source = new YourSource();
+    trigger = new YourTrigger();
   });
 
   describe('validateWebhook', () => {
@@ -292,7 +292,7 @@ describe('YourSource', () => {
         body: { /* ... */ },
       } as any;
 
-      const result = await source.validateWebhook(req);
+      const result = await trigger.validateWebhook(req);
       expect(result).toBe(true);
     });
 
@@ -302,7 +302,7 @@ describe('YourSource', () => {
         body: { /* ... */ },
       } as any;
 
-      const result = await source.validateWebhook(req);
+      const result = await trigger.validateWebhook(req);
       expect(result).toBe(false);
     });
   });
@@ -310,15 +310,15 @@ describe('YourSource', () => {
   describe('parseWebhook', () => {
     it('should parse valid webhook', async () => {
       const payload = { /* ... */ };
-      const event = await source.parseWebhook(payload);
+      const event = await trigger.parseWebhook(payload);
 
       expect(event).toBeTruthy();
-      expect(event?.sourceType).toBe('your-source');
+      expect(event?.triggerType).toBe('your-trigger');
     });
 
     it('should return null for ignored events', async () => {
       const payload = { action: 'deleted' };
-      const event = await source.parseWebhook(payload);
+      const event = await trigger.parseWebhook(payload);
 
       expect(event).toBeNull();
     });
@@ -327,8 +327,8 @@ describe('YourSource', () => {
   describe('getTools', () => {
     it('should return investigation tools', () => {
       const event = {
-        sourceType: 'your-source',
-        sourceId: '123',
+        triggerType: 'your-trigger',
+        triggerId: '123',
         projectId: 'test',
         title: 'Test',
         description: 'Test',
@@ -336,7 +336,7 @@ describe('YourSource', () => {
         raw: {},
       };
 
-      const tools = source.getTools(event);
+      const tools = trigger.getTools(event);
 
       expect(tools.length).toBeGreaterThan(0);
       expect(tools[0]).toHaveProperty('name');
@@ -353,7 +353,7 @@ describe('YourSource', () => {
       // Mock fetch
       global.fetch = jest.fn().mockResolvedValue({ ok: true });
 
-      await source.updateStatus(event, status);
+      await trigger.updateStatus(event, status);
 
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining('/issues/'),
@@ -372,7 +372,7 @@ Add webhook payload fixture to `router/tests/fixtures/webhook-payloads.ts`:
 export const mockWebhookPayloads = {
   // ... existing payloads
 
-  'your-source': {
+  'your-trigger': {
     issueCreated: {
       action: 'created',
       issue: {
@@ -393,32 +393,32 @@ export const mockWebhookPayloads = {
 };
 ```
 
-Create integration test at `router/tests/integration/your-source.test.ts`:
+Create integration test at `router/tests/integration/your-trigger.test.ts`:
 
 ```typescript
 import request from 'supertest';
 import { createTestApp } from '../helpers/app';
-import { YourSource } from '../../src/sources/your-source';
-import { sources } from '../../src/sources';
+import { YourSource } from '../../src/triggers/your-trigger';
+import { sources } from '../../src/triggers';
 import { mockWebhookPayloads } from '../fixtures/webhook-payloads';
 
 describe('YourSource Integration', () => {
   const app = createTestApp();
 
   beforeAll(() => {
-    sources.push(new YourSource());
+    triggers.push(new YourTrigger());
   });
 
   it('should process webhook end-to-end', async () => {
-    const payload = mockWebhookPayloads['your-source'].issueCreated;
+    const payload = mockWebhookPayloads['your-trigger'].issueCreated;
 
     const response = await request(app)
-      .post('/webhooks/your-source')
+      .post('/webhooks/your-trigger')
       .send(payload)
       .expect(202);
 
     expect(response.body.queued).toBe(true);
-    expect(response.body.sourceType).toBe('your-source');
+    expect(response.body.triggerType).toBe('your-trigger');
   });
 });
 ```
@@ -432,7 +432,7 @@ Test webhook locally using curl:
 npm run dev
 
 # Send test webhook
-curl -X POST http://localhost:3000/webhooks/your-source \
+curl -X POST http://localhost:3000/webhooks/your-trigger \
   -H "Content-Type: application/json" \
   -H "X-Your-Signature: test-signature" \
   -d '{
@@ -454,20 +454,20 @@ curl -X POST http://localhost:3000/webhooks/your-source \
 Simplest possible implementation:
 
 ```typescript
-import { SourcePlugin, SourceEvent, Tool, FixStatus } from './base';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus } from './base';
 
-export class MinimalSource implements SourcePlugin {
+export class MinimalTrigger implements TriggerPlugin {
   id = 'minimal';
   type = 'minimal';
 
   async validateWebhook() { return true; }
 
-  async parseWebhook(payload: any): Promise<SourceEvent | null> {
+  async parseWebhook(payload: any): Promise<TriggerEvent | null> {
     if (!payload.id) return null;
 
     return {
-      sourceType: 'minimal',
-      sourceId: payload.id,
+      triggerType: 'minimal',
+      triggerId: payload.id,
       projectId: 'default',
       title: payload.title || 'Untitled',
       description: payload.description || '',
@@ -477,10 +477,10 @@ export class MinimalSource implements SourcePlugin {
   }
 
   getTools() { return []; }
-  getPromptContext(event: SourceEvent) { return event.title; }
+  getPromptContext(event: TriggerEvent) { return event.title; }
   async updateStatus() {}
   async addComment() {}
-  getLink(event: SourceEvent) { return event.sourceId; }
+  getLink(event: TriggerEvent) { return event.triggerId; }
 }
 ```
 
@@ -489,7 +489,7 @@ export class MinimalSource implements SourcePlugin {
 Full-featured example (see implementation in plan):
 
 ```typescript
-export class SentrySource implements SourcePlugin {
+export class SentryTrigger implements TriggerPlugin {
   id = 'sentry';
   type = 'sentry';
 
@@ -498,15 +498,15 @@ export class SentrySource implements SourcePlugin {
     return true;
   }
 
-  async parseWebhook(payload: any): Promise<SourceEvent | null> {
+  async parseWebhook(payload: any): Promise<TriggerEvent | null> {
     if (payload.action !== 'created') return null;
 
     const project = findProjectBySentrySlug(payload.project.slug);
     if (!project?.triggers.sentry?.enabled) return null;
 
     return {
-      sourceType: 'sentry',
-      sourceId: payload.data.issue.id,
+      triggerType: 'sentry',
+      triggerId: payload.data.issue.id,
       projectId: project.id,
       title: payload.data.issue.title,
       description: payload.data.issue.culprit,
@@ -523,17 +523,17 @@ export class SentrySource implements SourcePlugin {
     };
   }
 
-  getTools(event: SourceEvent): Tool[] {
+  getTools(event: TriggerEvent): Tool[] {
     return [
       {
         name: 'get-issue-details',
         description: 'Get full issue details',
-        script: `curl -s "https://sentry.io/api/0/issues/${event.sourceId}/" ...`,
+        script: `curl -s "https://sentry.io/api/0/issues/${event.triggerId}/" ...`,
       },
       {
         name: 'get-events',
         description: 'Get recent error events with stack traces',
-        script: `curl -s "https://sentry.io/api/0/issues/${event.sourceId}/events/" ...`,
+        script: `curl -s "https://sentry.io/api/0/issues/${event.triggerId}/events/" ...`,
       },
     ];
   }
@@ -547,7 +547,7 @@ export class SentrySource implements SourcePlugin {
 ```typescript
 import crypto from 'crypto';
 
-export class GitHubIssuesSource implements SourcePlugin {
+export class GitHubIssuesTrigger implements TriggerPlugin {
   id = 'github-issues';
   type = 'github-issues';
 
@@ -569,7 +569,7 @@ export class GitHubIssuesSource implements SourcePlugin {
     );
   }
 
-  async parseWebhook(payload: any): Promise<SourceEvent | null> {
+  async parseWebhook(payload: any): Promise<TriggerEvent | null> {
     if (payload.action !== 'opened') return null;
 
     const project = findProjectByRepo(payload.repository.full_name);
@@ -583,8 +583,8 @@ export class GitHubIssuesSource implements SourcePlugin {
     }
 
     return {
-      sourceType: 'github-issues',
-      sourceId: payload.issue.number.toString(),
+      triggerType: 'github-issues',
+      triggerId: payload.issue.number.toString(),
       projectId: project.id,
       title: payload.issue.title,
       description: payload.issue.body || '',
@@ -600,14 +600,14 @@ export class GitHubIssuesSource implements SourcePlugin {
     };
   }
 
-  getTools(event: SourceEvent): Tool[] {
+  getTools(event: TriggerEvent): Tool[] {
     const [owner, repo] = event.raw.repository.full_name.split('/');
     return [
       {
         name: 'get-issue',
         description: 'Get issue details and comments',
         script: `#!/bin/bash
-curl -s "https://api.github.com/repos/${owner}/${repo}/issues/${event.sourceId}" \\
+curl -s "https://api.github.com/repos/${owner}/${repo}/issues/${event.triggerId}" \\
   -H "Authorization: Bearer \${GITHUB_TOKEN}"
 `,
       },
@@ -627,7 +627,7 @@ curl -s "https://api.github.com/repos/${owner}/${repo}/issues/${event.sourceId}"
 Always handle errors gracefully:
 
 ```typescript
-async parseWebhook(payload: any): Promise<SourceEvent | null> {
+async parseWebhook(payload: any): Promise<TriggerEvent | null> {
   try {
     // Parsing logic
     return event;
@@ -643,7 +643,7 @@ async parseWebhook(payload: any): Promise<SourceEvent | null> {
 Validate all required fields:
 
 ```typescript
-async parseWebhook(payload: any): Promise<SourceEvent | null> {
+async parseWebhook(payload: any): Promise<TriggerEvent | null> {
   if (!payload.issue?.id || !payload.issue?.title) {
     return null; // Missing required fields
   }
@@ -677,7 +677,7 @@ Consider implementing rate limiting for external API calls:
 ```typescript
 private rateLimiter = new RateLimiter({ requests: 100, per: 60000 });
 
-async updateStatus(event: SourceEvent, status: FixStatus): Promise<void> {
+async updateStatus(event: TriggerEvent, status: FixStatus): Promise<void> {
   await this.rateLimiter.wait();
   // Make API call
 }
@@ -688,7 +688,7 @@ async updateStatus(event: SourceEvent, status: FixStatus): Promise<void> {
 Make tools robust and informative:
 
 ```typescript
-getTools(event: SourceEvent): Tool[] {
+getTools(event: TriggerEvent): Tool[] {
   return [{
     name: 'get-issue',
     description: 'Usage: get-issue [--full] - Get issue details',
@@ -702,7 +702,7 @@ if [ -z "\${API_TOKEN}" ]; then
 fi
 
 # Make request with error handling
-curl -f -s "https://api.example.com/issues/${event.sourceId}" \\
+curl -f -s "https://api.example.com/issues/${event.triggerId}" \\
   -H "Authorization: Bearer \${API_TOKEN}" \\
   || { echo "Failed to fetch issue" >&2; exit 1; }
 `,
@@ -719,13 +719,13 @@ curl -f -s "https://api.example.com/issues/${event.sourceId}" \\
 
 ### 7. Documentation
 
-Document your source plugin:
+Document your trigger plugin:
 
 ```typescript
 /**
  * Source plugin for YourService
  *
- * Webhook endpoint: POST /webhooks/your-source
+ * Webhook endpoint: POST /webhooks/your-trigger
  * Required env vars: YOUR_SERVICE_TOKEN
  *
  * Supported events:
@@ -735,7 +735,7 @@ Document your source plugin:
  * Configuration:
  * ```typescript
  * triggers: {
- *   'your-source': {
+ *   'your-trigger': {
  *     projectSlug: 'project-name',
  *     enabled: true,
  *     minPriority: 'p1'  // Optional: minimum priority to process
@@ -743,7 +743,7 @@ Document your source plugin:
  * }
  * ```
  */
-export class YourSource implements SourcePlugin {
+export class YourTrigger implements TriggerPlugin {
   // ...
 }
 ```
@@ -753,8 +753,8 @@ export class YourSource implements SourcePlugin {
 Use structured logging:
 
 ```typescript
-async parseWebhook(payload: any): Promise<SourceEvent | null> {
-  console.log('[your-source] Parsing webhook', {
+async parseWebhook(payload: any): Promise<TriggerEvent | null> {
+  console.log('[your-trigger] Parsing webhook', {
     action: payload.action,
     issueId: payload.issue?.id,
   });
@@ -762,7 +762,7 @@ async parseWebhook(payload: any): Promise<SourceEvent | null> {
   // ... parsing logic
 
   if (!event) {
-    console.log('[your-source] Event filtered', {
+    console.log('[your-trigger] Event filtered', {
       reason: 'action not supported',
       action: payload.action,
     });
@@ -772,6 +772,169 @@ async parseWebhook(payload: any): Promise<SourceEvent | null> {
   return event;
 }
 ```
+
+---
+
+## VCS Plugins
+
+VCS (Version Control System) plugins are separate from trigger plugins. Trigger plugins handle bug tracking systems (Sentry, GitHub Issues), while VCS plugins handle code hosting platforms (GitHub, GitLab, Bitbucket).
+
+### Why Separate?
+
+A Sentry issue could be fixed in a GitLab repository. A Linear task could be fixed in a GitHub repository. Trigger and VCS are independent concerns.
+
+### VCS Interface
+
+```typescript
+interface VCSPlugin {
+  id: string;
+  type: 'github' | 'gitlab' | 'bitbucket' | 'self-hosted';
+
+  // Create a pull/merge request
+  createPullRequest(
+    owner: string,
+    repo: string,
+    head: string,
+    base: string,
+    title: string,
+    body: string
+  ): Promise<PullRequest>;
+
+  // Get compare URL (fallback if PR creation fails)
+  getCompareUrl(owner: string, repo: string, base: string, head: string): string;
+
+  // Format repository identifier
+  formatRepoIdentifier(owner: string, repo: string): string;
+
+  // Validate configuration
+  validate(): Promise<{ valid: boolean; error?: string }>;
+}
+```
+
+### Creating a VCS Plugin
+
+Example: GitLab VCS plugin
+
+```typescript
+import { VCSPlugin, PullRequest } from './base';
+import { Gitlab } from '@gitbeaker/rest';
+
+export class GitLabVCS implements VCSPlugin {
+  id = 'gitlab';
+  type = 'gitlab' as const;
+
+  private client: InstanceType<typeof Gitlab>;
+
+  constructor(token: string, host = 'https://gitlab.com') {
+    this.client = new Gitlab({ host, token });
+  }
+
+  async createPullRequest(
+    owner: string,
+    repo: string,
+    head: string,
+    base: string,
+    title: string,
+    body: string
+  ): Promise<PullRequest> {
+    const projectId = `${owner}/${repo}`;
+
+    const mr = await this.client.MergeRequests.create(
+      projectId,
+      head,
+      base,
+      title,
+      { description: body }
+    );
+
+    return {
+      number: mr.iid,
+      url: mr.web_url,
+      htmlUrl: mr.web_url,
+      title: mr.title,
+      body: mr.description || '',
+      head,
+      base,
+    };
+  }
+
+  getCompareUrl(owner: string, repo: string, base: string, head: string): string {
+    return `https://gitlab.com/${owner}/${repo}/-/compare/${base}...${head}`;
+  }
+
+  formatRepoIdentifier(owner: string, repo: string): string {
+    return `${owner}/${repo}`;
+  }
+
+  async validate(): Promise<{ valid: boolean; error?: string }> {
+    try {
+      await this.client.Users.showCurrentUser();
+      return { valid: true };
+    } catch (error: any) {
+      return {
+        valid: false,
+        error: error.message || 'GitLab authentication failed',
+      };
+    }
+  }
+}
+```
+
+### Registering VCS Plugin
+
+Add to `router/src/vcs/index.ts`:
+
+```typescript
+import { GitLabVCS } from './gitlab';
+
+export function initializeVCS(): void {
+  // ... existing GitHub setup
+
+  // GitLab VCS
+  const gitlabToken = process.env.GITLAB_TOKEN;
+  if (gitlabToken) {
+    const gitlab = new GitLabVCS(gitlabToken, process.env.GITLAB_HOST);
+    vcsPlugins.set('gitlab', gitlab);
+    console.log('✓ GitLab VCS initialized');
+  }
+}
+```
+
+### Project Configuration
+
+Specify VCS in project config:
+
+```typescript
+{
+  id: 'my-app',
+  repo: 'git@gitlab.com:mycompany/my-app.git',
+  repoFullName: 'mycompany/my-app',
+  branch: 'main',
+  vcs: {
+    type: 'gitlab',
+    owner: 'mycompany',
+    repo: 'my-app',
+    reviewers: ['alice', 'bob'],
+    labels: ['automated-fix']
+  },
+  triggers: {
+    sentry: { projectSlug: 'my-app-prod', enabled: true }
+  }
+}
+```
+
+### Official Plugins
+
+**GitHub VCS** (Included)
+- Uses Octokit (@octokit/rest)
+- Supports PAT and GitHub Apps
+- Auto-add labels and reviewers
+- Located: `router/src/vcs/github.ts`
+
+**Future Official Plugins:**
+- GitLab (using @gitbeaker/rest)
+- Bitbucket (using @atlassian/bitbucket)
+- Self-hosted Git (using direct API calls)
 
 ---
 
@@ -798,7 +961,7 @@ interface NotificationHandler {
 
 ```typescript
 interface ToolGenerator {
-  generateTools(event: SourceEvent): Tool[];
+  generateTools(event: TriggerEvent): Tool[];
 }
 ```
 
@@ -806,8 +969,8 @@ interface ToolGenerator {
 
 ## Getting Help
 
-- Review existing source implementations in `router/src/sources/`
-- Check test examples in `router/tests/unit/sources/`
+- Review existing source implementations in `router/src/triggers/`
+- Check test examples in `router/tests/unit/triggers/`
 - See webhook payload fixtures in `router/tests/fixtures/`
 - Read the main architecture doc: [GENERIC_ARCHITECTURE.md](./GENERIC_ARCHITECTURE.md)
 
@@ -815,13 +978,13 @@ interface ToolGenerator {
 
 ## Contributing
 
-When contributing a new source plugin:
+When contributing a new trigger plugin:
 
-1. Implement the `SourcePlugin` interface
+1. Implement the `TriggerPlugin` interface
 2. Add comprehensive tests (unit + integration)
 3. Add webhook payload fixtures
 4. Document configuration and environment variables
 5. Update this guide with your example
 6. Submit a PR with all changes
 
-Your source plugin makes the system more valuable for everyone!
+Your trigger plugin makes the system more valuable for everyone!

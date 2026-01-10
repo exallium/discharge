@@ -1,11 +1,11 @@
 import { Request } from 'express';
-import { SourcePlugin, SourceEvent, Tool, FixStatus } from '../../src/sources/base';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus } from '../../src/triggers/base';
 
 /**
- * Mock source plugin for testing
+ * Mock trigger plugin for testing
  * Implements all required methods with configurable behavior
  */
-export class MockSource implements SourcePlugin {
+export class MockTrigger implements TriggerPlugin {
   id = 'mock';
   type = 'mock';
 
@@ -29,12 +29,12 @@ export class MockSource implements SourcePlugin {
   };
 
   // Store last call arguments
-  lastStatusUpdate?: { event: SourceEvent; status: FixStatus };
-  lastComment?: { event: SourceEvent; comment: string };
+  lastStatusUpdate?: { event: TriggerEvent; status: FixStatus };
+  lastComment?: { event: TriggerEvent; comment: string };
 
   // Configurable responses
   shouldValidate = true;
-  eventToReturn: SourceEvent | null = null;
+  eventToReturn: TriggerEvent | null = null;
   toolsToReturn: Tool[] = [];
   shouldProcessResult = true;
 
@@ -43,7 +43,7 @@ export class MockSource implements SourcePlugin {
     return this.shouldValidate;
   }
 
-  async parseWebhook(payload: any): Promise<SourceEvent | null> {
+  async parseWebhook(payload: any): Promise<TriggerEvent | null> {
     this.calls.parseWebhook++;
 
     if (this.eventToReturn) {
@@ -56,8 +56,8 @@ export class MockSource implements SourcePlugin {
     }
 
     return {
-      sourceType: 'mock',
-      sourceId: payload.issueId,
+      triggerType: 'mock',
+      triggerId: payload.issueId,
       projectId: payload.projectId || 'test-project',
       title: payload.title || 'Test Issue',
       description: payload.description || 'Test description',
@@ -72,7 +72,7 @@ export class MockSource implements SourcePlugin {
     };
   }
 
-  getTools(event: SourceEvent): Tool[] {
+  getTools(event: TriggerEvent): Tool[] {
     this.calls.getTools++;
 
     if (this.toolsToReturn.length > 0) {
@@ -85,33 +85,33 @@ export class MockSource implements SourcePlugin {
         name: 'get-issue',
         description: 'Get issue details',
         script: `#!/bin/bash
-echo '{"id":"${event.sourceId}","title":"${event.title}"}'
+echo '{"id":"${event.triggerId}","title":"${event.title}"}'
 `,
       },
     ];
   }
 
-  getPromptContext(event: SourceEvent): string {
+  getPromptContext(event: TriggerEvent): string {
     this.calls.getPromptContext++;
-    return `**Mock Issue:** ${event.title}\n**ID:** ${event.sourceId}`;
+    return `**Mock Issue:** ${event.title}\n**ID:** ${event.triggerId}`;
   }
 
-  async updateStatus(event: SourceEvent, status: FixStatus): Promise<void> {
+  async updateStatus(event: TriggerEvent, status: FixStatus): Promise<void> {
     this.calls.updateStatus++;
     this.lastStatusUpdate = { event, status };
   }
 
-  async addComment(event: SourceEvent, comment: string): Promise<void> {
+  async addComment(event: TriggerEvent, comment: string): Promise<void> {
     this.calls.addComment++;
     this.lastComment = { event, comment };
   }
 
-  getLink(event: SourceEvent): string {
+  getLink(event: TriggerEvent): string {
     this.calls.getLink++;
     return `[Mock Issue](${event.links?.web})`;
   }
 
-  async shouldProcess(event: SourceEvent): Promise<boolean> {
+  async shouldProcess(event: TriggerEvent): Promise<boolean> {
     return this.shouldProcessResult;
   }
 
@@ -134,7 +134,7 @@ echo '{"id":"${event.sourceId}","title":"${event.title}"}'
     this.shouldValidate = valid;
   }
 
-  setEvent(event: SourceEvent | null): void {
+  setEvent(event: TriggerEvent | null): void {
     this.eventToReturn = event;
   }
 
@@ -144,12 +144,12 @@ echo '{"id":"${event.sourceId}","title":"${event.title}"}'
 }
 
 /**
- * Create a mock source instance
+ * Create a mock trigger instance
  */
-export function createMockSource(overrides?: Partial<MockSource>): MockSource {
-  const source = new MockSource();
+export function createMockTrigger(overrides?: Partial<MockTrigger>): MockTrigger {
+  const trigger = new MockTrigger();
   if (overrides) {
-    Object.assign(source, overrides);
+    Object.assign(trigger, overrides);
   }
-  return source;
+  return trigger;
 }
