@@ -16,6 +16,13 @@ export interface ProjectConfig {
     labels?: string[];           // Auto-add these labels to PRs
   };
 
+  // Runner configuration
+  runner?: {
+    type?: string;               // Runner plugin ID (default: 'claude-code')
+    timeout?: number;            // Execution timeout in ms (default: 600000)
+    env?: Record<string, string>; // Additional environment variables
+  };
+
   triggers: {
     sentry?: {
       projectSlug: string;
