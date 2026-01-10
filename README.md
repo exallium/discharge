@@ -91,33 +91,28 @@ docker compose logs -f router
 - Dashboard: http://localhost:3000/dashboard
 - Webhook List: http://localhost:3000/webhooks
 
-## 🔌 Adding a Source Plugin
+## 🔌 Extending with Custom Agents
 
-All bug sources implement the `SourcePlugin` interface:
+The system is designed to be extended with custom source plugins and components.
 
-```typescript
-interface SourcePlugin {
-  id: string;
-  type: string;
+### Adding a Source Plugin
 
-  validateWebhook(req: Request): Promise<boolean>;
-  parseWebhook(payload: any): Promise<SourceEvent | null>;
-  getTools(event: SourceEvent): Tool[];
-  getPromptContext(event: SourceEvent): string;
-  updateStatus(event: SourceEvent, status: FixStatus): Promise<void>;
-  addComment(event: SourceEvent, comment: string): Promise<void>;
-  getLink(event: SourceEvent): string;
-}
-```
+Source plugins allow you to integrate new bug sources (Sentry, GitHub, Linear, Jira, etc.).
 
-### Example: Adding Sentry
+Quick start:
 
-1. Create `router/src/sources/sentry.ts`
-2. Implement `SourcePlugin` interface
+1. Create `router/src/sources/your-source.ts`
+2. Implement the `SourcePlugin` interface
 3. Register in `router/src/sources/index.ts`
-4. Configure webhook to `POST /webhooks/sentry`
+4. Add tests and fixtures
+5. Configure webhook to `POST /webhooks/your-source`
 
-See [GENERIC_ARCHITECTURE.md](./GENERIC_ARCHITECTURE.md) for detailed examples.
+**See [AGENTS.md](./AGENTS.md) for comprehensive documentation:**
+- Complete source plugin implementation guide
+- Full working examples (Sentry, GitHub, minimal)
+- Testing guidelines and templates
+- Best practices for security and error handling
+- Tool script examples
 
 ## 📊 Status & Monitoring
 
