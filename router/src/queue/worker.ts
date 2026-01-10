@@ -2,6 +2,7 @@ import { Worker, Job } from 'bullmq';
 import { connection } from './index';
 import { FixJobData, FixJobResult } from './types';
 import { getSourceByType } from '../sources';
+import { orchestrateFix } from '../runner/orchestrator';
 
 /**
  * Process a fix job
@@ -24,15 +25,14 @@ async function processFixJob(job: Job<FixJobData>): Promise<FixJobResult> {
       throw new Error(`Unknown source type: ${sourceType}`);
     }
 
-    // TODO: Call orchestrator to handle the fix
-    // For now, we'll just simulate processing
-    console.log(`[${job.id}] Source: ${source.id}, Event: ${event.sourceId}`);
+    // Run orchestrator
+    const fixStatus = await orchestrateFix(source, event);
 
-    // Placeholder - will be replaced with actual orchestration
     const result: FixJobResult = {
       success: true,
-      fixed: false,
-      reason: 'Orchestrator not yet implemented',
+      fixed: fixStatus.fixed,
+      reason: fixStatus.reason,
+      prUrl: fixStatus.prUrl,
       duration: Date.now() - startTime,
     };
 
