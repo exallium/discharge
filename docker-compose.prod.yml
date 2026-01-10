@@ -1,0 +1,247 @@
+version: "3.8"
+
+# =============================================================================
+# Production Docker Compose Configuration
+# =============================================================================
+# This configuration is optimized for production deployment with:
+# - Security best practices (non-root users, read-only volumes)
+# - Resource limits
+# - Health checks
+# - Automatic restarts
+# - Logging configuration
+# =============================================================================
+
+services:
+  # ─────────────────────────────────────────────
+  # Redis - Job Queue Backend
+  # ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: claude-agent-redis
+
+    # Security: Run as non-root user
+    user: "999:999"
+
+    # Persistent storage
+    volumes:
+      - redis_data:/data
+
+    # Network isolation
+    networks:
+      - internal
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────
+  # Router - Main Application
+  # ─────────────────────────────────────────────
+  router:
+    build:
+      context: ./router
+      dockerfile: Dockerfile
+    container_name: claude-agent-router
+
+    # Depends on Redis
+    depends_on:
+      redis:
+        condition: service_healthy
+
+    # Environment variables from .env file
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - PORT=3000
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-2}
+
+      # GitHub
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+
+      # Sentry
+      - SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
+      - SENTRY_ORG=${SENTRY_ORG}
+
+      # CircleCI
+      - CIRCLECI_TOKEN=${CIRCLECI_TOKEN}
+
+      # Notifications
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - LOG_REQUESTS=${LOG_REQUESTS:-true}
+
+      # Rate limiting
+      - RATE_LIMIT_WEBHOOK=${RATE_LIMIT_WEBHOOK:-60}
+      - RATE_LIMIT_API=${RATE_LIMIT_API:-100}
+
+      # Docker
+      - HOST_USER=${USER}
+      - DOCKER_NETWORK=claude-agent_internal
+
+    # Volumes
+    volumes:
+      # Docker socket (required for spawning Claude runner containers)
+      - /var/run/docker.sock:/var/run/docker.sock
+
+      # Workspace for cloning repositories
+      - workspaces:/workspaces
+
+      # Claude CLI credentials (read-only)
+      - ${HOME}/.claude:/home/appuser/.claude:ro
+
+    # Network
+    networks:
+      - internal
+
+    # Port mapping
+    ports:
+      - "${PORT:-3000}:3000"
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Health check (uses built-in healthcheck from Dockerfile)
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ─────────────────────────────────────────────
+  # Claude Runner (Built separately, spawned dynamically)
+  # ─────────────────────────────────────────────
+  claude-runner:
+    build:
+      context: ./claude-runner
+      dockerfile: Dockerfile
+    image: claude-runner:latest
+    container_name: claude-runner-builder
+
+    # This service is only used to build the image
+    # Actual containers are spawned by the router dynamically
+    profiles:
+      - build-only
+
+  # ─────────────────────────────────────────────
+  # Optional: Cloudflare Tunnel
+  # ─────────────────────────────────────────────
+  # Uncomment to enable secure tunnel without exposing ports
+  # tunnel:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: claude-agent-tunnel
+  #   command: tunnel run
+  #   environment:
+  #     - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+  #   networks:
+  #     - internal
+  #   depends_on:
+  #     - router
+  #   restart: unless-stopped
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
+
+  # ─────────────────────────────────────────────
+  # Optional: Monitoring with Portainer
+  # ─────────────────────────────────────────────
+  # Uncomment to enable container management UI
+  # portainer:
+  #   image: portainer/portainer-ce:latest
+  #   container_name: claude-agent-portainer
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - portainer_data:/data
+  #   networks:
+  #     - internal
+  #   ports:
+  #     - "9000:9000"
+  #   restart: unless-stopped
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
+
+  # ─────────────────────────────────────────────
+  # Optional: Log Viewer with Dozzle
+  # ─────────────────────────────────────────────
+  # Uncomment to enable real-time log viewer
+  # dozzle:
+  #   image: amir20/dozzle:latest
+  #   container_name: claude-agent-dozzle
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #   networks:
+  #     - internal
+  #   ports:
+  #     - "8080:8080"
+  #   restart: unless-stopped
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  internal:
+    name: claude-agent_internal
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  redis_data:
+    name: claude-agent-redis-data
+  workspaces:
+    name: claude-agent-workspaces
+  # portainer_data:
+  #   name: claude-agent-portainer-data
