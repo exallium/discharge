@@ -1,6 +1,6 @@
 # Custom Agents & Components
 
-This document describes how to create custom agents and components to extend the Claude Agent system.
+This document describes how to create custom agents and components to extend the AI Bug Fixer system.
 
 ## Table of Contents
 
