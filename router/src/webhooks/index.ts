@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getSourceById, listSourceIds } from '../sources';
+import { queueFixJob } from '../queue';
 
 export const webhookRouter = Router();
 
@@ -46,19 +47,19 @@ webhookRouter.post('/:sourceId', async (req, res) => {
       }
     }
 
-    // TODO: Queue the job in BullMQ
-    console.log(`[${sourceId}] Received event:`, {
-      sourceType: event.sourceType,
-      sourceId: event.sourceId,
-      projectId: event.projectId,
-      title: event.title
+    // Queue the job
+    const jobId = await queueFixJob({
+      event,
+      sourceType: source.type,
+      queuedAt: new Date().toISOString(),
     });
 
     res.status(202).json({
       queued: true,
+      jobId,
       sourceType: event.sourceType,
       sourceId: event.sourceId,
-      projectId: event.projectId
+      projectId: event.projectId,
     });
 
   } catch (error: any) {

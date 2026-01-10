@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { listSourceIds } from '../sources';
+import { getQueueStats } from '../queue';
 
 export const statusRouter = Router();
 
@@ -7,10 +8,13 @@ export const statusRouter = Router();
  * JSON status endpoint
  */
 statusRouter.get('/status', async (req, res) => {
+  const queue = await getQueueStats();
+
   res.json({
     status: 'running',
     sources: listSourceIds(),
-    timestamp: new Date().toISOString()
+    queue,
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -19,6 +23,7 @@ statusRouter.get('/status', async (req, res) => {
  */
 statusRouter.get('/dashboard', async (req, res) => {
   const sources = listSourceIds();
+  const queue = await getQueueStats();
 
   res.send(`
 <!DOCTYPE html>
@@ -45,6 +50,7 @@ statusRouter.get('/dashboard', async (req, res) => {
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     .status-ok { border-left: 4px solid #22c55e; }
+    .status-error { border-left: 4px solid #ef4444; }
     .label { font-weight: 600; color: #666; margin-bottom: 0.5rem; }
     .value { font-size: 1.25rem; margin: 0.5rem 0; }
     .code {
@@ -68,6 +74,18 @@ statusRouter.get('/dashboard', async (req, res) => {
   <div class="card status-ok">
     <div class="label">System Status</div>
     <div class="value">✅ Running</div>
+  </div>
+
+  <div class="card ${queue.paused ? 'status-error' : 'status-ok'}">
+    <div class="label">Job Queue</div>
+    <div class="value">${queue.paused ? '⏸️ Paused' : '▶️ Running'}</div>
+    <ul>
+      <li><strong>Waiting:</strong> ${queue.waiting}</li>
+      <li><strong>Active:</strong> ${queue.active}</li>
+      <li><strong>Completed:</strong> ${queue.completed}</li>
+      <li><strong>Failed:</strong> ${queue.failed}</li>
+      ${queue.delayed > 0 ? `<li><strong>Delayed:</strong> ${queue.delayed}</li>` : ''}
+    </ul>
   </div>
 
   <div class="card">
