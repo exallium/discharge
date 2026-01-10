@@ -43,58 +43,84 @@ tests/
 npm install
 ```
 
-### Unit Tests Only
+## Test Commands
+
+```bash
+# Default: Run unit tests only (fast, no dependencies)
+npm test
+
+# Run unit tests explicitly
+npm run test:unit
+
+# Run integration tests (requires Docker/Redis)
+npm run test:integration
+
+# Run ALL tests (unit + integration)
+npm run test:all
+
+# Watch mode (unit tests only)
+npm run test:watch
+
+# Coverage report (unit tests only)
+npm run test:coverage
+```
+
+### Unit Tests (Default)
 
 Unit tests do not require Docker or Redis. They use mocks for all external dependencies.
 
 ```bash
-# Run only unit tests (skip integration tests)
-npm test -- --testPathIgnorePatterns="integration"
+# Run unit tests (default)
+npm test
 
-# Run in watch mode
+# With watch mode
 npm run test:watch
 
-# Run with coverage
+# With coverage
 npm run test:coverage
 ```
 
+**Result:** ~107 tests, runs in ~6 seconds
+
 ### Integration Tests
 
-Integration tests require Docker and Redis to be running.
+Integration tests require Docker and Redis. They will **fail visibly** if infrastructure is not available.
 
-**Option 1: Using Docker Compose (Recommended)**
+**Setup Docker Infrastructure:**
 
 ```bash
-# Start test infrastructure
+# Start test Redis
 docker compose -f ../docker-compose.test.yml up -d
 
-# Run only integration tests
-npm test -- tests/integration
+# Run integration tests
+npm run test:integration
 
 # Stop test infrastructure
 docker compose -f ../docker-compose.test.yml down -v
 ```
 
-**Option 2: Using Local Redis**
+**Or use local Redis:**
 
 ```bash
-# Ensure Redis is running on port 6380
+# Start Redis on port 6380
 redis-server --port 6380
 
 # Run integration tests
-npm test -- tests/integration
+npm run test:integration
 ```
 
-### All Tests
+**Expected behavior:**
+- ✅ If Docker/Redis available: Integration tests pass
+- ❌ If Docker/Redis unavailable: Integration tests fail with clear error messages
+
+### All Tests (CI)
 
 ```bash
-# Run all tests (unit + integration)
-# Note: Integration tests will fail if Docker/Redis is not available
-npm test
-
-# Best practice: Run unit tests locally, integration in CI
-npm test -- --testPathIgnorePatterns="integration"
+# Run everything (unit + integration)
+npm run test:all
 ```
+
+Use this in CI pipelines where Docker/Redis is available.
 
 ## Test Infrastructure
 
@@ -368,8 +394,8 @@ afterEach(() => {
 # Run with open handles detection
 npm test -- --detectOpenHandles
 
-# Run only unit tests (skip integration)
-npm test -- --testPathIgnorePatterns="integration"
+# Verify you're running unit tests (default)
+npm test  # Should complete in ~6 seconds
 
 # Check for Redis connection attempts
 # All queue imports in unit tests must be mocked!
@@ -405,18 +431,21 @@ skipIfNoDocker();
 
 ### Integration tests fail with "Docker not available"
 
-**This is expected behavior when Docker isn't running**
+**This is expected behavior when Docker isn't running.**
+
+Integration tests are isolated from unit tests. They will fail loudly if infrastructure is missing.
 
 **Solutions:**
 ```bash
-# Option 1: Install and start Docker
-docker info  # Verify Docker is running
+# Option 1: Start Docker infrastructure
+docker compose -f ../docker-compose.test.yml up -d
+npm run test:integration
 
-# Option 2: Skip integration tests
-npm test -- --testPathIgnorePatterns="integration"
+# Option 2: Don't run integration tests (default behavior)
+npm test  # Runs only unit tests
 
-# Option 3: Run only unit tests (recommended for local development)
-npm test -- --testPathIgnorePatterns="integration"
+# Option 3: Install Docker
+docker info  # Verify Docker is available
 ```
 
 ### Worker process fails to exit gracefully
