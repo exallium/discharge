@@ -109,7 +109,7 @@ export function skipIfNoDocker(): void {
     }
   });
 
-  beforeEach(function() {
+  beforeEach(function(this: any) {
     if ((global as any).testSkipped) {
       this.skip();
     }

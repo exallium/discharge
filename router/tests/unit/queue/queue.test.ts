@@ -6,15 +6,15 @@ describe('Queue', () => {
     it('should queue a fix job', async () => {
       const jobData: FixJobData = {
         event: {
-          sourceType: 'mock',
-          sourceId: 'test-123',
+          triggerType: 'mock',
+          triggerId: 'test-123',
           projectId: 'test-project',
           title: 'Test Issue',
           description: 'Test description',
           metadata: {},
           raw: {},
         },
-        sourceType: 'mock',
+        triggerType: 'mock',
         queuedAt: new Date().toISOString(),
       };
 
@@ -27,15 +27,15 @@ describe('Queue', () => {
     it('should queue job with custom options', async () => {
       const jobData: FixJobData = {
         event: {
-          sourceType: 'mock',
-          sourceId: 'test-456',
+          triggerType: 'mock',
+          triggerId: 'test-456',
           projectId: 'test-project',
           title: 'Test Issue',
           description: 'Test description',
           metadata: {},
           raw: {},
         },
-        sourceType: 'mock',
+        triggerType: 'mock',
         queuedAt: new Date().toISOString(),
       };
 

@@ -3,7 +3,21 @@ import Redis from 'ioredis';
 import { FixJobData, FixJobOptions } from './types';
 
 /**
- * Redis connection for BullMQ
+ * Parse Redis URL into connection options
+ */
+function getRedisOptions() {
+  const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  return {
+    connection: {
+      url: redisUrl,
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+    } as any, // Type assertion to work around BullMQ/ioredis version mismatch
+  };
+}
+
+/**
+ * Redis connection for queue operations
  */
 export const connection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
   maxRetriesPerRequest: null,
@@ -14,7 +28,7 @@ export const connection = new Redis(process.env.REDIS_URL || 'redis://localhost:
  * Main job queue for fix jobs
  */
 export const fixQueue = new Queue<FixJobData>('claude-fix-jobs', {
-  connection,
+  ...getRedisOptions(),
   defaultJobOptions: {
     attempts: 3,
     backoff: {
@@ -52,12 +66,12 @@ export async function queueFixJob(
   data: FixJobData,
   options?: FixJobOptions
 ): Promise<string> {
-  const job = await fixQueue.add('fix', data, options);
+  const job = await fixQueue.add('fix' as any, data, options);
 
   console.log('Job queued', {
     jobId: job.id,
-    sourceType: data.sourceType,
-    sourceId: data.event.sourceId,
+    triggerType: data.triggerType,
+    triggerId: data.event.triggerId,
     projectId: data.event.projectId,
   });
 

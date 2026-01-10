@@ -3,14 +3,14 @@ import express from 'express';
 import { createTestEnvironment, skipIfNoDocker } from '../helpers/integration';
 import { webhookRouter } from '../../src/webhooks';
 import { initializeQueue, getQueueStats, closeQueue } from '../../src/queue';
-import { sources } from '../../src/sources';
-import { createMockSource } from '../mocks/mock-source';
+import { triggers } from '../../src/triggers';
+import { createMockTrigger } from '../mocks/mock-trigger';
 import { mockWebhookPayloads } from '../fixtures/webhook-payloads';
 
 describe('Queue Integration', () => {
   const env = createTestEnvironment();
   let app: express.Application;
-  let mockSource: ReturnType<typeof createMockSource>;
+  let mockTrigger: ReturnType<typeof createMockTrigger>;
 
   skipIfNoDocker();
 
@@ -26,10 +26,10 @@ describe('Queue Integration', () => {
     app.use(express.json());
     app.use('/webhooks', webhookRouter);
 
-    // Register mock source
-    mockSource = createMockSource();
-    sources.length = 0;
-    sources.push(mockSource);
+    // Register mock trigger
+    mockTrigger = createMockTrigger();
+    triggers.length = 0;
+    triggers.push(mockTrigger);
   }, 60000);
 
   afterAll(async () => {
@@ -39,7 +39,7 @@ describe('Queue Integration', () => {
 
   beforeEach(async () => {
     await env.clearRedis();
-    mockSource.reset();
+    mockTrigger.reset();
   });
 
   it('should queue job when webhook is received', async () => {
@@ -53,8 +53,7 @@ describe('Queue Integration', () => {
 
     expect(response.body).toMatchObject({
       queued: true,
-      sourceType: 'mock',
-      sourceId: 'mock-123',
+      triggerType: 'mock',
     });
     expect(response.body.jobId).toBeTruthy();
 
@@ -105,7 +104,7 @@ describe('Queue Integration', () => {
   });
 
   it('should not queue job if validation fails', async () => {
-    mockSource.setValidation(false);
+    mockTrigger.setValidation(false);
 
     const payload = mockWebhookPayloads.mock.valid;
 
