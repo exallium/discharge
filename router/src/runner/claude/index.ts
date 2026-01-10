@@ -3,7 +3,7 @@ import { promisify } from 'util';
 import { randomUUID } from 'crypto';
 import { rm, readFile } from 'fs/promises';
 import { join } from 'path';
-import { AnalysisResult } from '../sources/base';
+import { AnalysisResult } from '../../triggers/base';
 
 const execAsync = promisify(exec);
 
@@ -127,10 +127,11 @@ export async function runClaudeInContainer(
     try {
       const analysisPath = join(workspacePath, '.claude', 'analysis.json');
       const content = await readFile(analysisPath, 'utf-8');
-      analysis = JSON.parse(content);
+      const parsed = JSON.parse(content);
+      analysis = parsed;
       console.log(`[${jobId}] Analysis:`, {
-        canAutoFix: analysis.canAutoFix,
-        confidence: analysis.confidence,
+        canAutoFix: parsed.canAutoFix,
+        confidence: parsed.confidence,
       });
     } catch (error) {
       console.log(`[${jobId}] No analysis.json found`);

@@ -1,0 +1,307 @@
+# VCS (Version Control System) Plugins
+
+VCS plugins abstract git hosting platforms (GitHub, GitLab, Bitbucket, etc.) for creating pull requests with automated fixes.
+
+## Overview
+
+The VCS plugin system provides a unified interface for interacting with different git hosting platforms. Each VCS plugin implements the `VCSPlugin` interface defined in `base.ts`.
+
+## Available Plugins
+
+| Plugin | Status | Documentation |
+|--------|--------|---------------|
+| **GitHub** | ✅ Implemented | [GitHub VCS](./github/README.md) |
+| **GitLab** | 📝 Planned | Coming soon |
+| **Bitbucket** | 📝 Planned | Coming soon |
+
+## Architecture
+
+```
+vcs/
+├── base.ts           # VCSPlugin interface & shared utilities
+├── index.ts          # Plugin registry & initialization
+└── github/           # GitHub VCS implementation
+    ├── index.ts
+    └── README.md
+```
+
+## VCS Plugin Interface
+
+Every VCS plugin must implement the `VCSPlugin` interface:
+
+```typescript
+interface VCSPlugin {
+  // Identification
+  id: string;
+  type: 'github' | 'gitlab' | 'bitbucket' | 'self-hosted';
+
+  // Core functionality
+  createPullRequest(
+    owner: string,
+    repo: string,
+    head: string,
+    base: string,
+    title: string,
+    body: string
+  ): Promise<PullRequest>;
+
+  getCompareUrl(owner: string, repo: string, base: string, head: string): string;
+  formatRepoIdentifier(owner: string, repo: string): string;
+  validate(): Promise<{ valid: boolean; error?: string }>;
+}
+```
+
+## Plugin Initialization
+
+VCS plugins are automatically initialized on router startup:
+
+```typescript
+// router/src/index.ts or startup file
+import { initializeVCS } from './vcs';
+
+initializeVCS(); // Initializes all VCS plugins with environment tokens
+```
+
+The initialization process:
+1. Checks for environment variables (`GITHUB_TOKEN`, `GITLAB_TOKEN`, etc.)
+2. Creates plugin instances for each available token
+3. Registers plugins in the global registry
+
+## Using VCS Plugins
+
+### Get a Plugin
+
+```typescript
+import { getVCSPlugin } from './vcs';
+
+const github = getVCSPlugin('github');
+if (!github) {
+  console.error('GitHub VCS not available - check GITHUB_TOKEN');
+  return;
+}
+```
+
+### Create a Pull Request
+
+```typescript
+const pr = await github.createPullRequest(
+  'owner',
+  'repo',
+  'fix/bug-123',  // head branch
+  'main',         // base branch
+  'Fix: Null pointer exception in UserService',
+  formatPRBody(analysis, triggerLink)
+);
+
+console.log(`PR created: ${pr.htmlUrl}`);
+```
+
+### Validate Configuration
+
+```typescript
+import { validateAllVCS } from './vcs';
+
+const results = await validateAllVCS();
+
+for (const [id, result] of Object.entries(results)) {
+  if (result.valid) {
+    console.log(`✓ ${id} VCS is configured correctly`);
+  } else {
+    console.error(`✗ ${id} VCS error: ${result.error}`);
+  }
+}
+```
+
+## Project Configuration
+
+Configure which VCS to use in your project settings:
+
+```typescript
+{
+  id: 'my-app',
+  repo: 'git@github.com:owner/my-app.git',
+  repoFullName: 'owner/my-app',
+  branch: 'main',
+  vcs: {
+    type: 'github',                        // VCS plugin to use
+    owner: 'owner',                        // Repository owner
+    repo: 'my-app',                        // Repository name
+    reviewers: ['alice', 'bob'],           // Auto-request reviewers
+    labels: ['automated-fix', 'bug'],      // Auto-add labels
+  },
+}
+```
+
+## Workflow Integration
+
+VCS plugins integrate with the orchestrator to create PRs for fixes:
+
+```typescript
+// In orchestrator.ts
+const vcs = getVCSPlugin(project.vcs.type);
+if (!vcs) {
+  throw new Error(`VCS plugin not available: ${project.vcs.type}`);
+}
+
+const pr = await vcs.createPullRequest(
+  project.vcs.owner,
+  project.vcs.repo,
+  fixBranch,
+  project.branch,
+  `Fix: ${event.title}`,
+  formatPRBody(analysis, trigger.getLink(event))
+);
+
+// Auto-add reviewers if configured
+if (project.vcs.reviewers && github.requestReviewers) {
+  await github.requestReviewers(
+    project.vcs.owner,
+    project.vcs.repo,
+    pr.number,
+    project.vcs.reviewers
+  );
+}
+
+// Auto-add labels if configured
+if (project.vcs.labels && github.addLabels) {
+  await github.addLabels(
+    project.vcs.owner,
+    project.vcs.repo,
+    pr.number,
+    project.vcs.labels
+  );
+}
+```
+
+## Utilities
+
+### Format PR Body
+
+Helper to format PR description from analysis:
+
+```typescript
+import { formatPRBody } from './vcs/base';
+
+const body = formatPRBody(
+  analysis,      // AnalysisResult from Claude
+  triggerLink    // Link to Sentry issue, GitHub issue, etc.
+);
+```
+
+Generates markdown:
+```markdown
+## Automated Fix
+
+[Sentry Issue](https://sentry.io/issue/12345)
+
+### Analysis
+
+- **Root Cause:** User object not null-checked
+- **Confidence:** high
+- **Complexity:** simple
+
+### Changes
+
+Added null check before accessing user.name
+
+### Files Modified
+
+- `src/services/user.ts`
+
+---
+*This PR was automatically generated by Claude Agent. Please review carefully before merging.*
+```
+
+## Creating a New VCS Plugin
+
+1. **Create plugin directory**:
+   ```bash
+   mkdir src/vcs/gitlab
+   ```
+
+2. **Implement VCSPlugin interface**:
+   ```typescript
+   // src/vcs/gitlab/index.ts
+   import { VCSPlugin, PullRequest } from '../base';
+
+   export class GitLabVCS implements VCSPlugin {
+     id = 'gitlab';
+     type = 'gitlab' as const;
+
+     constructor(private token: string) {}
+
+     async createPullRequest(...): Promise<PullRequest> {
+       // Use @gitbeaker/rest or similar
+     }
+
+     // Implement other required methods
+   }
+   ```
+
+3. **Register in index.ts**:
+   ```typescript
+   // src/vcs/index.ts
+   const gitlabToken = process.env.GITLAB_TOKEN;
+   if (gitlabToken) {
+     const gitlab = new GitLabVCS(gitlabToken);
+     vcsPlugins.set('gitlab', gitlab);
+     console.log('✓ GitLab VCS initialized');
+   }
+   ```
+
+4. **Add README.md**:
+   Create `src/vcs/gitlab/README.md` with setup instructions
+
+5. **Write tests**:
+   Create `tests/unit/vcs/gitlab.test.ts`
+
+## Environment Variables
+
+| Variable | VCS | Required |
+|----------|-----|----------|
+| `GITHUB_TOKEN` | GitHub | Yes for GitHub |
+| `GITLAB_TOKEN` | GitLab | Yes for GitLab |
+| `BITBUCKET_TOKEN` | Bitbucket | Yes for Bitbucket |
+
+## Error Handling
+
+All VCS methods can throw errors. Always handle them:
+
+```typescript
+try {
+  const pr = await vcs.createPullRequest(...);
+} catch (error: any) {
+  console.error('Failed to create PR:', error.message);
+
+  // Fallback: provide compare URL for manual PR creation
+  const compareUrl = vcs.getCompareUrl(
+    project.vcs.owner,
+    project.vcs.repo,
+    project.branch,
+    fixBranch
+  );
+
+  await trigger.addComment(
+    event,
+    `⚠️ Could not create PR automatically. Please create manually:\n${compareUrl}`
+  );
+}
+```
+
+## Testing
+
+Run VCS plugin tests:
+
+```bash
+# All VCS tests
+npm test -- src/vcs
+
+# Specific plugin
+npm test -- github.test.ts
+```
+
+## See Also
+
+- [GitHub VCS Plugin](./github/README.md) - Complete documentation
+- [Trigger Plugins](../triggers/README.md) - Similar plugin architecture
+- [Project Configuration](../config/projects.ts) - VCS configuration

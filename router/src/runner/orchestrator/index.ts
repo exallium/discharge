@@ -1,11 +1,11 @@
-import { TriggerPlugin, TriggerEvent, FixStatus } from '../triggers/base';
-import { findProjectById } from '../config/projects';
-import { generateAndMountTools, generateToolsReadme, validateTools } from './tools';
-import { buildInvestigationPrompt } from './prompts';
-import { runClaudeInContainer, isDockerAvailable, isClaudeRunnerImageAvailable } from './claude';
-import { getVCSPlugin } from '../vcs';
-import { formatPRBody } from '../vcs/base';
-import { GitHubVCS } from '../vcs/github';
+import { TriggerPlugin, TriggerEvent, FixStatus } from '../../triggers/base';
+import { findProjectById } from '../../config/projects';
+import { generateAndMountTools, generateToolsReadme, validateTools } from '../tools';
+import { buildInvestigationPrompt } from '../prompts';
+import { runClaudeInContainer, isDockerAvailable, isClaudeRunnerImageAvailable } from '../claude';
+import { getVCSPlugin } from '../../vcs';
+import { formatPRBody } from '../../vcs/base';
+import { GitHubVCS } from '../../vcs/github';
 
 /**
  * Main orchestrator for the fix workflow

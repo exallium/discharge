@@ -1,4 +1,4 @@
-import { TriggerPlugin, TriggerEvent, Tool } from '../triggers/base';
+import { TriggerPlugin, TriggerEvent, Tool } from '../../triggers/base';
 
 /**
  * Build a generic investigation prompt for Claude
