@@ -183,6 +183,36 @@ npm run build
 npm start
 ```
 
+## 🧪 Testing
+
+Comprehensive test suite with unit, integration, and end-to-end tests.
+
+```bash
+cd router
+
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run with coverage
+npm run test:coverage
+
+# Run integration tests (requires Docker)
+npm run test:integration
+```
+
+### Test Infrastructure
+
+- **Jest** with TypeScript support
+- **Supertest** for HTTP endpoint testing
+- **Mock source plugin** for hermetic testing
+- **Docker Compose** for integration tests (Redis, mock services)
+- **Test fixtures** for realistic webhook payloads
+
+See [router/tests/README.md](./router/tests/README.md) for detailed testing documentation.
+
 ## 📝 Current Status
 
 ### ✅ Completed
@@ -194,6 +224,13 @@ npm start
 - Webhook routing system
 - Basic status dashboard
 - Environment configuration
+- **Testing infrastructure**
+  - Jest with TypeScript
+  - Mock source plugin
+  - Test fixtures for all webhook types
+  - Docker Compose for integration tests
+  - Unit and integration test examples
+  - Test helpers and utilities
 
 ### 🚧 TODO
 
