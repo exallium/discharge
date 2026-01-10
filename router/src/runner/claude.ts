@@ -92,7 +92,7 @@ export async function runClaudeInContainer(
       `
       docker run --rm \
         --name claude-${jobId.slice(0, 8)} \
-        --network claude-agent_internal \
+        --network ${process.env.DOCKER_NETWORK || 'ai-bug-fixer_internal'} \
         -v ${workspacePath}:/workspace \
         -v /Users/${hostUser}/.claude:/home/claude/.claude:ro \
         ${envFlags} \

@@ -256,7 +256,7 @@ setup_docker() {
     print_header "Setting Up Docker"
 
     # Create Docker network if it doesn't exist
-    NETWORK_NAME="claude-agent_internal"
+    NETWORK_NAME="ai-bug-fixer_internal"
     if docker network ls | grep -q "$NETWORK_NAME"; then
         print_success "Docker network '$NETWORK_NAME' already exists"
     else
