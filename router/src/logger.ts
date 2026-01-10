@@ -65,7 +65,7 @@ const createLogger = () => {
     level,
     format: logFormat === 'pretty' ? prettyFormat : jsonFormat,
     defaultMeta: {
-      service: 'claude-agent-router',
+      service: 'ai-bug-fixer-router',
       environment: process.env.NODE_ENV || 'development',
     },
     transports: [

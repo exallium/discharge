@@ -29,7 +29,7 @@ statusRouter.get('/dashboard', async (req, res) => {
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Claude Agent Status</title>
+  <title>AI Bug Fixer Status</title>
   <meta http-equiv="refresh" content="30">
   <style>
     * { box-sizing: border-box; }
@@ -68,7 +68,7 @@ statusRouter.get('/dashboard', async (req, res) => {
   </style>
 </head>
 <body>
-  <h1>🤖 Claude Agent</h1>
+  <h1>🤖 AI Bug Fixer</h1>
   <div class="subtitle">Automated Bug Fixing System</div>
 
   <div class="card status-ok">
