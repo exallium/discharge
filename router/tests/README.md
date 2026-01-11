@@ -15,7 +15,7 @@ tests/
 │   └── webhooks/      # Webhook router tests
 │
 ├── integration/       # Integration tests (require Docker/Redis)
-│   ├── claude-runner.test.ts
+│   ├── agent-runner.test.ts
 │   ├── queue.test.ts
 │   ├── queue-integration.test.ts
 │   └── webhook-flow.test.ts

@@ -1,7 +1,7 @@
 import { isDockerAvailable, isClaudeRunnerImageAvailable } from '../../src/runner/claude';
 import { skipIfNoDocker } from '../helpers/integration';
 
-describe('Claude Runner Integration', () => {
+describe('Agent Runner Integration', () => {
   skipIfNoDocker();
 
   describe('isDockerAvailable', () => {
@@ -12,7 +12,7 @@ describe('Claude Runner Integration', () => {
   });
 
   describe('isClaudeRunnerImageAvailable', () => {
-    it('should check for claude-runner image', async () => {
+    it('should check for agent-runner-claude image', async () => {
       const available = await isClaudeRunnerImageAvailable();
 
       // This might be false in CI if image isn't built

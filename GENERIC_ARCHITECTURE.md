@@ -122,10 +122,9 @@ claude-agent/
 │           ├── github.ts               # GitHub API client
 │           └── notifications.ts        # Discord/Slack
 │
-└── claude-runner/
-    ├── Dockerfile
-    └── tools/
-        └── (dynamically mounted per job)
+└── agent-runners/
+    └── claude-code/
+        └── Dockerfile
 ```
 
 ---
@@ -733,7 +732,7 @@ export async function runClaudeInContainer(options: RunClaudeOptions) {
         -e PATH="/workspace/.claude-tools:\${PATH}" \
         --cpus="2" \
         --memory="4g" \
-        claude-runner:latest \
+        agent-runner-claude:latest \
         --print \
         --dangerously-skip-permissions \
         --max-turns 30 \
@@ -874,7 +873,7 @@ The generic architecture eliminates:
 - ❌ `router/src/handlers/sentry-fix.ts`
 - ❌ `router/src/handlers/github-issue.ts`
 - ❌ `router/src/handlers/circleci-fix.ts`
-- ❌ `claude-runner/tools/*` (static scripts)
+- ❌ `agent-runner/tools/*` (static scripts)
 
 And replaces with:
 

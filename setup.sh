@@ -331,8 +331,8 @@ build_docker_images() {
         return
     fi
 
-    print_info "Building claude-runner image..."
-    docker build -t claude-runner:latest runner/
+    print_info "Building agent-runner-claude image..."
+    docker build -t agent-runner-claude:latest agent-runners/claude-code/
 
     print_success "Docker images built"
 }

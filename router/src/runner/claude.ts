@@ -94,13 +94,13 @@ export async function runClaudeInContainer(
         --name claude-${jobId.slice(0, 8)} \
         --network ${process.env.DOCKER_NETWORK || 'ai-bug-fixer_internal'} \
         -v ${workspacePath}:/workspace \
-        -v /Users/${hostUser}/.claude:/home/claude/.claude:ro \
+        -v /Users/${hostUser}/.claude:/home/agent/.claude:ro \
         ${envFlags} \
         ${pathEnv} \
         --cpus="2" \
         --memory="4g" \
         --pids-limit 100 \
-        claude-runner:latest \
+        agent-runner-claude:latest \
         --print \
         --dangerously-skip-permissions \
         --max-turns 30 \
@@ -184,11 +184,11 @@ export async function isDockerAvailable(): Promise<boolean> {
 }
 
 /**
- * Check if claude-runner image exists
+ * Check if agent-runner image exists
  */
 export async function isClaudeRunnerImageAvailable(): Promise<boolean> {
   try {
-    const { stdout } = await execAsync('docker images -q claude-runner:latest');
+    const { stdout } = await execAsync('docker images -q agent-runner-claude:latest');
     return stdout.trim().length > 0;
   } catch {
     return false;

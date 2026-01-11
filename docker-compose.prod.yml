@@ -148,19 +148,29 @@ services:
         max-file: "5"
 
   # ─────────────────────────────────────────────
-  # Claude Runner (Built separately, spawned dynamically)
+  # Agent Runners (Built separately, spawned dynamically by runner plugins)
   # ─────────────────────────────────────────────
-  claude-runner:
+  agent-runner-claude:
     build:
-      context: ./claude-runner
+      context: ./agent-runners/claude-code
       dockerfile: Dockerfile
-    image: claude-runner:latest
-    container_name: claude-runner-builder
+    image: agent-runner-claude:latest
+    container_name: agent-runner-claude-builder
 
     # This service is only used to build the image
     # Actual containers are spawned by the router dynamically
     profiles:
       - build-only
+
+  # Future runners can be added here:
+  # agent-runner-openai:
+  #   build:
+  #     context: ./agent-runners/openai
+  #     dockerfile: Dockerfile
+  #   image: agent-runner-openai:latest
+  #   container_name: agent-runner-openai-builder
+  #   profiles:
+  #     - build-only
 
   # ─────────────────────────────────────────────
   # Optional: Cloudflare Tunnel

@@ -162,13 +162,13 @@ export class ClaudeCodeRunner implements RunnerPlugin {
           --name claude-${jobId.slice(0, 8)} \
           --network ${process.env.DOCKER_NETWORK || 'ai-bug-fixer_internal'} \
           -v ${workspacePath}:/workspace \
-          -v /Users/${hostUser}/.claude:/home/claude/.claude:ro \
+          -v /Users/${hostUser}/.claude:/home/agent/.claude:ro \
           ${envFlags} \
           ${pathEnv} \
           --cpus="2" \
           --memory="4g" \
           --pids-limit 100 \
-          claude-runner:latest \
+          agent-runner-claude:latest \
           --print \
           --dangerously-skip-permissions \
           --max-turns 30 \
@@ -267,9 +267,9 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       // Check Docker is running
       await execAsync('docker info', { timeout: 5000 });
 
-      // Check claude-runner image exists
+      // Check agent-runner image exists
       const { stdout } = await execAsync(
-        'docker images -q claude-runner:latest'
+        'docker images -q agent-runner-claude:latest'
       );
       return stdout.trim().length > 0;
     } catch {
@@ -294,13 +294,13 @@ export class ClaudeCodeRunner implements RunnerPlugin {
     try {
       // Check image
       const { stdout } = await execAsync(
-        'docker images -q claude-runner:latest'
+        'docker images -q agent-runner-claude:latest'
       );
       if (stdout.trim().length === 0) {
         return {
           valid: false,
           error:
-            'claude-runner:latest image not found. Run: docker compose --profile build-only build',
+            'agent-runner-claude:latest image not found. Run: docker compose --profile build-only build',
         };
       }
     } catch {

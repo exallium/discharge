@@ -13,7 +13,7 @@ A self-hosted automation system that uses Claude Code to automatically investiga
 5. [Docker Configuration](#docker-configuration)
 6. [Webhook Handlers](#webhook-handlers)
 7. [Job Queue System](#job-queue-system)
-8. [Claude Runner](#claude-runner)
+8. [Claude Runner](#agent-runner)
 9. [API Tools for Claude](#api-tools-for-claude)
 10. [Analysis & Fix Flow](#analysis--fix-flow)
 11. [Auth Health Monitoring](#auth-health-monitoring)
@@ -157,15 +157,9 @@ claude-agent/
 │           ├── crypto.ts            # Webhook signature verification
 │           └── logger.ts            # Structured logging
 │
-├── claude-runner/
-│   ├── Dockerfile
-│   └── tools/
-│       ├── sentry-get-issue         # Get Sentry issue details
-│       ├── sentry-get-events        # Get Sentry events/stack traces
-│       ├── sentry-get-breadcrumbs   # Get event breadcrumbs
-│       ├── circleci-get-logs        # Get CI build logs
-│       ├── circleci-get-tests       # Get test results
-│       └── github-get-issue         # Get GitHub issue details
+├── agent-runners/                   # AI agent container images
+│   └── claude-code/                 # Claude Code runner
+│       └── Dockerfile
 │
 └── cloudflared/
     ├── config.yml                   # Tunnel configuration
@@ -323,9 +317,9 @@ services:
   # ─────────────────────────────────────────────
   # Claude Runner (image only, spawned dynamically)
   # ─────────────────────────────────────────────
-  claude-runner:
-    build: ./claude-runner
-    image: claude-runner:latest
+  agent-runner-claude:
+    build: ./agent-runners/claude-code
+    image: agent-runner-claude:latest
     profiles:
       - build-only
 
@@ -397,7 +391,7 @@ EXPOSE 3000
 CMD ["node", "dist/index.js"]
 ```
 
-### Claude Runner Dockerfile (claude-runner/Dockerfile)
+### Claude Runner Dockerfile (agent-runner/Dockerfile)
 
 ```dockerfile
 FROM node:20-slim
@@ -815,7 +809,7 @@ export async function runClaudeInContainer(options: RunClaudeOptions): Promise<R
         --cpus="2" \
         --memory="4g" \
         --pids-limit 100 \
-        claude-runner:latest \
+        agent-runner-claude:latest \
         --print \
         --dangerously-skip-permissions \
         --max-turns 30 \
@@ -872,7 +866,7 @@ export async function runClaudeInContainer(options: RunClaudeOptions): Promise<R
 
 These CLI tools are bundled into the Claude runner container, allowing Claude to fetch context from external services via bash.
 
-### sentry-get-issue (claude-runner/tools/sentry-get-issue)
+### sentry-get-issue (agent-runner/tools/sentry-get-issue)
 
 ```bash
 #!/bin/bash
@@ -901,7 +895,7 @@ curl -s "https://sentry.io/api/0/issues/${ISSUE_ID}/" \
   }'
 ```
 
-### sentry-get-events (claude-runner/tools/sentry-get-events)
+### sentry-get-events (agent-runner/tools/sentry-get-events)
 
 ```bash
 #!/bin/bash
@@ -937,7 +931,7 @@ curl -s "https://sentry.io/api/0/issues/${ISSUE_ID}/events/?limit=${LIMIT}" \
   }'
 ```
 
-### circleci-get-logs (claude-runner/tools/circleci-get-logs)
+### circleci-get-logs (agent-runner/tools/circleci-get-logs)
 
 ```bash
 #!/bin/bash
@@ -979,7 +973,7 @@ for step in $STEPS; do
 done
 ```
 
-### circleci-get-tests (claude-runner/tools/circleci-get-tests)
+### circleci-get-tests (agent-runner/tools/circleci-get-tests)
 
 ```bash
 #!/bin/bash
@@ -1004,7 +998,7 @@ curl -s "https://circleci.com/api/v2/project/job/${JOB_ID}/tests" \
   }'
 ```
 
-### github-get-issue (claude-runner/tools/github-get-issue)
+### github-get-issue (agent-runner/tools/github-get-issue)
 
 ```bash
 #!/bin/bash
@@ -1323,8 +1317,8 @@ export async function checkClaudeAuth(): Promise<AuthStatus> {
   try {
     await execAsync(`
       docker run --rm \
-        -v /Users/${hostUser}/.claude:/home/claude/.claude:ro \
-        claude-runner:latest \
+        -v /Users/${hostUser}/.claude:/home/agent/.claude:ro \
+        agent-runner-claude:latest \
         --print \
         --max-turns 1 \
         -p "respond with exactly: OK"
@@ -1680,7 +1674,7 @@ When you receive an auth expired notification:
 npm update -g @anthropic-ai/claude-code
 
 # Rebuild runner image
-docker compose build claude-runner
+docker compose build agent-runner
 
 # Restart (pulls new image)
 docker compose up -d

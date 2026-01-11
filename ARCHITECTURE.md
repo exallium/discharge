@@ -35,7 +35,7 @@ This document explains the system architecture, what runs where, and deployment 
 - Persists job history
 
 #### 3. **Runner Containers** (Dynamically Spawned)
-- **Image**: Built from `claude-runner/Dockerfile`
+- **Image**: Built from `agent-runners/claude-code/Dockerfile`
 - **Purpose**: Execute AI agent (Claude Code CLI) to investigate and fix bugs
 - **Lifecycle**: Created per job, destroyed after completion
 - **Network**: Shares `ai-bug-fixer_internal` network with router

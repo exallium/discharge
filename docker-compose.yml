@@ -44,13 +44,20 @@ services:
     restart: unless-stopped
 
   # ─────────────────────────────────────────────
-  # Claude Runner (image only, spawned dynamically)
+  # Agent Runners (images only, spawned dynamically by runner plugins)
   # ─────────────────────────────────────────────
-  claude-runner:
-    build: ./claude-runner
-    image: claude-runner:latest
+  agent-runner-claude:
+    build: ./agent-runners/claude-code
+    image: agent-runner-claude:latest
     profiles:
       - build-only
+
+  # Future runners can be added here:
+  # agent-runner-openai:
+  #   build: ./agent-runners/openai
+  #   image: agent-runner-openai:latest
+  #   profiles:
+  #     - build-only
 
   # ─────────────────────────────────────────────
   # Tunnel

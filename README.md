@@ -63,8 +63,9 @@ ai-bug-fixer/
 │   ├── Dockerfile                   # Multi-stage production build
 │   └── package.json
 │
-├── claude-runner/                   # Default AI agent container
-│   └── Dockerfile                   # Claude Code CLI runner
+├── agent-runners/                   # AI agent container images
+│   └── claude-code/                 # Claude Code runner
+│       └── Dockerfile               # Claude Code CLI runner
 │
 ├── .env.example                     # Environment template (comprehensive)
 ├── setup.sh                         # Automated setup script
