@@ -62,9 +62,10 @@ webhookRouter.post('/:triggerId', async (req, res) => {
       projectId: event.projectId,
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[${triggerId}] Webhook error:`, error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: message });
   }
 });
 

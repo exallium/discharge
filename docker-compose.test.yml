@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # Redis for testing (uses different DB and port)
   redis-test:

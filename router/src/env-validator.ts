@@ -233,9 +233,26 @@ export function validateEnvOrExit(): void {
 }
 
 /**
+ * Environment info for debugging
+ */
+interface EnvInfo {
+  nodeVersion: string;
+  platform: NodeJS.Platform;
+  arch: string;
+  nodeEnv: string;
+  port: string | number;
+  redisConfigured: boolean;
+  githubConfigured: boolean;
+  sentryConfigured: boolean;
+  circleCIConfigured: boolean;
+  logLevel: string;
+  logFormat: string;
+}
+
+/**
  * Get environment info for debugging
  */
-export function getEnvInfo(): Record<string, any> {
+export function getEnvInfo(): EnvInfo {
   return {
     nodeVersion: process.version,
     platform: process.platform,

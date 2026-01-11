@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { rm, readFile } from 'fs/promises';
 import { join } from 'path';
 import { AnalysisResult } from '../triggers/base';
+import { getErrorMessage, isExecError } from '../types/errors';
 
 const execAsync = promisify(exec);
 
@@ -152,21 +153,22 @@ export async function runClaudeInContainer(
       analysis,
       branchName: hasCommit ? fixBranch : undefined,
     };
-  } catch (error: any) {
-    console.error(`[${jobId}] Claude execution failed:`, error.message);
+  } catch (error) {
+    const errorMessage = getErrorMessage(error);
+    console.error(`[${jobId}] Claude execution failed:`, errorMessage);
 
     return {
       success: false,
       jobId,
-      output: error.stdout || error.message,
+      output: isExecError(error) ? (error.stdout || errorMessage) : errorMessage,
       hasCommit: false,
-      error: error.message,
+      error: errorMessage,
     };
   } finally {
     // Cleanup workspace
     console.log(`[${jobId}] Cleaning up workspace...`);
     await rm(workspacePath, { recursive: true, force: true }).catch(err => {
-      console.error(`[${jobId}] Failed to cleanup workspace:`, err.message);
+      console.error(`[${jobId}] Failed to cleanup workspace:`, getErrorMessage(err));
     });
   }
 }

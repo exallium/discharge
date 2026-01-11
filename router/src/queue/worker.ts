@@ -1,8 +1,9 @@
 import { Worker, Job } from 'bullmq';
-import { connection } from './index';
+import { getConnection } from './index';
 import { FixJobData, FixJobResult } from './types';
 import { getTriggerByType } from '../triggers';
 import { orchestrateFix } from '../runner/orchestrator';
+import { getErrorMessage } from '../types/errors';
 
 /**
  * Process a fix job
@@ -39,13 +40,13 @@ async function processFixJob(job: Job<FixJobData>): Promise<FixJobResult> {
     console.log(`Job ${job.id} completed`, result);
     return result;
 
-  } catch (error: any) {
-    console.error(`Job ${job.id} failed:`, error);
+  } catch (error) {
+    console.error(`Job ${job.id} failed:`, getErrorMessage(error));
 
     return {
       success: false,
       fixed: false,
-      reason: error.message,
+      reason: getErrorMessage(error),
       duration: Date.now() - startTime,
     };
   }
@@ -59,7 +60,7 @@ export function createWorker(concurrency = 2) {
     'claude-fix-jobs',
     processFixJob,
     {
-      connection: connection as never, // Type assertion for ioredis version mismatch
+      connection: getConnection() as never, // Type assertion for ioredis version mismatch
       concurrency,
       limiter: {
         max: 10, // Max 10 jobs per duration

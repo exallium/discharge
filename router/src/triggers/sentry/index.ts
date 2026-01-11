@@ -2,6 +2,8 @@ import { Request } from 'express';
 import crypto from 'crypto';
 import { TriggerPlugin, TriggerEvent, Tool, FixStatus } from '../base';
 import { findProjectsBySource } from '../../config/projects';
+import { SentryWebhookPayload, SentryTag, isIssueCreatedEvent } from '../../types/webhooks/sentry';
+import { getErrorMessage } from '../../types/errors';
 
 /**
  * Sentry trigger plugin
@@ -50,29 +52,31 @@ export class SentryTrigger implements TriggerPlugin {
   /**
    * Parse Sentry webhook payload into normalized TriggerEvent
    */
-  async parseWebhook(payload: any): Promise<TriggerEvent | null> {
+  async parseWebhook(payload: unknown): Promise<TriggerEvent | null> {
+    const typedPayload = payload as SentryWebhookPayload;
+
     // Sentry sends different actions: created, resolved, assigned, etc.
     // We only care about new issues
-    if (payload.action !== 'created') {
-      console.log(`[SentryTrigger] Ignoring action: ${payload.action}`);
+    if (!isIssueCreatedEvent(typedPayload)) {
+      console.log(`[SentryTrigger] Ignoring action: ${typedPayload.action}`);
       return null;
     }
 
-    const issue = payload.data?.issue;
+    const issue = typedPayload.data?.issue;
     if (!issue) {
       console.error('[SentryTrigger] No issue data in payload');
       return null;
     }
 
     // Find project by Sentry project slug
-    const sentryProject = payload.data?.project;
+    const sentryProject = typedPayload.data?.project;
     if (!sentryProject?.slug) {
       console.error('[SentryTrigger] No project slug in payload');
       return null;
     }
 
     const projects = findProjectsBySource('sentry', (config) => {
-      return config.enabled && config.projectSlug === sentryProject.slug;
+      return !!config.enabled && config.projectSlug === sentryProject.slug;
     });
 
     if (projects.length === 0) {
@@ -107,10 +111,10 @@ export class SentryTrigger implements TriggerPlugin {
     const severity = this.mapSentryLevelToSeverity(level);
 
     // Extract tags
-    const tags = (issue.tags || []).map((tag: any) => `${tag.key}:${tag.value}`);
+    const tags = (issue.tags || []).map((tag: SentryTag) => `${tag.key}:${tag.value}`);
 
     // Get environment
-    const environment = (issue.tags || []).find((tag: any) => tag.key === 'environment')?.value;
+    const environment = (issue.tags || []).find((tag: SentryTag) => tag.key === 'environment')?.value;
 
     return {
       triggerType: 'sentry',
@@ -135,7 +139,7 @@ export class SentryTrigger implements TriggerPlugin {
         web: issue.permalink,
         api: `https://sentry.io/api/0/issues/${issue.id}/`,
       },
-      raw: payload,
+      raw: typedPayload,
     };
   }
 
@@ -336,7 +340,7 @@ EOF
           console.log(`[SentryTrigger] Marked issue ${triggerId} as resolved`);
         }
       } catch (error) {
-        console.error('[SentryTrigger] Error updating issue status:', error);
+        console.error('[SentryTrigger] Error updating issue status:', getErrorMessage(error));
       }
     }
   }
@@ -371,7 +375,7 @@ EOF
         console.log(`[SentryTrigger] Added comment to issue ${triggerId}`);
       }
     } catch (error) {
-      console.error('[SentryTrigger] Error adding comment:', error);
+      console.error('[SentryTrigger] Error adding comment:', getErrorMessage(error));
     }
   }
 

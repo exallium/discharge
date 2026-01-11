@@ -1,9 +1,9 @@
 import { Request, Response } from 'express';
-import { connection } from './queue';
-import { getQueueStats } from './queue';
+import { getConnection, getQueueStats } from './queue';
 import { triggers } from './triggers';
 import { getAllVCSPlugins } from './vcs';
 import { getAllRunners } from './runner';
+import { getErrorMessage } from './types/errors';
 
 /**
  * Health check status
@@ -28,7 +28,7 @@ export interface HealthStatus {
 export interface CheckResult {
   status: 'pass' | 'warn' | 'fail';
   message?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -83,13 +83,13 @@ export async function healthCheck(req: Request, res: Response): Promise<void> {
     const httpStatus = status.status === 'unhealthy' ? 503 : 200;
 
     res.status(httpStatus).json(status);
-  } catch (error: any) {
+  } catch (error) {
     res.status(503).json({
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
       uptime: Math.floor((Date.now() - startTime) / 1000),
       version: process.env.npm_package_version || '1.0.0',
-      error: error.message,
+      error: getErrorMessage(error),
     });
   }
 }
@@ -119,11 +119,11 @@ export async function readinessCheck(req: Request, res: Response): Promise<void>
 
     const httpStatus = ready ? 200 : 503;
     res.status(httpStatus).json(status);
-  } catch (error: any) {
+  } catch (error) {
     res.status(503).json({
       ready: false,
       timestamp: new Date().toISOString(),
-      error: error.message,
+      error: getErrorMessage(error),
     });
   }
 }
@@ -146,6 +146,7 @@ export async function livenessCheck(req: Request, res: Response): Promise<void> 
  */
 async function checkRedis(): Promise<CheckResult> {
   try {
+    const connection = getConnection();
     const start = Date.now();
     await connection.ping();
     const latency = Date.now() - start;
@@ -161,11 +162,11 @@ async function checkRedis(): Promise<CheckResult> {
       version,
       uptime: `${uptime}s`,
     };
-  } catch (error: any) {
+  } catch (error) {
     return {
       status: 'fail',
       message: 'Redis connection failed',
-      error: error.message,
+      error: getErrorMessage(error),
     };
   }
 }
@@ -192,11 +193,11 @@ async function checkQueue(): Promise<CheckResult> {
         : 'Queue healthy',
       stats,
     };
-  } catch (error: any) {
+  } catch (error) {
     return {
       status: 'fail',
       message: 'Queue check failed',
-      error: error.message,
+      error: getErrorMessage(error),
     };
   }
 }
@@ -262,6 +263,7 @@ async function checkRunners(): Promise<CheckResult> {
  */
 async function checkRedisConnectivity(): Promise<boolean> {
   try {
+    const connection = getConnection();
     await connection.ping();
     return true;
   } catch {

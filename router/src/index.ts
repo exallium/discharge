@@ -43,10 +43,11 @@ app.use((req, res) => {
 });
 
 // Error handler
-app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const error = err instanceof Error ? err : new Error(String(err));
   logger.error('Request error', {
-    error: err.message,
-    stack: err.stack,
+    error: error.message,
+    stack: error.stack,
     method: req.method,
     url: req.url,
   });

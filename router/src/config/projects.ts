@@ -39,14 +39,22 @@ export interface ProjectConfig {
       projectSlug: string;
       enabled: boolean;
     };
-    [key: string]: any;            // Allow custom source configs
+    [key: string]: TriggerSourceConfig | undefined;  // Allow custom source configs
   };
-
   constraints?: {
     maxAttemptsPerDay?: number;
     allowedPaths?: string[];     // Restrict Claude to these directories
     excludedPaths?: string[];    // Never touch these files/dirs
   };
+}
+
+/**
+ * Base trigger source configuration
+ * Note: Some triggers use 'enabled', others use different properties (e.g., github uses 'issues')
+ */
+export interface TriggerSourceConfig {
+  enabled?: boolean;
+  [key: string]: unknown;
 }
 
 /**
@@ -103,7 +111,7 @@ export function findProjectByRepo(repoFullName: string): ProjectConfig | undefin
  */
 export function findProjectsBySource(
   sourceType: string,
-  matcher: (triggers: any) => boolean
+  matcher: (config: TriggerSourceConfig) => boolean
 ): ProjectConfig[] {
   return projects.filter(p => {
     const trigger = p.triggers[sourceType];

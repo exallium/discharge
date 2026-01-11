@@ -1,5 +1,6 @@
 import { Octokit } from '@octokit/rest';
 import { VCSPlugin, PullRequest } from '../base';
+import { getErrorMessage } from '../../types/errors';
 
 /**
  * GitHub VCS plugin using Octokit
@@ -58,10 +59,10 @@ export class GitHubVCS implements VCSPlugin {
       // Test authentication by getting user info
       await this.octokit.users.getAuthenticated();
       return { valid: true };
-    } catch (error: any) {
+    } catch (error) {
       return {
         valid: false,
-        error: error.message || 'GitHub authentication failed',
+        error: getErrorMessage(error) || 'GitHub authentication failed',
       };
     }
   }

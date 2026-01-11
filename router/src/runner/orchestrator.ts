@@ -1,4 +1,4 @@
-import { TriggerPlugin, TriggerEvent, FixStatus } from '../triggers/base';
+import { TriggerPlugin, TriggerEvent, FixStatus, AnalysisResult } from '../triggers/base';
 import { findProjectById } from '../config/projects';
 import { validateTools } from './tools';
 import { buildInvestigationPrompt } from './prompts';
@@ -6,6 +6,7 @@ import { getRunner, RunnerPlugin } from './base';
 import { getVCSPlugin } from '../vcs';
 import { formatPRBody } from '../vcs/base';
 import { GitHubVCS } from '../vcs/github';
+import { getErrorMessage } from '../types/errors';
 
 /**
  * Main orchestrator for the fix workflow
@@ -165,8 +166,8 @@ export async function orchestrateFix(
       if (project.vcs.reviewers && project.vcs.reviewers.length > 0 && vcs instanceof GitHubVCS) {
         await vcs.requestReviewers(project.vcs.owner, project.vcs.repo, pr.number, project.vcs.reviewers);
       }
-    } catch (error: any) {
-      console.error(`[Orchestrator] Failed to create PR:`, error.message);
+    } catch (error) {
+      console.error(`[Orchestrator] Failed to create PR:`, getErrorMessage(error));
 
       // Fall back to compare URL
       prUrl = vcs.getCompareUrl(
@@ -191,13 +192,14 @@ export async function orchestrateFix(
       prUrl,
       analysis,
     };
-  } catch (error: any) {
-    console.error('[Orchestrator] Error:', error);
+  } catch (error) {
+    const errorMessage = getErrorMessage(error);
+    console.error('[Orchestrator] Error:', errorMessage);
 
     try {
       await trigger.addComment(
         event,
-        `❌ Auto-fix failed: ${error.message}`
+        `❌ Auto-fix failed: ${errorMessage}`
       );
     } catch {
       // Ignore comment errors
@@ -205,7 +207,7 @@ export async function orchestrateFix(
 
     return {
       fixed: false,
-      reason: error.message,
+      reason: errorMessage,
       analysis: undefined,
     };
   }
@@ -231,7 +233,7 @@ async function performPreflightChecks(runner: RunnerPlugin): Promise<void> {
 /**
  * Format analysis as a comment
  */
-function formatAnalysisComment(analysis: any): string {
+function formatAnalysisComment(analysis: AnalysisResult): string {
   return `
 ## 🔍 Auto-Fix Analysis
 
@@ -247,7 +249,7 @@ ${analysis.reason ? `**Reason Not Fixed:** ${analysis.reason}\n` : ''}
 ${analysis.proposedFix ? `**Proposed Fix:** ${analysis.proposedFix}\n` : ''}
 
 **Files Involved:**
-${analysis.filesInvolved.map((f: string) => `- \`${f}\``).join('\n')}
+${analysis.filesInvolved.map((f) => `- \`${f}\``).join('\n')}
 
 ---
 *This analysis was generated automatically by AI Bug Fixer*

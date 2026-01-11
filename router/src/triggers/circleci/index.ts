@@ -1,7 +1,8 @@
 import { Request } from 'express';
 import crypto from 'crypto';
 import { TriggerPlugin, TriggerEvent, Tool, FixStatus } from '../base';
-import { findProjectsBySource } from '../../config/projects';
+import { findProjectsBySource, ProjectConfig } from '../../config/projects';
+import { CircleCIWebhookPayload, isWorkflowEvent, isJobEvent, isFailedWorkflow, isFailedJob } from '../../types/webhooks/circleci';
 
 /**
  * CircleCI trigger plugin
@@ -60,16 +61,16 @@ export class CircleCITrigger implements TriggerPlugin {
   /**
    * Parse CircleCI webhook payload into normalized TriggerEvent
    */
-  async parseWebhook(payload: any): Promise<TriggerEvent | null> {
-    const eventType = payload.type;
+  async parseWebhook(payload: unknown): Promise<TriggerEvent | null> {
+    const typedPayload = payload as CircleCIWebhookPayload;
 
     // We handle both workflow-completed and job-completed events
-    if (eventType === 'workflow-completed') {
-      return this.parseWorkflowEvent(payload);
-    } else if (eventType === 'job-completed') {
-      return this.parseJobEvent(payload);
+    if (isWorkflowEvent(typedPayload)) {
+      return this.parseWorkflowEvent(typedPayload);
+    } else if (isJobEvent(typedPayload)) {
+      return this.parseJobEvent(typedPayload);
     } else {
-      console.log(`[CircleCITrigger] Ignoring event type: ${eventType}`);
+      console.log(`[CircleCITrigger] Ignoring event type: ${typedPayload.type}`);
       return null;
     }
   }
@@ -77,7 +78,7 @@ export class CircleCITrigger implements TriggerPlugin {
   /**
    * Parse workflow-completed event
    */
-  private async parseWorkflowEvent(payload: any): Promise<TriggerEvent | null> {
+  private async parseWorkflowEvent(payload: CircleCIWebhookPayload): Promise<TriggerEvent | null> {
     const workflow = payload.workflow;
     if (!workflow) {
       console.error('[CircleCITrigger] No workflow data in payload');
@@ -85,7 +86,7 @@ export class CircleCITrigger implements TriggerPlugin {
     }
 
     // Only trigger on failed workflows
-    if (workflow.status !== 'failed') {
+    if (!isFailedWorkflow(payload)) {
       console.log(`[CircleCITrigger] Ignoring workflow status: ${workflow.status}`);
       return null;
     }
@@ -135,7 +136,7 @@ export class CircleCITrigger implements TriggerPlugin {
   /**
    * Parse job-completed event
    */
-  private async parseJobEvent(payload: any): Promise<TriggerEvent | null> {
+  private async parseJobEvent(payload: CircleCIWebhookPayload): Promise<TriggerEvent | null> {
     const job = payload.job;
     if (!job) {
       console.error('[CircleCITrigger] No job data in payload');
@@ -143,7 +144,7 @@ export class CircleCITrigger implements TriggerPlugin {
     }
 
     // Only trigger on failed jobs
-    if (job.status !== 'failed') {
+    if (!isFailedJob(payload)) {
       console.log(`[CircleCITrigger] Ignoring job status: ${job.status}`);
       return null;
     }
@@ -192,9 +193,9 @@ export class CircleCITrigger implements TriggerPlugin {
   /**
    * Find project from CircleCI payload
    */
-  private findProjectFromPayload(payload: any): any {
-    const pipeline = payload.pipeline;
-    const projectSlug = pipeline?.project_slug;
+  private findProjectFromPayload(payload: CircleCIWebhookPayload): ProjectConfig | null {
+    // Project slug can be in pipeline.project_slug or project.slug
+    const projectSlug = payload.pipeline?.project_slug || payload.project?.slug;
 
     if (!projectSlug) {
       console.error('[CircleCITrigger] No project slug in payload');
@@ -202,7 +203,7 @@ export class CircleCITrigger implements TriggerPlugin {
     }
 
     const projects = findProjectsBySource('circleci', (config) => {
-      return config.enabled && config.projectSlug === projectSlug;
+      return !!config.enabled && config.projectSlug === projectSlug;
     });
 
     if (projects.length === 0) {

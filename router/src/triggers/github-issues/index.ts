@@ -2,6 +2,19 @@ import { Request } from 'express';
 import crypto from 'crypto';
 import { TriggerPlugin, TriggerEvent, Tool, FixStatus } from '../base';
 import { findProjectByRepo } from '../../config/projects';
+import {
+  GitHubIssueEventPayload,
+  GitHubIssueCommentEventPayload,
+  GitHubLabel,
+  isIssueEvent,
+  isIssueCommentEvent,
+} from '../../types/webhooks/github';
+import { getErrorMessage } from '../../types/errors';
+
+/**
+ * GitHub webhook payload union type
+ */
+type GitHubWebhookPayload = GitHubIssueEventPayload | GitHubIssueCommentEventPayload;
 
 /**
  * GitHub Issues trigger plugin
@@ -60,18 +73,18 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
   /**
    * Parse GitHub webhook payload into normalized TriggerEvent
    */
-  async parseWebhook(payload: any): Promise<TriggerEvent | null> {
-    const event = payload;
-    const action = event.action;
+  async parseWebhook(payload: unknown): Promise<TriggerEvent | null> {
+    const typedPayload = payload as GitHubWebhookPayload;
+    const action = typedPayload.action;
 
     // Handle issue events (opened, labeled)
-    if (event.issue && ['opened', 'labeled', 'reopened'].includes(action)) {
-      return this.parseIssueEvent(event);
+    if (isIssueEvent(typedPayload) && ['opened', 'labeled', 'reopened'].includes(action)) {
+      return this.parseIssueEvent(typedPayload as GitHubIssueEventPayload);
     }
 
     // Handle comment events (manual trigger)
-    if (event.comment && event.issue && action === 'created') {
-      return this.parseCommentEvent(event);
+    if (isIssueCommentEvent(typedPayload) && action === 'created') {
+      return this.parseCommentEvent(typedPayload as GitHubIssueCommentEventPayload);
     }
 
     console.log(`[GitHubIssuesTrigger] Ignoring action: ${action}`);
@@ -81,10 +94,8 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
   /**
    * Parse issue opened/labeled event
    */
-  private async parseIssueEvent(payload: any): Promise<TriggerEvent | null> {
-    const issue = payload.issue;
-    const repository = payload.repository;
-    const action = payload.action;
+  private async parseIssueEvent(payload: GitHubIssueEventPayload): Promise<TriggerEvent | null> {
+    const { issue, repository, action } = payload;
 
     if (!issue || !repository) {
       console.error('[GitHubIssuesTrigger] Missing issue or repository data');
@@ -107,7 +118,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     }
 
     // Check label requirements
-    const issueLabels = (issue.labels || []).map((l: any) => l.name);
+    const issueLabels = (issue.labels || []).map((l: GitHubLabel) => l.name);
 
     if (githubConfig.requireLabel) {
       // If requireLabel is true, issue MUST have one of the specified labels
@@ -152,7 +163,6 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       },
       links: {
         web: issue.html_url,
-        api: issue.url,
       },
       raw: payload,
     };
@@ -161,10 +171,8 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
   /**
    * Parse issue comment event (manual trigger)
    */
-  private async parseCommentEvent(payload: any): Promise<TriggerEvent | null> {
-    const comment = payload.comment;
-    const issue = payload.issue;
-    const repository = payload.repository;
+  private async parseCommentEvent(payload: GitHubIssueCommentEventPayload): Promise<TriggerEvent | null> {
+    const { comment, issue, repository } = payload;
 
     if (!comment || !issue || !repository) {
       console.error('[GitHubIssuesTrigger] Missing comment, issue, or repository data');
@@ -204,7 +212,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     // Check if user is allowed to trigger
     const commenter = comment.user?.login;
     if (githubConfig.allowedUsers && githubConfig.allowedUsers.length > 0) {
-      if (!githubConfig.allowedUsers.includes(commenter)) {
+      if (!commenter || !githubConfig.allowedUsers.includes(commenter)) {
         console.warn(
           `[GitHubIssuesTrigger] User ${commenter} not in allowedUsers list. ` +
           `Allowed: ${githubConfig.allowedUsers.join(', ')}`
@@ -218,7 +226,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     );
 
     // Build trigger event (similar to issue event)
-    const issueLabels = (issue.labels || []).map((l: any) => l.name);
+    const issueLabels = (issue.labels || []).map((l: GitHubLabel) => l.name);
 
     return {
       triggerType: 'github-issues',
@@ -240,7 +248,6 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       },
       links: {
         web: issue.html_url,
-        api: issue.url,
       },
       raw: payload,
     };
@@ -282,7 +289,11 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
    * Generate prompt context for Claude
    */
   getPromptContext(event: TriggerEvent): string {
-    const { issueNumber, issueUrl, labels, author, triggeredBy } = event.metadata;
+    const issueNumber = event.metadata.issueNumber as number;
+    const issueUrl = event.metadata.issueUrl as string;
+    const labels = event.metadata.labels as string[] | undefined;
+    const author = event.metadata.author as string;
+    const triggeredBy = event.metadata.triggeredBy as string | undefined;
     const repoFullName = event.triggerId.split('#')[0];
 
     let context = `# GitHub Issue #${issueNumber}\n\n`;
@@ -317,7 +328,8 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
    * Get web link to the issue
    */
   getLink(event: TriggerEvent): string {
-    return event.metadata.issueUrl || event.links?.web || '';
+    const issueUrl = event.metadata.issueUrl as string | undefined;
+    return issueUrl || event.links?.web || '';
   }
 
   /**
@@ -458,8 +470,8 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
       });
 
       console.log(`[GitHubIssuesTrigger] Posted ${status.fixed ? 'success' : 'failure'} comment to issue #${issueNumber}`);
-    } catch (error: any) {
-      console.error(`[GitHubIssuesTrigger] Failed to post comment:`, error.message);
+    } catch (error: unknown) {
+      console.error(`[GitHubIssuesTrigger] Failed to post comment:`, getErrorMessage(error));
     }
   }
 
@@ -489,8 +501,8 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
       });
 
       console.log(`[GitHubIssuesTrigger] Posted comment to issue #${issueNumber}`);
-    } catch (error: any) {
-      console.error(`[GitHubIssuesTrigger] Failed to post comment:`, error.message);
+    } catch (error: unknown) {
+      console.error(`[GitHubIssuesTrigger] Failed to post comment:`, getErrorMessage(error));
     }
   }
 }

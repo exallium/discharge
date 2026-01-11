@@ -1,6 +1,6 @@
-import { queueFixJob, getQueueStats, pauseQueue, resumeQueue, initializeQueue, closeQueue } from '../../../src/queue';
-import { FixJobData } from '../../../src/queue/types';
-import { createTestEnvironment, skipIfNoDocker } from '../../helpers/integration';
+import { queueFixJob, getQueueStats, pauseQueue, resumeQueue, initializeQueue, closeQueue } from '../../src/queue';
+import { FixJobData } from '../../src/queue/types';
+import { createTestEnvironment, skipIfNoDocker } from '../helpers/integration';
 
 describe('Queue Integration', () => {
   const env = createTestEnvironment();

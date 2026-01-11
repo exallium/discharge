@@ -1,27 +1,47 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import Redis from 'ioredis';
+import path from 'path';
 
 const execAsync = promisify(exec);
+
+// Path to repo root (one level up from router/)
+const REPO_ROOT = path.resolve(__dirname, '../../../');
+const COMPOSE_FILE = path.join(REPO_ROOT, 'docker-compose.test.yml');
 
 /**
  * Integration test environment
  */
 export class IntegrationTestEnvironment {
   private redis?: Redis;
+  private setupComplete = false;
 
   /**
    * Start test infrastructure (Docker containers)
    */
   async setup(): Promise<void> {
+    if (this.setupComplete) {
+      return; // Already set up
+    }
+
     console.log('Starting test infrastructure...');
 
-    // Start test containers
-    await execAsync('docker compose -f docker-compose.test.yml up -d');
+    try {
+      // Force recreate containers to avoid conflicts
+      await execAsync(
+        `docker compose -f "${COMPOSE_FILE}" up -d --force-recreate --remove-orphans`,
+        { cwd: REPO_ROOT }
+      );
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error('Failed to start containers:', err.message);
+      throw error;
+    }
 
     // Wait for Redis to be healthy
     await this.waitForRedis();
 
+    this.setupComplete = true;
     console.log('Test infrastructure ready');
   }
 
@@ -33,12 +53,26 @@ export class IntegrationTestEnvironment {
 
     // Disconnect Redis
     if (this.redis) {
-      await this.redis.quit();
+      try {
+        await this.redis.quit();
+      } catch {
+        // Ignore errors during cleanup
+      }
+      this.redis = undefined;
     }
 
     // Stop test containers
-    await execAsync('docker compose -f docker-compose.test.yml down -v');
+    try {
+      await execAsync(
+        `docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans`,
+        { cwd: REPO_ROOT }
+      );
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error('Failed to stop containers:', err.message);
+    }
 
+    this.setupComplete = false;
     console.log('Test infrastructure cleaned up');
   }
 
@@ -61,6 +95,8 @@ export class IntegrationTestEnvironment {
    */
   async clearRedis(): Promise<void> {
     const redis = this.getRedis();
+    // Ensure we're on the test DB
+    await redis.select(15);
     await redis.flushdb();
   }
 
@@ -69,22 +105,26 @@ export class IntegrationTestEnvironment {
    */
   private async waitForRedis(timeout = 30000): Promise<void> {
     const start = Date.now();
+    let lastError: Error | undefined;
+
     while (Date.now() - start < timeout) {
       try {
         const redis = new Redis({
           host: 'localhost',
           port: 6380,
           lazyConnect: true,
+          connectTimeout: 5000,
         });
         await redis.connect();
         await redis.ping();
         await redis.quit();
         return;
-      } catch {
+      } catch (error: unknown) {
+        lastError = error as Error;
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
-    throw new Error('Redis did not become ready within timeout');
+    throw new Error(`Redis did not become ready within timeout: ${lastError?.message}`);
   }
 }
 
@@ -109,20 +149,6 @@ export async function isDockerAvailable(): Promise<boolean> {
 
 /**
  * Skip integration tests if Docker is not available
- *
- * Usage in test files:
- * ```
- * describe('My Integration Test', () => {
- *   skipIfNoDocker();
- *
- *   // ... rest of tests
- * });
- * ```
- *
- * Note: If Docker is not available, tests will fail with a clear message
- * rather than being skipped, as Jest doesn't support dynamic test skipping
- * in the same way as Mocha. To truly skip integration tests, run:
- * `npm test -- --testPathIgnorePatterns="integration"`
  */
 export function skipIfNoDocker(): void {
   let dockerAvailable = true;

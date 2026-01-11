@@ -24,6 +24,7 @@ import {
   validateBugConfig,
 } from '../../bug-config';
 import { buildCategoryPrompt, getMatchedCategoryName } from '../../prompts';
+import { getErrorMessage, isExecError } from '../../../types/errors';
 
 const execAsync = promisify(exec);
 
@@ -221,15 +222,16 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         analysis,
         branchName: hasCommit ? fixBranch : undefined,
       };
-    } catch (error: any) {
-      console.error(`[ClaudeCode:${jobId}] Execution failed:`, error.message);
+    } catch (error) {
+      const errorMessage = getErrorMessage(error);
+      console.error(`[ClaudeCode:${jobId}] Execution failed:`, errorMessage);
 
       return {
         success: false,
         jobId,
-        output: error.stdout || error.message,
+        output: isExecError(error) ? (error.stdout || errorMessage) : errorMessage,
         hasCommit: false,
-        error: error.message,
+        error: errorMessage,
       };
     } finally {
       // Teardown infrastructure if it was started
@@ -243,7 +245,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         }).catch((err) => {
           console.error(
             `[ClaudeCode:${jobId}] Infrastructure teardown failed:`,
-            err.message
+            getErrorMessage(err)
           );
         });
       }
@@ -253,7 +255,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       await rm(workspacePath, { recursive: true, force: true }).catch((err) => {
         console.error(
           `[ClaudeCode:${jobId}] Failed to cleanup workspace:`,
-          err.message
+          getErrorMessage(err)
         );
       });
     }

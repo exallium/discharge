@@ -1,4 +1,6 @@
 import winston from 'winston';
+import { Request, Response, NextFunction } from 'express';
+import { getErrorMessage } from './types/errors';
 
 /**
  * Log levels
@@ -14,7 +16,7 @@ export enum LogLevel {
  * Structured log context
  */
 export interface LogContext {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -160,18 +162,26 @@ export function createTriggerLogger(triggerType: string, triggerId: string): Log
 }
 
 /**
+ * Extended request type with requestId
+ */
+interface RequestWithId extends Request {
+  requestId?: string;
+}
+
+/**
  * Express middleware for request logging
  */
 export function requestLogger() {
   const shouldLog = process.env.LOG_REQUESTS !== 'false';
 
-  return (req: any, res: any, next: any) => {
+  return (req: RequestWithId, res: Response, next: NextFunction) => {
     if (!shouldLog) {
       return next();
     }
 
     const start = Date.now();
-    const requestId = req.headers['x-request-id'] || generateRequestId();
+    const requestIdHeader = req.headers['x-request-id'];
+    const requestId = typeof requestIdHeader === 'string' ? requestIdHeader : generateRequestId();
 
     // Add request ID to request object
     req.requestId = requestId;
@@ -223,10 +233,10 @@ export function logUnhandledErrors(): void {
     setTimeout(() => process.exit(1), 1000);
   });
 
-  process.on('unhandledRejection', (reason: any) => {
+  process.on('unhandledRejection', (reason: unknown) => {
     logger.error('Unhandled Promise Rejection', {
-      reason: reason?.message || reason,
-      stack: reason?.stack,
+      reason: getErrorMessage(reason),
+      stack: reason instanceof Error ? reason.stack : undefined,
     });
   });
 }

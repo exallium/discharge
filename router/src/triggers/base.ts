@@ -18,7 +18,7 @@ export interface TriggerEvent {
     severity?: 'low' | 'medium' | 'high' | 'critical';
     tags?: string[];
     environment?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 
   // Links
@@ -28,7 +28,7 @@ export interface TriggerEvent {
   };
 
   // Raw payload (for tool use)
-  raw: any;
+  raw: unknown;
 }
 
 /**
@@ -75,7 +75,7 @@ export interface TriggerPlugin {
 
   // Webhook handling
   validateWebhook(req: Request): Promise<boolean>;
-  parseWebhook(payload: any): Promise<TriggerEvent | null>;
+  parseWebhook(payload: unknown): Promise<TriggerEvent | null>;
 
   // Tool generation
   getTools(event: TriggerEvent): Tool[];

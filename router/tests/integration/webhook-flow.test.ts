@@ -23,30 +23,9 @@ describe('Webhook Flow Integration', () => {
     await env.clearRedis();
   });
 
-  describe('End-to-End Flow', () => {
-    it('should process webhook and queue job in Redis', async () => {
-      // TODO: Implement once job queue is set up
-      // This test will:
-      // 1. Send a webhook request
-      // 2. Verify job is queued in Redis
-      // 3. Verify job contains correct data
-      expect(true).toBe(true);
-    });
+  // Note: End-to-end webhook→queue flow tests are in queue-integration.test.ts
 
-    it('should handle concurrent webhooks', async () => {
-      // TODO: Implement once job queue is set up
-      // This test will send multiple webhooks concurrently
-      expect(true).toBe(true);
-    });
-
-    it('should respect rate limits', async () => {
-      // TODO: Implement once job queue is set up
-      // This test will verify rate limiting works
-      expect(true).toBe(true);
-    });
-  });
-
-  describe('Redis Integration', () => {
+  describe('Redis Infrastructure', () => {
     it('should connect to Redis', async () => {
       const redis = env.getRedis();
       const result = await redis.ping();
@@ -70,19 +49,23 @@ describe('Webhook Flow Integration', () => {
     it('should isolate test data', async () => {
       const redis = env.getRedis();
 
+      // Ensure we're on DB 15
+      await redis.select(15);
+
       // Set data in test DB (15)
       await redis.set('test-isolation', 'test-value');
 
-      // Switch to different DB
-      await redis.select(0);
-      const value = await redis.get('test-isolation');
+      // Verify it exists
+      expect(await redis.get('test-isolation')).toBe('test-value');
+
+      // Use a separate connection to check DB 0 (to avoid changing our main connection's DB)
+      const Redis = require('ioredis');
+      const redis0 = new Redis({ host: 'localhost', port: 6380, db: 0 });
+      const valueInDb0 = await redis0.get('test-isolation');
+      await redis0.quit();
 
       // Should not exist in DB 0
-      expect(value).toBeNull();
-
-      // Switch back
-      await redis.select(15);
-      expect(await redis.get('test-isolation')).toBe('test-value');
+      expect(valueInDb0).toBeNull();
     });
   });
 });
