@@ -41,6 +41,13 @@ export function listVCSPlugins(): string[] {
 }
 
 /**
+ * Get all VCS plugins
+ */
+export function getAllVCSPlugins(): VCSPlugin[] {
+  return Array.from(vcsPlugins.values());
+}
+
+/**
  * Check if a VCS plugin is available
  */
 export function hasVCSPlugin(id: string): boolean {

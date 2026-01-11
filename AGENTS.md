@@ -8,6 +8,7 @@ This document describes how to create custom agents and components to extend the
 2. [Testing Your Agent](#testing-your-agent)
 3. [Example Implementations](#example-implementations)
 4. [Best Practices](#best-practices)
+5. [Repository Configuration](#repository-configuration)
 
 ---
 
@@ -964,6 +965,170 @@ interface ToolGenerator {
   generateTools(event: TriggerEvent): Tool[];
 }
 ```
+
+---
+
+## Repository Configuration
+
+Target repositories can include a `.ai-bugs.json` file to customize how Claude investigates and fixes different types of bugs.
+
+### Schema Reference
+
+```typescript
+interface BugFixConfig {
+  version: string;                    // Schema version (currently "1")
+  categories: {
+    [name: string]: CategoryConfig;   // Named categories
+  };
+  constraints?: {
+    excludePaths?: string[];          // Glob patterns to never modify
+    requireTests?: boolean;           // Require tests to pass
+    maxFilesChanged?: number;         // Max files Claude can modify
+  };
+}
+
+interface CategoryConfig {
+  match?: {
+    labels?: string[];                // Labels that trigger this category
+  };
+  infrastructure?: {
+    setup: string;                    // Command to start infrastructure
+    teardown?: string;                // Command to stop infrastructure
+    healthcheck?: string;             // Command to verify infrastructure ready
+    timeout?: number;                 // Setup timeout in seconds (default: 120)
+  };
+  requirements: string[];             // Requirements shown to Claude
+  deliverables: string[];             // Deliverables Claude must complete
+  testCommand: string;                // Command to run tests
+}
+```
+
+### Category Matching
+
+Categories are matched by comparing issue labels against each category's `match.labels` array:
+
+1. Labels are compared case-insensitively
+2. First matching category wins
+3. If no match, falls back to `default` category
+4. If no `default`, uses base prompt without category requirements
+
+### Infrastructure Lifecycle
+
+When a category defines `infrastructure`:
+
+1. **Setup**: Runs before Claude starts (e.g., `supabase start`)
+2. **Healthcheck**: Runs after setup to verify readiness (optional)
+3. **Claude executes**: Works on the bug with infrastructure available
+4. **Teardown**: Runs in finally block, even if Claude fails (optional)
+
+Infrastructure setup failures cause the job to fail immediately.
+
+### Full Example
+
+```json
+{
+  "version": "1",
+
+  "categories": {
+    "utility": {
+      "match": { "labels": ["utility", "helper", "lib"] },
+      "requirements": [
+        "Run unit tests for affected modules",
+        "Verify fix addresses the root cause"
+      ],
+      "deliverables": ["unit tests pass"],
+      "testCommand": "npm test"
+    },
+
+    "database": {
+      "match": { "labels": ["database", "postgres", "migration", "supabase"] },
+      "infrastructure": {
+        "setup": "supabase start",
+        "teardown": "supabase stop",
+        "healthcheck": "supabase status",
+        "timeout": 120
+      },
+      "requirements": [
+        "Verify migration is reversible (up and down)",
+        "Check query performance with EXPLAIN ANALYZE",
+        "Test with realistic data volume"
+      ],
+      "deliverables": ["migration up/down works", "no N+1 queries"],
+      "testCommand": "npm run test:db"
+    },
+
+    "integration": {
+      "match": { "labels": ["integration", "e2e", "api"] },
+      "infrastructure": {
+        "setup": "supabase start && npm run seed:test",
+        "teardown": "supabase stop"
+      },
+      "requirements": [
+        "Verify request/response contracts",
+        "Run full integration test suite",
+        "Check for breaking API changes"
+      ],
+      "deliverables": ["integration tests pass", "no breaking changes"],
+      "testCommand": "npm run test:integration"
+    },
+
+    "ui": {
+      "match": { "labels": ["ui", "frontend", "component", "visual"] },
+      "requirements": [
+        "Run component tests for affected components",
+        "Verify no visual regressions",
+        "Check accessibility (no new a11y violations)"
+      ],
+      "deliverables": ["component tests pass", "no console errors"],
+      "testCommand": "npm run test:components"
+    },
+
+    "default": {
+      "requirements": [
+        "Run unit tests",
+        "Verify fix addresses the issue described"
+      ],
+      "deliverables": ["unit tests pass"],
+      "testCommand": "npm test"
+    }
+  },
+
+  "constraints": {
+    "excludePaths": [".env*", "secrets/", "*.key", "*.pem"],
+    "requireTests": true,
+    "maxFilesChanged": 10
+  }
+}
+```
+
+### Using Different Infrastructure Per Category
+
+A common pattern is having different test environments for different bug types:
+
+```json
+{
+  "categories": {
+    "database": {
+      "match": { "labels": ["database"] },
+      "infrastructure": {
+        "setup": "cd supabase-db && supabase start",
+        "teardown": "cd supabase-db && supabase stop"
+      },
+      "testCommand": "npm run test:db"
+    },
+    "integration": {
+      "match": { "labels": ["integration"] },
+      "infrastructure": {
+        "setup": "cd supabase-integration && supabase start",
+        "teardown": "cd supabase-integration && supabase stop"
+      },
+      "testCommand": "npm run test:integration"
+    }
+  }
+}
+```
+
+This allows database unit tests to use a minimal schema, while integration tests use a fully seeded environment.
 
 ---
 

@@ -204,23 +204,26 @@ setup_env_file() {
     cp .env.example .env
     print_success "Created .env file from template"
 
-    # Prompt for required values
+    # Prompt for plugin-specific values
     print_info "Let's configure your environment variables"
+    print_info "All integrations are optional - skip any you don't need"
     echo ""
 
-    # GitHub Token
-    read -p "GitHub Token (required): " GITHUB_TOKEN
+    # GitHub Token (optional - only needed for GitHub VCS/trigger)
+    read -p "GitHub Token (for GitHub VCS/trigger, press Enter to skip): " GITHUB_TOKEN
     if [ -n "$GITHUB_TOKEN" ]; then
         sed -i.bak "s|GITHUB_TOKEN=.*|GITHUB_TOKEN=$GITHUB_TOKEN|" .env
         print_success "GitHub Token configured"
-    fi
 
-    # GitHub Webhook Secret
-    print_info "Generating GitHub webhook secret..."
-    WEBHOOK_SECRET=$(openssl rand -hex 32)
-    sed -i.bak "s|GITHUB_WEBHOOK_SECRET=.*|GITHUB_WEBHOOK_SECRET=$WEBHOOK_SECRET|" .env
-    print_success "GitHub webhook secret generated: $WEBHOOK_SECRET"
-    print_warning "Save this secret - you'll need it when configuring GitHub webhooks"
+        # GitHub Webhook Secret (only generate if GitHub token was provided)
+        print_info "Generating GitHub webhook secret..."
+        WEBHOOK_SECRET=$(openssl rand -hex 32)
+        sed -i.bak "s|GITHUB_WEBHOOK_SECRET=.*|GITHUB_WEBHOOK_SECRET=$WEBHOOK_SECRET|" .env
+        print_success "GitHub webhook secret generated: $WEBHOOK_SECRET"
+        print_warning "Save this secret - you'll need it when configuring GitHub webhooks"
+    else
+        print_info "Skipping GitHub configuration"
+    fi
 
     # Username (for Docker volume mounting)
     CURRENT_USER=$(whoami)

@@ -20,6 +20,7 @@ export interface RunOptions {
   tools?: Tool[];            // Investigation tools
   timeoutMs?: number;        // Execution timeout (default: 600000 = 10 min)
   env?: Record<string, string>; // Environment variables
+  eventLabels?: string[];    // Labels from trigger event (for category matching)
 }
 
 /**

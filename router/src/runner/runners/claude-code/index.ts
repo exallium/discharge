@@ -17,6 +17,13 @@ import {
   AnalysisResult,
 } from '../../base';
 import { Tool } from '../../../triggers/base';
+import {
+  BugFixConfig,
+  CategoryConfig,
+  findMatchingCategory,
+  validateBugConfig,
+} from '../../bug-config';
+import { buildCategoryPrompt, getMatchedCategoryName } from '../../prompts';
 
 const execAsync = promisify(exec);
 
@@ -37,9 +44,13 @@ export class ClaudeCodeRunner implements RunnerPlugin {
     const hostUser = process.env.HOST_USER || process.env.USER || 'claude';
     const timeout = options.timeoutMs || 600000; // 10 minutes default
 
+    // Track matched category for infrastructure cleanup
+    let matchedCategory: CategoryConfig | undefined;
+
     console.log(`[ClaudeCode:${jobId}] Starting execution`, {
       repo: options.repoUrl,
       branch: options.branch,
+      labels: options.eventLabels,
     });
 
     try {
@@ -55,16 +66,66 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       console.log(`[ClaudeCode:${jobId}] Creating branch ${fixBranch}`);
       await execAsync(`git checkout -b ${fixBranch}`, { cwd: workspacePath });
 
+      // Read .ai-bugs.json if it exists
+      let bugConfig: BugFixConfig | undefined;
+      try {
+        const configPath = join(workspacePath, '.ai-bugs.json');
+        const content = await readFile(configPath, 'utf-8');
+        const parsed = JSON.parse(content);
+        const validation = validateBugConfig(parsed);
+        if (validation.valid) {
+          bugConfig = validation.config;
+          console.log(`[ClaudeCode:${jobId}] Loaded .ai-bugs.json`);
+        } else {
+          console.warn(
+            `[ClaudeCode:${jobId}] Invalid .ai-bugs.json: ${validation.error}`
+          );
+        }
+      } catch {
+        console.log(`[ClaudeCode:${jobId}] No .ai-bugs.json found, using defaults`);
+      }
+
+      // Find matching category based on event labels
+      const eventLabels = options.eventLabels || [];
+      matchedCategory = findMatchingCategory(bugConfig?.categories, eventLabels);
+      const categoryName = getMatchedCategoryName(bugConfig, eventLabels);
+
+      if (categoryName) {
+        console.log(`[ClaudeCode:${jobId}] Matched category: ${categoryName}`);
+      }
+
+      // Spin up infrastructure if this category requires it
+      if (matchedCategory?.infrastructure?.setup) {
+        const infraTimeout =
+          (matchedCategory.infrastructure.timeout || 120) * 1000;
+        console.log(
+          `[ClaudeCode:${jobId}] Starting infrastructure: ${matchedCategory.infrastructure.setup}`
+        );
+
+        await execAsync(matchedCategory.infrastructure.setup, {
+          cwd: workspacePath,
+          timeout: infraTimeout,
+        });
+
+        // Run healthcheck if defined
+        if (matchedCategory.infrastructure.healthcheck) {
+          console.log(`[ClaudeCode:${jobId}] Running infrastructure healthcheck...`);
+          await execAsync(matchedCategory.infrastructure.healthcheck, {
+            cwd: workspacePath,
+            timeout: 30000,
+          });
+        }
+
+        console.log(`[ClaudeCode:${jobId}] Infrastructure ready`);
+      }
+
       // Write tools to workspace if provided
       if (options.tools && options.tools.length > 0) {
         await this.writeToolsToWorkspace(workspacePath, options.tools);
       }
 
-      // Build environment variables
+      // Build environment variables (runner is sandboxed - no external tokens)
       const envVars = {
-        SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN || '',
-        CIRCLECI_TOKEN: process.env.CIRCLECI_TOKEN || '',
-        GITHUB_TOKEN: process.env.GITHUB_TOKEN || '',
         ...options.env,
       };
 
@@ -79,8 +140,15 @@ export class ClaudeCodeRunner implements RunnerPlugin {
           ? `-e PATH="/workspace/.claude-tools:$PATH"`
           : '';
 
+      // Enhance prompt with category-specific requirements
+      const enhancedPrompt = buildCategoryPrompt(
+        options.prompt,
+        bugConfig,
+        eventLabels
+      );
+
       // Escape prompt for shell
-      const escapedPrompt = options.prompt
+      const escapedPrompt = enhancedPrompt
         .replace(/\\/g, '\\\\')
         .replace(/"/g, '\\"')
         .replace(/`/g, '\\`')
@@ -135,7 +203,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
             confidence: analysis.confidence,
           });
         }
-      } catch (error) {
+      } catch {
         console.log(`[ClaudeCode:${jobId}] No analysis.json found`);
       }
 
@@ -164,6 +232,22 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         error: error.message,
       };
     } finally {
+      // Teardown infrastructure if it was started
+      if (matchedCategory?.infrastructure?.teardown) {
+        console.log(
+          `[ClaudeCode:${jobId}] Tearing down infrastructure: ${matchedCategory.infrastructure.teardown}`
+        );
+        await execAsync(matchedCategory.infrastructure.teardown, {
+          cwd: workspacePath,
+          timeout: 30000,
+        }).catch((err) => {
+          console.error(
+            `[ClaudeCode:${jobId}] Infrastructure teardown failed:`,
+            err.message
+          );
+        });
+      }
+
       // Cleanup workspace
       console.log(`[ClaudeCode:${jobId}] Cleaning up workspace...`);
       await rm(workspacePath, { recursive: true, force: true }).catch((err) => {

@@ -88,7 +88,7 @@ export async function runClaudeInContainer(
 
     // Run Claude
     console.log(`[${jobId}] Running Claude Code...`);
-    const { stdout, stderr } = await execAsync(
+    const { stdout } = await execAsync(
       `
       docker run --rm \
         --name claude-${jobId.slice(0, 8)} \
@@ -134,7 +134,7 @@ export async function runClaudeInContainer(
           confidence: analysis.confidence,
         });
       }
-    } catch (error) {
+    } catch {
       console.log(`[${jobId}] No analysis.json found`);
     }
 

@@ -1,0 +1,73 @@
+{
+  "version": "1",
+
+  "categories": {
+    "utility": {
+      "match": { "labels": ["utility", "helper", "lib"] },
+      "requirements": [
+        "Run unit tests for affected modules",
+        "Verify fix addresses the root cause"
+      ],
+      "deliverables": ["unit tests pass"],
+      "testCommand": "npm test"
+    },
+
+    "database": {
+      "match": { "labels": ["database", "postgres", "migration", "supabase"] },
+      "infrastructure": {
+        "setup": "supabase start",
+        "teardown": "supabase stop",
+        "healthcheck": "supabase status",
+        "timeout": 120
+      },
+      "requirements": [
+        "Verify migration is reversible (up and down)",
+        "Check query performance with EXPLAIN ANALYZE",
+        "Test with realistic data volume"
+      ],
+      "deliverables": ["migration up/down works", "no N+1 queries"],
+      "testCommand": "npm run test:db"
+    },
+
+    "integration": {
+      "match": { "labels": ["integration", "e2e", "api"] },
+      "infrastructure": {
+        "setup": "supabase start && npm run seed:test",
+        "teardown": "supabase stop"
+      },
+      "requirements": [
+        "Verify request/response contracts",
+        "Run full integration test suite",
+        "Check for breaking API changes"
+      ],
+      "deliverables": ["integration tests pass", "no breaking changes"],
+      "testCommand": "npm run test:integration"
+    },
+
+    "ui": {
+      "match": { "labels": ["ui", "frontend", "component", "visual"] },
+      "requirements": [
+        "Run component tests for affected components",
+        "Verify no visual regressions",
+        "Check accessibility (no new a11y violations)"
+      ],
+      "deliverables": ["component tests pass", "no console errors"],
+      "testCommand": "npm run test:components"
+    },
+
+    "default": {
+      "requirements": [
+        "Run unit tests",
+        "Verify fix addresses the issue described"
+      ],
+      "deliverables": ["unit tests pass"],
+      "testCommand": "npm test"
+    }
+  },
+
+  "constraints": {
+    "excludePaths": [".env*", "secrets/", "*.key", "*.pem"],
+    "requireTests": true,
+    "maxFilesChanged": 10
+  }
+}

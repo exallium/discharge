@@ -1,0 +1,14 @@
+{
+  "name": "ai-bug-fixer",
+  "private": true,
+  "description": "AI-powered bug fixing system",
+  "scripts": {
+    "test:unit": "npm run test:unit --prefix router",
+    "typecheck": "npm run typecheck --prefix router",
+    "lint": "npm run lint --prefix router",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}

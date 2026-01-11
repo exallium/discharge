@@ -126,24 +126,21 @@ cp .env.example .env
 nano .env
 ```
 
-**Required environment variables:**
+**Environment variables:**
 
 ```bash
-# GitHub (required)
-GITHUB_TOKEN=ghp_xxx                    # GitHub PAT with repo access
-GITHUB_WEBHOOK_SECRET=xxx               # Generate with: openssl rand -hex 32
-
-# Redis (required)
-REDIS_URL=redis://localhost:6379
-
-# System (required)
+# Core (required)
+REDIS_URL=redis://localhost:6379        # Job queue backend
 USER=yourusername                       # Your macOS/Linux username
 NODE_ENV=production
 
-# Optional service tokens
-SENTRY_AUTH_TOKEN=xxx                   # For Sentry trigger
+# Per-plugin (required only if using that plugin)
+GITHUB_TOKEN=ghp_xxx                    # GitHub VCS/trigger
+GITHUB_WEBHOOK_SECRET=xxx               # GitHub webhook validation
+SENTRY_AUTH_TOKEN=xxx                   # Sentry trigger
 SENTRY_ORG=your-org
-CIRCLECI_TOKEN=xxx                      # For CircleCI trigger
+CIRCLECI_TOKEN=xxx                      # CircleCI trigger
+# Claude Code runner uses local OAuth (claude auth) - no API key needed
 ```
 
 See `.env.example` for all available configuration options.
@@ -267,6 +264,65 @@ Once exposed, configure your services:
 **CircleCI:**
 - URL: `https://ai-bug-fixer.yourdomain.com/webhooks/circleci`
 - Events: Workflow completed
+
+## 🎯 Repository Configuration
+
+Customize how AI Bug Fixer handles bugs in your repository by adding a `.ai-bugs.json` file to your repo root.
+
+### Why Use `.ai-bugs.json`?
+
+- **Different bug types need different approaches** - UI bugs need visual testing, database bugs need migration safety checks
+- **Per-category infrastructure** - Only spin up Supabase/Postgres when the bug actually needs it
+- **Project-specific test commands** - Tell Claude exactly how to verify fixes in your project
+
+### Quick Start
+
+Copy the sample config to your repository:
+
+```bash
+cp .ai-bugs.json.sample /path/to/your/repo/.ai-bugs.json
+```
+
+### Example Configuration
+
+```json
+{
+  "version": "1",
+  "categories": {
+    "utility": {
+      "match": { "labels": ["utility", "helper"] },
+      "requirements": ["Run unit tests"],
+      "deliverables": ["unit tests pass"],
+      "testCommand": "npm test"
+    },
+    "database": {
+      "match": { "labels": ["database", "postgres"] },
+      "infrastructure": {
+        "setup": "supabase start",
+        "teardown": "supabase stop"
+      },
+      "requirements": ["Verify migration safety", "Check query performance"],
+      "deliverables": ["migration up/down works"],
+      "testCommand": "npm run test:db"
+    },
+    "default": {
+      "requirements": ["Run unit tests"],
+      "deliverables": ["unit tests pass"],
+      "testCommand": "npm test"
+    }
+  }
+}
+```
+
+### How It Works
+
+1. When a bug is triggered (e.g., GitHub issue with label `database`), the runner clones your repo
+2. It reads `.ai-bugs.json` and matches the issue labels to a category
+3. If the category has `infrastructure`, it runs the setup command before Claude starts
+4. Claude receives the category-specific requirements and test command in its prompt
+5. After Claude finishes, infrastructure is torn down automatically
+
+See [AGENTS.md](./AGENTS.md) for the full schema reference.
 
 ## 🔌 Plugin Development
 
@@ -647,30 +703,6 @@ The system is **production-ready** and can be deployed today for:
 - Error monitoring and fixing from Sentry
 - Test failure investigation from CircleCI
 - Custom triggers via plugin development
-
-## 🤝 Contributing
-
-Contributions welcome! Areas for contribution:
-
-**New Trigger Plugins:**
-- Linear (issue tracking)
-- Jira (issue tracking)
-- Datadog (monitoring)
-- PagerDuty (incidents)
-- Slack (slash commands)
-
-**New Runner Plugins:**
-- OpenAI (GPT-4 direct API)
-- Anthropic API (direct, without CLI)
-- Ollama (local LLMs)
-- Custom fine-tuned models
-
-**New VCS Plugins:**
-- GitLab (merge requests)
-- Bitbucket (pull requests)
-- Self-hosted Git
-
-**See [AGENTS.md](./AGENTS.md) for plugin development guide.**
 
 ## 📄 License
 

@@ -59,7 +59,7 @@ export function createWorker(concurrency = 2) {
     'claude-fix-jobs',
     processFixJob,
     {
-      connection,
+      connection: connection as never, // Type assertion for ioredis version mismatch
       concurrency,
       limiter: {
         max: 10, // Max 10 jobs per duration

@@ -324,7 +324,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
    * Generate investigation tools for GitHub issues
    */
   getTools(event: TriggerEvent): Tool[] {
-    const { issueNumber, issueUrl } = event.metadata;
+    const { issueNumber } = event.metadata;
     const repoFullName = event.triggerId.split('#')[0];
     const [owner, repo] = repoFullName.split('/');
 

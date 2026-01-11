@@ -1,6 +1,6 @@
 import { TriggerPlugin, TriggerEvent, FixStatus } from '../triggers/base';
 import { findProjectById } from '../config/projects';
-import { generateAndMountTools, generateToolsReadme, validateTools } from './tools';
+import { validateTools } from './tools';
 import { buildInvestigationPrompt } from './prompts';
 import { getRunner, RunnerPlugin } from './base';
 import { getVCSPlugin } from '../vcs';
@@ -61,6 +61,7 @@ export async function orchestrateFix(
       tools,
       timeoutMs: project.runner?.timeout || 600000, // 10 minutes default
       env: project.runner?.env,
+      eventLabels: event.metadata?.tags || [],
     });
 
     // Handle failure

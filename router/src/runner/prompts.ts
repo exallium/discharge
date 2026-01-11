@@ -1,4 +1,8 @@
 import { TriggerPlugin, TriggerEvent, Tool } from '../triggers/base';
+import {
+  BugFixConfig,
+  findMatchingCategory,
+} from './bug-config';
 
 /**
  * Build a generic investigation prompt for Claude
@@ -115,4 +119,76 @@ Investigate this issue:
 
 Create a file at \`.claude/analysis.json\` with your findings.
 `.trim();
+}
+
+/**
+ * Enhance a prompt with category-specific requirements from .ai-bugs.json
+ *
+ * @param basePrompt - The base investigation prompt
+ * @param bugConfig - Config from .ai-bugs.json (or undefined if not present)
+ * @param eventLabels - Labels from the trigger event
+ * @returns Enhanced prompt with category requirements
+ */
+export function buildCategoryPrompt(
+  basePrompt: string,
+  bugConfig: BugFixConfig | undefined,
+  eventLabels: string[]
+): string {
+  if (!bugConfig?.categories) return basePrompt;
+
+  const category = findMatchingCategory(bugConfig.categories, eventLabels);
+  if (!category) return basePrompt;
+
+  const requirementsSection =
+    category.requirements.length > 0
+      ? `## Project-Specific Requirements
+
+${category.requirements.map((r) => `- ${r}`).join('\n')}
+`
+      : '';
+
+  const deliverablesSection =
+    category.deliverables.length > 0
+      ? `## Required Deliverables
+
+${category.deliverables.map((d) => `- [ ] ${d}`).join('\n')}
+`
+      : '';
+
+  const testSection = category.testCommand
+    ? `## Test Command
+
+Run this command to verify your fix:
+\`\`\`bash
+${category.testCommand}
+\`\`\`
+`
+    : '';
+
+  return `${basePrompt}
+
+${requirementsSection}${deliverablesSection}${testSection}`.trim();
+}
+
+/**
+ * Get the matched category for logging/debugging
+ */
+export function getMatchedCategoryName(
+  bugConfig: BugFixConfig | undefined,
+  eventLabels: string[]
+): string | undefined {
+  if (!bugConfig?.categories) return undefined;
+
+  const normalizedLabels = eventLabels.map((l) => l.toLowerCase());
+
+  for (const [name, config] of Object.entries(bugConfig.categories)) {
+    if (name === 'default') continue;
+
+    const matchLabels = config.match?.labels?.map((l) => l.toLowerCase()) || [];
+    if (matchLabels.some((label) => normalizedLabels.includes(label))) {
+      return name;
+    }
+  }
+
+  return bugConfig.categories.default ? 'default' : undefined;
 }

@@ -2,8 +2,8 @@ import { Request, Response } from 'express';
 import { connection } from './queue';
 import { getQueueStats } from './queue';
 import { triggers } from './triggers';
-import { vcsPlugins } from './vcs';
-import { runners } from './runner';
+import { getAllVCSPlugins } from './vcs';
+import { getAllRunners } from './runner';
 
 /**
  * Health check status
@@ -223,8 +223,9 @@ async function checkTriggers(): Promise<CheckResult> {
  * Check VCS plugins
  */
 async function checkVCS(): Promise<CheckResult> {
-  const registeredCount = vcsPlugins.length;
-  const vcsTypes = vcsPlugins.map(v => v.type);
+  const plugins = getAllVCSPlugins();
+  const registeredCount = plugins.length;
+  const vcsTypes = plugins.map(v => v.type);
 
   return {
     status: registeredCount > 0 ? 'pass' : 'warn',
@@ -241,8 +242,9 @@ async function checkVCS(): Promise<CheckResult> {
  * Check runner plugins
  */
 async function checkRunners(): Promise<CheckResult> {
-  const registeredCount = runners.length;
-  const runnerIds = runners.map(r => r.id);
+  const runnerPlugins = getAllRunners();
+  const registeredCount = runnerPlugins.length;
+  const runnerIds = runnerPlugins.map(r => r.id);
 
   return {
     status: registeredCount > 0 ? 'pass' : 'fail',

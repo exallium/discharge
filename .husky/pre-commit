@@ -1,0 +1,2 @@
+cd router
+npm run test:unit && npm run typecheck && npm run lint
