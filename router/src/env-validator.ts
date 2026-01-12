@@ -113,6 +113,41 @@ const envRules: EnvRule[] = [
     defaultValue: 'json',
     validate: (v) => ['json', 'pretty'].includes(v.toLowerCase()),
   },
+
+  // Database
+  {
+    name: 'DATABASE_URL',
+    required: true,
+    description: 'PostgreSQL connection URL',
+    validate: (v) => v.startsWith('postgres://') || v.startsWith('postgresql://'),
+  },
+  {
+    name: 'DB_ENCRYPTION_KEY',
+    required: true,
+    description: 'AES-256 encryption key for secrets (32 bytes, base64 encoded)',
+    validate: (v) => {
+      try {
+        const decoded = Buffer.from(v, 'base64');
+        return decoded.length === 32;
+      } catch {
+        return false;
+      }
+    },
+  },
+
+  // Admin UI
+  {
+    name: 'ADMIN_USERNAME',
+    required: false,
+    description: 'Admin UI username',
+    defaultValue: 'admin',
+  },
+  {
+    name: 'ADMIN_PASSWORD',
+    required: false, // Will warn if not set
+    description: 'Admin UI password (min 12 characters)',
+    validate: (v) => v.length >= 12,
+  },
 ];
 
 /**
@@ -198,6 +233,14 @@ function validateRelatedVars(errors: string[], warnings: string[]): void {
     if (process.env.REDIS_URL?.includes('localhost')) {
       warnings.push('Running in production with localhost Redis - use a production Redis instance');
     }
+
+    if (process.env.DATABASE_URL?.includes('localhost')) {
+      warnings.push('Running in production with localhost PostgreSQL - use a production database');
+    }
+
+    if (!process.env.ADMIN_PASSWORD) {
+      errors.push('ADMIN_PASSWORD is required in production for admin UI security');
+    }
   }
 }
 
@@ -242,9 +285,11 @@ interface EnvInfo {
   nodeEnv: string;
   port: string | number;
   redisConfigured: boolean;
+  databaseConfigured: boolean;
   githubConfigured: boolean;
   sentryConfigured: boolean;
   circleCIConfigured: boolean;
+  adminConfigured: boolean;
   logLevel: string;
   logFormat: string;
 }
@@ -260,9 +305,11 @@ export function getEnvInfo(): EnvInfo {
     nodeEnv: process.env.NODE_ENV || 'development',
     port: process.env.PORT || 3000,
     redisConfigured: !!process.env.REDIS_URL,
+    databaseConfigured: !!process.env.DATABASE_URL,
     githubConfigured: !!process.env.GITHUB_TOKEN,
     sentryConfigured: !!process.env.SENTRY_AUTH_TOKEN,
     circleCIConfigured: !!process.env.CIRCLECI_TOKEN,
+    adminConfigured: !!process.env.ADMIN_PASSWORD,
     logLevel: process.env.LOG_LEVEL || 'info',
     logFormat: process.env.LOG_FORMAT || 'json',
   };

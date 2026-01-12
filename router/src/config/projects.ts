@@ -1,5 +1,16 @@
 /**
  * Project configuration for repositories that can be auto-fixed
+ *
+ * This module provides the interface for project configuration and
+ * functions to query projects from the database.
+ *
+ * Note: Functions are async as they query the PostgreSQL database.
+ */
+
+import { projectsRepo } from '../db/repositories';
+
+/**
+ * Project configuration interface
  */
 export interface ProjectConfig {
   id: string;
@@ -58,63 +69,59 @@ export interface TriggerSourceConfig {
 }
 
 /**
- * Registry of all configured projects
- * Add your projects here
+ * @deprecated Use findProjectById instead. This array is no longer used.
+ * Kept for backward compatibility with tests.
  */
-export const projects: ProjectConfig[] = [
-  // Example:
-  // {
-  //   id: 'my-app',
-  //   repo: 'git@github.com:owner/my-app.git',
-  //   repoFullName: 'owner/my-app',
-  //   branch: 'main',
-  //   vcs: {
-  //     type: 'github',
-  //     owner: 'owner',
-  //     repo: 'my-app',
-  //     reviewers: ['alice', 'bob'],
-  //     labels: ['automated-fix', 'needs-review']
-  //   },
-  //   triggers: {
-  //     sentry: { projectSlug: 'my-app-prod', enabled: true },
-  //     github: {
-  //       issues: true,
-  //       labels: ['bug', 'ai-fix'],
-  //       requireLabel: true,           // Only process issues with specified labels
-  //       commentTrigger: '/claude fix', // Or manually trigger via comment
-  //       allowedUsers: ['alice', 'bob'] // Only these users can trigger via comment
-  //     }
-  //   },
-  //   constraints: {
-  //     maxAttemptsPerDay: 10,
-  //     excludedPaths: ['.env', 'config/secrets.yml']
-  //   }
-  // }
-];
+export const projects: ProjectConfig[] = [];
 
 /**
  * Find a project by its ID
  */
-export function findProjectById(id: string): ProjectConfig | undefined {
-  return projects.find(p => p.id === id);
+export async function findProjectById(id: string): Promise<ProjectConfig | undefined> {
+  const project = await projectsRepo.findById(id);
+  return project ? toProjectConfig(project) : undefined;
 }
 
 /**
  * Find a project by repository full name (owner/repo)
  */
-export function findProjectByRepo(repoFullName: string): ProjectConfig | undefined {
-  return projects.find(p => p.repoFullName === repoFullName);
+export async function findProjectByRepo(repoFullName: string): Promise<ProjectConfig | undefined> {
+  const project = await projectsRepo.findByRepo(repoFullName);
+  return project ? toProjectConfig(project) : undefined;
 }
 
 /**
  * Find projects by source configuration
  */
-export function findProjectsBySource(
+export async function findProjectsBySource(
   sourceType: string,
   matcher: (config: TriggerSourceConfig) => boolean
-): ProjectConfig[] {
-  return projects.filter(p => {
-    const trigger = p.triggers[sourceType];
-    return trigger && matcher(trigger);
-  });
+): Promise<ProjectConfig[]> {
+  const dbProjects = await projectsRepo.findBySource(sourceType, matcher);
+  return dbProjects.map(toProjectConfig);
+}
+
+/**
+ * Get all projects
+ */
+export async function getAllProjects(includeDisabled = false): Promise<ProjectConfig[]> {
+  const dbProjects = await projectsRepo.findAll(includeDisabled);
+  return dbProjects.map(toProjectConfig);
+}
+
+/**
+ * Convert repository ProjectConfig to interface ProjectConfig
+ * (They should be the same, but this ensures type compatibility)
+ */
+function toProjectConfig(repo: projectsRepo.ProjectConfig): ProjectConfig {
+  return {
+    id: repo.id,
+    repo: repo.repo,
+    repoFullName: repo.repoFullName,
+    branch: repo.branch,
+    vcs: repo.vcs,
+    runner: repo.runner,
+    triggers: repo.triggers as ProjectConfig['triggers'],
+    constraints: repo.constraints,
+  };
 }

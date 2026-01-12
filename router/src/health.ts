@@ -4,6 +4,7 @@ import { triggers } from './triggers';
 import { getAllVCSPlugins } from './vcs';
 import { getAllRunners } from './runner';
 import { getErrorMessage } from './types/errors';
+import { checkDatabaseHealth, isDatabaseInitialized } from './db';
 
 /**
  * Health check status
@@ -14,6 +15,7 @@ export interface HealthStatus {
   uptime: number;
   version: string;
   checks: {
+    database: CheckResult;
     redis: CheckResult;
     queue: CheckResult;
     triggers: CheckResult;
@@ -38,6 +40,7 @@ export interface ReadinessStatus {
   ready: boolean;
   timestamp: string;
   checks: {
+    database: boolean;
     redis: boolean;
     queue: boolean;
   };
@@ -52,6 +55,7 @@ const startTime = Date.now();
 export async function healthCheck(req: Request, res: Response): Promise<void> {
   try {
     const checks = await Promise.all([
+      checkDatabase(),
       checkRedis(),
       checkQueue(),
       checkTriggers(),
@@ -59,7 +63,7 @@ export async function healthCheck(req: Request, res: Response): Promise<void> {
       checkRunners(),
     ]);
 
-    const [redis, queue, triggersCheck, vcsCheck, runnersCheck] = checks;
+    const [database, redis, queue, triggersCheck, vcsCheck, runnersCheck] = checks;
 
     // Determine overall status
     const hasFailed = checks.some(c => c.status === 'fail');
@@ -71,6 +75,7 @@ export async function healthCheck(req: Request, res: Response): Promise<void> {
       uptime: Math.floor((Date.now() - startTime) / 1000),
       version: process.env.npm_package_version || '1.0.0',
       checks: {
+        database,
         redis,
         queue,
         triggers: triggersCheck,
@@ -101,17 +106,19 @@ export async function healthCheck(req: Request, res: Response): Promise<void> {
  */
 export async function readinessCheck(req: Request, res: Response): Promise<void> {
   try {
-    const [redisReady, queueReady] = await Promise.all([
+    const [databaseReady, redisReady, queueReady] = await Promise.all([
+      checkDatabaseConnectivity(),
       checkRedisConnectivity(),
       checkQueueConnectivity(),
     ]);
 
-    const ready = redisReady && queueReady;
+    const ready = databaseReady && redisReady && queueReady;
 
     const status: ReadinessStatus = {
       ready,
       timestamp: new Date().toISOString(),
       checks: {
+        database: databaseReady,
         redis: redisReady,
         queue: queueReady,
       },
@@ -277,6 +284,50 @@ async function checkRedisConnectivity(): Promise<boolean> {
 async function checkQueueConnectivity(): Promise<boolean> {
   try {
     await getQueueStats();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check database health
+ */
+async function checkDatabase(): Promise<CheckResult> {
+  try {
+    if (!isDatabaseInitialized()) {
+      return {
+        status: 'fail',
+        message: 'Database not initialized',
+      };
+    }
+
+    const health = await checkDatabaseHealth();
+
+    return {
+      status: health.latency < 100 ? 'pass' : 'warn',
+      message: health.latency < 100 ? 'Database healthy' : 'Database slow',
+      latency: `${health.latency}ms`,
+      version: health.version,
+    };
+  } catch (error) {
+    return {
+      status: 'fail',
+      message: 'Database connection failed',
+      error: getErrorMessage(error),
+    };
+  }
+}
+
+/**
+ * Simple database connectivity check
+ */
+async function checkDatabaseConnectivity(): Promise<boolean> {
+  try {
+    if (!isDatabaseInitialized()) {
+      return false;
+    }
+    await checkDatabaseHealth();
     return true;
   } catch {
     return false;

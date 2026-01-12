@@ -75,7 +75,7 @@ export class SentryTrigger implements TriggerPlugin {
       return null;
     }
 
-    const projects = findProjectsBySource('sentry', (config) => {
+    const projects = await findProjectsBySource('sentry', (config) => {
       return !!config.enabled && config.projectSlug === sentryProject.slug;
     });
 

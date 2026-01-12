@@ -2,10 +2,12 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { webhookRouter } from './webhooks';
 import { statusRouter } from './webhooks/status';
+import { adminRouter } from './admin';
 import { initializeQueue, closeQueue } from './queue';
 import { createWorker, shutdownWorker } from './queue/worker';
 import { initializeVCS } from './vcs';
 import { initRunners } from './runner';
+import { initializeDatabase, closeDatabase, isFirstRunSetup } from './db';
 import { Worker } from 'bullmq';
 import { healthCheck, readinessCheck, livenessCheck } from './health';
 import { logger, requestLogger, logUnhandledErrors } from './logger';
@@ -30,6 +32,7 @@ app.use(requestLogger());
 
 // Routes
 app.use('/webhooks', webhookRateLimiter, webhookRouter);
+app.use('/admin', apiRateLimiter, adminRouter);
 app.use('/', apiRateLimiter, statusRouter);
 
 // Health check endpoints (with lenient rate limiting)
@@ -56,6 +59,12 @@ app.use((err: unknown, req: express.Request, res: express.Response, _next: expre
 
 // Start server
 async function main() {
+  // Initialize database first (required for other services)
+  await initializeDatabase();
+
+  // Check if this is first-run setup
+  const isFirstRun = await isFirstRunSetup();
+
   // Initialize VCS plugins
   initializeVCS();
 
@@ -72,16 +81,27 @@ async function main() {
   // Start HTTP server
   const port = process.env.PORT || 3000;
   app.listen(port, () => {
+    const baseUrl = `http://localhost:${port}`;
+
     logger.info('AI Bug Fixer Router started', {
       port,
       nodeEnv: process.env.NODE_ENV || 'development',
+      firstRun: isFirstRun,
       endpoints: {
-        health: `http://localhost:${port}/health`,
-        ready: `http://localhost:${port}/ready`,
-        live: `http://localhost:${port}/live`,
-        dashboard: `http://localhost:${port}/dashboard`,
+        health: `${baseUrl}/health`,
+        ready: `${baseUrl}/ready`,
+        live: `${baseUrl}/live`,
+        admin: `${baseUrl}/admin`,
+        dashboard: `${baseUrl}/dashboard`,
       },
     });
+
+    if (isFirstRun) {
+      logger.info('='.repeat(60));
+      logger.info('FIRST RUN SETUP REQUIRED');
+      logger.info(`Visit ${baseUrl}/admin to configure your projects and settings`);
+      logger.info('='.repeat(60));
+    }
   });
 }
 
@@ -94,6 +114,7 @@ async function shutdown() {
   }
 
   await closeQueue();
+  await closeDatabase();
 
   logger.info('Shutdown complete');
   process.exit(0);

@@ -1,6 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import Redis from 'ioredis';
+import postgres from 'postgres';
 import path from 'path';
 
 const execAsync = promisify(exec);
@@ -14,6 +15,7 @@ const COMPOSE_FILE = path.join(REPO_ROOT, 'docker-compose.test.yml');
  */
 export class IntegrationTestEnvironment {
   private redis?: Redis;
+  private sql?: postgres.Sql;
   private setupComplete = false;
 
   /**
@@ -38,8 +40,11 @@ export class IntegrationTestEnvironment {
       throw error;
     }
 
-    // Wait for Redis to be healthy
-    await this.waitForRedis();
+    // Wait for services to be healthy
+    await Promise.all([
+      this.waitForRedis(),
+      this.waitForPostgres(),
+    ]);
 
     this.setupComplete = true;
     console.log('Test infrastructure ready');
@@ -59,6 +64,16 @@ export class IntegrationTestEnvironment {
         // Ignore errors during cleanup
       }
       this.redis = undefined;
+    }
+
+    // Disconnect Postgres
+    if (this.sql) {
+      try {
+        await this.sql.end();
+      } catch {
+        // Ignore errors during cleanup
+      }
+      this.sql = undefined;
     }
 
     // Stop test containers
@@ -91,6 +106,22 @@ export class IntegrationTestEnvironment {
   }
 
   /**
+   * Get Postgres client for testing
+   */
+  getPostgres(): postgres.Sql {
+    if (!this.sql) {
+      this.sql = postgres({
+        host: 'localhost',
+        port: 5433,
+        database: 'ai_bug_fixer_test',
+        username: 'test',
+        password: 'testpassword',
+      });
+    }
+    return this.sql;
+  }
+
+  /**
    * Clear Redis test database
    */
   async clearRedis(): Promise<void> {
@@ -98,6 +129,15 @@ export class IntegrationTestEnvironment {
     // Ensure we're on the test DB
     await redis.select(15);
     await redis.flushdb();
+  }
+
+  /**
+   * Clear all database tables
+   */
+  async clearDatabase(): Promise<void> {
+    const sql = this.getPostgres();
+    // Clear tables in correct order (respecting foreign keys)
+    await sql`TRUNCATE TABLE audit_log, job_history, settings, projects RESTART IDENTITY CASCADE`;
   }
 
   /**
@@ -125,6 +165,34 @@ export class IntegrationTestEnvironment {
       }
     }
     throw new Error(`Redis did not become ready within timeout: ${lastError?.message}`);
+  }
+
+  /**
+   * Wait for PostgreSQL to be ready
+   */
+  private async waitForPostgres(timeout = 30000): Promise<void> {
+    const start = Date.now();
+    let lastError: Error | undefined;
+
+    while (Date.now() - start < timeout) {
+      try {
+        const sql = postgres({
+          host: 'localhost',
+          port: 5433,
+          database: 'ai_bug_fixer_test',
+          username: 'test',
+          password: 'testpassword',
+          connect_timeout: 5,
+        });
+        await sql`SELECT 1`;
+        await sql.end();
+        return;
+      } catch (error: unknown) {
+        lastError = error as Error;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    throw new Error(`PostgreSQL did not become ready within timeout: ${lastError?.message}`);
   }
 }
 

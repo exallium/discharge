@@ -30,7 +30,7 @@ describe('CircleCITrigger', () => {
 
   beforeEach(() => {
     trigger = new CircleCITrigger();
-    mockFindProjectsBySource.mockReturnValue([mockProject]);
+    mockFindProjectsBySource.mockResolvedValue([mockProject]);
     delete process.env.CIRCLECI_WEBHOOK_SECRET;
   });
 
@@ -193,7 +193,7 @@ describe('CircleCITrigger', () => {
     });
 
     it('should return null if project not found', async () => {
-      mockFindProjectsBySource.mockReturnValue([]);
+      mockFindProjectsBySource.mockResolvedValue([]);
 
       const event = await trigger.parseWebhook(failedWorkflowPayload);
       expect(event).toBeNull();

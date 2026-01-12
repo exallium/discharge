@@ -4,6 +4,23 @@ services:
   # ─────────────────────────────────────────────
   # Infrastructure
   # ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ai_bug_fixer
+      POSTGRES_USER: ${POSTGRES_USER:-aibugfixer}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aibugfixer}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     volumes:
@@ -23,11 +40,17 @@ services:
   router:
     build: ./router
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     environment:
       - NODE_ENV=production
       - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgres://${POSTGRES_USER:-aibugfixer}:${POSTGRES_PASSWORD}@postgres:5432/ai_bug_fixer
+      - DB_ENCRYPTION_KEY=${DB_ENCRYPTION_KEY}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
       - SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
@@ -98,6 +121,7 @@ networks:
     driver: bridge
 
 volumes:
+  postgres_data:
   redis_data:
   portainer_data:
   workspaces:

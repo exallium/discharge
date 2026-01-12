@@ -39,7 +39,7 @@ describe('SentryTrigger', () => {
     jest.clearAllMocks();
 
     // Default: return mock project
-    mockFindProjectsBySource.mockReturnValue([mockProject]);
+    mockFindProjectsBySource.mockResolvedValue([mockProject]);
 
     // Clear environment variables
     delete process.env.SENTRY_WEBHOOK_SECRET;
@@ -160,7 +160,7 @@ describe('SentryTrigger', () => {
     });
 
     it('should return null when no matching project is found', async () => {
-      mockFindProjectsBySource.mockReturnValue([]);
+      mockFindProjectsBySource.mockResolvedValue([]);
 
       const payload = mockWebhookPayloads.sentry.issueCreated;
       const event = await trigger.parseWebhook(payload);
@@ -171,7 +171,7 @@ describe('SentryTrigger', () => {
 
     it('should use first project when multiple matches are found', async () => {
       const secondProject = { ...mockProject, id: 'second-project' };
-      mockFindProjectsBySource.mockReturnValue([mockProject, secondProject]);
+      mockFindProjectsBySource.mockResolvedValue([mockProject, secondProject]);
 
       const payload = mockWebhookPayloads.sentry.issueCreated;
       const event = await trigger.parseWebhook(payload);

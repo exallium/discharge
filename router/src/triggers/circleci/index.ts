@@ -92,7 +92,7 @@ export class CircleCITrigger implements TriggerPlugin {
     }
 
     // Find project by CircleCI project slug or VCS URL
-    const project = this.findProjectFromPayload(payload);
+    const project = await this.findProjectFromPayload(payload);
     if (!project) {
       return null;
     }
@@ -150,7 +150,7 @@ export class CircleCITrigger implements TriggerPlugin {
     }
 
     // Find project
-    const project = this.findProjectFromPayload(payload);
+    const project = await this.findProjectFromPayload(payload);
     if (!project) {
       return null;
     }
@@ -193,7 +193,7 @@ export class CircleCITrigger implements TriggerPlugin {
   /**
    * Find project from CircleCI payload
    */
-  private findProjectFromPayload(payload: CircleCIWebhookPayload): ProjectConfig | null {
+  private async findProjectFromPayload(payload: CircleCIWebhookPayload): Promise<ProjectConfig | null> {
     // Project slug can be in pipeline.project_slug or project.slug
     const projectSlug = payload.pipeline?.project_slug || payload.project?.slug;
 
@@ -202,7 +202,7 @@ export class CircleCITrigger implements TriggerPlugin {
       return null;
     }
 
-    const projects = findProjectsBySource('circleci', (config) => {
+    const projects = await findProjectsBySource('circleci', (config) => {
       return !!config.enabled && config.projectSlug === projectSlug;
     });
 

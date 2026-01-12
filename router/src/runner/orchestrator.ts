@@ -20,7 +20,7 @@ export async function orchestrateFix(
 
   try {
     // Get project configuration
-    const project = findProjectById(event.projectId);
+    const project = await findProjectById(event.projectId);
     if (!project) {
       throw new Error(`Project not found: ${event.projectId}`);
     }

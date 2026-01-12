@@ -13,6 +13,58 @@ version: "3.8"
 
 services:
   # ─────────────────────────────────────────────
+  # PostgreSQL - Configuration Database
+  # ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: claude-agent-postgres
+
+    # Security: Run as postgres user
+    user: "70:70"
+
+    # Environment
+    environment:
+      POSTGRES_DB: ai_bug_fixer
+      POSTGRES_USER: ${POSTGRES_USER:-aibugfixer}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    # Persistent storage
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    # Network isolation
+    networks:
+      - internal
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Health check
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aibugfixer}"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────
   # Redis - Job Queue Backend
   # ─────────────────────────────────────────────
   redis:
@@ -67,8 +119,10 @@ services:
       dockerfile: Dockerfile
     container_name: claude-agent-router
 
-    # Depends on Redis
+    # Depends on PostgreSQL and Redis
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -78,6 +132,14 @@ services:
       - REDIS_URL=redis://redis:6379
       - PORT=3000
       - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-2}
+
+      # Database
+      - DATABASE_URL=postgres://${POSTGRES_USER:-aibugfixer}:${POSTGRES_PASSWORD}@postgres:5432/ai_bug_fixer
+      - DB_ENCRYPTION_KEY=${DB_ENCRYPTION_KEY}
+
+      # Admin UI
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
 
       # GitHub
       - GITHUB_TOKEN=${GITHUB_TOKEN}
@@ -249,6 +311,8 @@ networks:
 # Volumes
 # =============================================================================
 volumes:
+  postgres_data:
+    name: claude-agent-postgres-data
   redis_data:
     name: claude-agent-redis-data
   workspaces:

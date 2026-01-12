@@ -104,7 +104,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
 
     // Find project configuration
     const repoFullName = repository.full_name; // owner/repo
-    const project = findProjectByRepo(repoFullName);
+    const project = await findProjectByRepo(repoFullName);
 
     if (!project) {
       console.log(`[GitHubIssuesTrigger] No project configured for repo: ${repoFullName}`);
@@ -181,7 +181,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
 
     // Find project configuration
     const repoFullName = repository.full_name;
-    const project = findProjectByRepo(repoFullName);
+    const project = await findProjectByRepo(repoFullName);
 
     if (!project) {
       console.log(`[GitHubIssuesTrigger] No project configured for repo: ${repoFullName}`);

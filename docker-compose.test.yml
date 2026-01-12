@@ -1,4 +1,25 @@
 services:
+  # PostgreSQL for testing (uses different port)
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: claude-agent-postgres-test
+    environment:
+      POSTGRES_DB: ai_bug_fixer_test
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: testpassword
+    ports:
+      - "5433:5432"
+    networks:
+      - test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test"]
+      interval: 2s
+      timeout: 3s
+      retries: 5
+    # Use tmpfs for faster tests (no persistence needed)
+    tmpfs:
+      - /var/lib/postgresql/data
+
   # Redis for testing (uses different DB and port)
   redis-test:
     image: redis:7-alpine
