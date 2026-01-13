@@ -1,4 +1,22 @@
-import { Request } from 'express';
+import type { ConversationEvent } from '../types/conversation';
+import type { ProjectConfig } from '../db/repositories/projects';
+
+/**
+ * Generic webhook headers interface
+ * Works with both Express headers (object) and Next.js Headers (class)
+ */
+export interface WebhookHeaders {
+  get(name: string): string | null;
+}
+
+/**
+ * Generic webhook request interface
+ * Works with both Express Request and Next.js NextRequest
+ */
+export interface WebhookRequest {
+  headers: WebhookHeaders;
+  body: unknown;
+}
 
 /**
  * Normalized event from any bug tracking trigger
@@ -74,7 +92,7 @@ export interface TriggerPlugin {
   type: string;
 
   // Webhook handling
-  validateWebhook(req: Request): Promise<boolean>;
+  validateWebhook(req: WebhookRequest): Promise<boolean>;
   parseWebhook(payload: unknown): Promise<TriggerEvent | null>;
 
   // Tool generation
@@ -90,4 +108,58 @@ export interface TriggerPlugin {
 
   // Optional: Pre-filtering
   shouldProcess?(event: TriggerEvent): Promise<boolean>;
+
+  // ========================================
+  // Conversation Support (Optional)
+  // ========================================
+
+  /**
+   * Whether this trigger supports conversation mode
+   */
+  supportsConversation?: boolean;
+
+  /**
+   * Parse incoming webhook into a ConversationEvent
+   * Used for conversation-mode triggers to normalize platform events
+   *
+   * @param payload - Raw webhook payload
+   * @param project - Project configuration
+   * @returns Normalized conversation event or null if not a conversation event
+   */
+  parseConversationEvent?(
+    payload: unknown,
+    project?: ProjectConfig
+  ): Promise<ConversationEvent | null>;
+
+  /**
+   * Get unique conversation identifier from trigger event
+   * Example: 'owner/repo#123' for GitHub issues
+   *
+   * @param event - Trigger event
+   * @returns Unique conversation ID string
+   */
+  getConversationId?(event: TriggerEvent): string;
+
+  /**
+   * Get routing tags from trigger event
+   * Used to determine route mode (ai:plan, ai:auto, ai:assist)
+   *
+   * @param event - Trigger event
+   * @returns Array of tag strings
+   */
+  getRoutingTags?(event: TriggerEvent): string[];
+
+  /**
+   * Post feedback/reply to the trigger's platform
+   * Example: Post a comment on the GitHub issue
+   *
+   * @param event - Original trigger event
+   * @param message - Message content to post
+   * @param project - Project configuration
+   */
+  postFeedback?(
+    event: TriggerEvent,
+    message: string,
+    project?: ProjectConfig
+  ): Promise<void>;
 }

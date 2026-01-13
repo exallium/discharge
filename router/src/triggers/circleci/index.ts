@@ -1,6 +1,5 @@
-import { Request } from 'express';
 import crypto from 'crypto';
-import { TriggerPlugin, TriggerEvent, Tool, FixStatus } from '../base';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest } from '../base';
 import { findProjectsBySource, ProjectConfig } from '../../config/projects';
 import { CircleCIWebhookPayload, isWorkflowEvent, isJobEvent, isFailedWorkflow, isFailedJob } from '../../types/webhooks/circleci';
 
@@ -21,11 +20,18 @@ export class CircleCITrigger implements TriggerPlugin {
   type = 'circleci';
 
   /**
+   * Get header value from WebhookRequest
+   */
+  private getHeader(req: WebhookRequest, name: string): string | null {
+    return req.headers.get(name);
+  }
+
+  /**
    * Validate CircleCI webhook signature
    * https://circleci.com/docs/webhooks/#validate-webhooks
    */
-  async validateWebhook(req: Request): Promise<boolean> {
-    const signature = req.headers['circleci-signature'] as string;
+  async validateWebhook(req: WebhookRequest): Promise<boolean> {
+    const signature = this.getHeader(req, 'circleci-signature');
 
     // If no signature provided and no secret configured, accept it
     if (!signature) {

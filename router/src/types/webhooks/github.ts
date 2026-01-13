@@ -136,12 +136,71 @@ export interface GitHubPullRequestEventPayload {
 }
 
 /**
+ * GitHub Pull Request Review
+ */
+export interface GitHubPullRequestReview {
+  id: number;
+  user: GitHubUser | null;
+  body: string | null;
+  state: 'approved' | 'changes_requested' | 'commented' | 'dismissed' | 'pending';
+  html_url: string;
+  submitted_at: string;
+  commit_id: string;
+}
+
+/**
+ * GitHub Pull Request Review Comment (inline comment)
+ */
+export interface GitHubPullRequestReviewComment {
+  id: number;
+  body: string;
+  path: string;
+  position?: number | null;
+  line?: number | null;
+  original_line?: number | null;
+  start_line?: number | null;
+  original_start_line?: number | null;
+  side?: 'LEFT' | 'RIGHT';
+  diff_hunk: string;
+  commit_id: string;
+  html_url: string;
+  user: GitHubUser | null;
+  created_at: string;
+  updated_at: string;
+  in_reply_to_id?: number;
+}
+
+/**
+ * GitHub Pull Request Review Event Payload
+ */
+export interface GitHubPullRequestReviewEventPayload {
+  action: 'submitted' | 'edited' | 'dismissed';
+  review: GitHubPullRequestReview;
+  pull_request: GitHubPullRequest;
+  repository: GitHubRepository;
+  sender: GitHubUser;
+}
+
+/**
+ * GitHub Pull Request Review Comment Event Payload
+ */
+export interface GitHubPullRequestReviewCommentEventPayload {
+  action: 'created' | 'edited' | 'deleted';
+  comment: GitHubPullRequestReviewComment;
+  pull_request: GitHubPullRequest;
+  repository: GitHubRepository;
+  sender: GitHubUser;
+}
+
+/**
  * Union type for all GitHub webhook payloads we handle
  */
 export type GitHubWebhookPayload =
   | GitHubIssueEventPayload
   | GitHubIssueCommentEventPayload
-  | GitHubPullRequestEventPayload;
+  | GitHubPullRequestEventPayload
+  | GitHubPullRequestReviewEventPayload
+  | GitHubPullRequestReviewCommentEventPayload;
 
 /**
  * Type guard for issue event
@@ -161,5 +220,19 @@ export function isIssueCommentEvent(payload: GitHubWebhookPayload): payload is G
  * Type guard for pull request event
  */
 export function isPullRequestEvent(payload: GitHubWebhookPayload): payload is GitHubPullRequestEventPayload {
-  return 'pull_request' in payload;
+  return 'pull_request' in payload && !('review' in payload) && !('comment' in payload);
+}
+
+/**
+ * Type guard for pull request review event
+ */
+export function isPullRequestReviewEvent(payload: GitHubWebhookPayload): payload is GitHubPullRequestReviewEventPayload {
+  return 'review' in payload && 'pull_request' in payload;
+}
+
+/**
+ * Type guard for pull request review comment event
+ */
+export function isPullRequestReviewCommentEvent(payload: GitHubWebhookPayload): payload is GitHubPullRequestReviewCommentEventPayload {
+  return 'comment' in payload && 'pull_request' in payload && !('issue' in payload);
 }

@@ -57,6 +57,19 @@ export interface ProjectConfig {
     allowedPaths?: string[];     // Restrict Claude to these directories
     excludedPaths?: string[];    // Never touch these files/dirs
   };
+
+  // Conversation mode configuration
+  conversation?: {
+    enabled?: boolean;             // Enable conversational feedback loop
+    autoExecuteThreshold?: number; // Confidence threshold for auto-execute (0.0-1.0)
+    maxIterations?: number;        // Max feedback iterations per conversation
+    planDirectory?: string;        // Directory for plan files in target repos
+    routingTags?: {
+      plan?: string;               // Tag to trigger plan-review mode (e.g., 'ai:plan')
+      auto?: string;               // Tag to trigger auto-execute mode (e.g., 'ai:auto')
+      assist?: string;             // Tag to trigger assist-only mode (e.g., 'ai:assist')
+    };
+  };
 }
 
 /**
@@ -123,5 +136,6 @@ function toProjectConfig(repo: projectsRepo.ProjectConfig): ProjectConfig {
     runner: repo.runner,
     triggers: repo.triggers as ProjectConfig['triggers'],
     constraints: repo.constraints,
+    conversation: repo.conversation,
   };
 }

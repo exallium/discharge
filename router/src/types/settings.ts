@@ -284,9 +284,159 @@ export const notificationsSettingsSchema: PluginSettingsSchema = {
   ],
 };
 
+/**
+ * Conversation settings schema (global defaults)
+ */
+export const conversationSettingsSchema: PluginSettingsSchema = {
+  category: 'conversation',
+  displayName: 'Conversation Mode',
+  description: 'Configure the conversational feedback loop for plan-review workflows',
+  settings: [
+    {
+      key: 'enabled',
+      label: 'Enable Conversation Mode',
+      type: 'boolean',
+      required: false,
+      description: 'Enable the conversational feedback loop for projects that support it',
+      defaultValue: false,
+      group: 'General',
+    },
+    {
+      key: 'auto_execute_threshold',
+      label: 'Auto-Execute Threshold',
+      type: 'number',
+      required: false,
+      description: 'Confidence score (0.0-1.0) required for automatic execution without review',
+      defaultValue: 0.85,
+      placeholder: '0.85',
+      group: 'General',
+    },
+    {
+      key: 'max_iterations',
+      label: 'Max Iterations',
+      type: 'number',
+      required: false,
+      description: 'Maximum number of feedback iterations per conversation',
+      defaultValue: 20,
+      group: 'General',
+    },
+    {
+      key: 'plan_directory',
+      label: 'Plan Directory',
+      type: 'text',
+      required: false,
+      description: 'Directory path for storing plan files in target repositories',
+      defaultValue: '.ai-bug-fixer/plans',
+      placeholder: '.ai-bug-fixer/plans',
+      group: 'Storage',
+    },
+    {
+      key: 'routing_tag_plan',
+      label: 'Plan Tag',
+      type: 'text',
+      required: false,
+      description: 'Label/tag to trigger plan-review mode',
+      defaultValue: 'ai:plan',
+      placeholder: 'ai:plan',
+      group: 'Routing Tags',
+    },
+    {
+      key: 'routing_tag_auto',
+      label: 'Auto Tag',
+      type: 'text',
+      required: false,
+      description: 'Label/tag to trigger auto-execute mode',
+      defaultValue: 'ai:auto',
+      placeholder: 'ai:auto',
+      group: 'Routing Tags',
+    },
+    {
+      key: 'routing_tag_assist',
+      label: 'Assist Tag',
+      type: 'text',
+      required: false,
+      description: 'Label/tag to trigger assist-only mode (no code changes)',
+      defaultValue: 'ai:assist',
+      placeholder: 'ai:assist',
+      group: 'Routing Tags',
+    },
+    {
+      key: 'conversation_ttl_days',
+      label: 'Conversation TTL (days)',
+      type: 'number',
+      required: false,
+      description: 'Number of days to keep conversation history before cleanup',
+      defaultValue: 30,
+      group: 'Storage',
+    },
+  ],
+};
+
+/**
+ * Project conversation settings schema (for project-level overrides)
+ * Used in the project edit form to configure conversation mode per project
+ */
+export const projectConversationSettingsSchema: SettingDefinition[] = [
+  {
+    key: 'conversation_enabled',
+    label: 'Enable Conversation Mode',
+    type: 'boolean',
+    required: false,
+    description: 'Enable the conversational feedback loop for this project',
+    defaultValue: false,
+    group: 'Conversation',
+  },
+  {
+    key: 'conversation_auto_execute_threshold',
+    label: 'Auto-Execute Threshold',
+    type: 'number',
+    required: false,
+    description: 'Override the global auto-execute threshold for this project (0.0-1.0)',
+    placeholder: '0.85',
+    group: 'Conversation',
+  },
+  {
+    key: 'conversation_max_iterations',
+    label: 'Max Iterations',
+    type: 'number',
+    required: false,
+    description: 'Override the maximum feedback iterations for this project',
+    placeholder: '20',
+    group: 'Conversation',
+  },
+  {
+    key: 'conversation_routing_tag_plan',
+    label: 'Plan Tag',
+    type: 'text',
+    required: false,
+    description: 'Custom label/tag to trigger plan-review mode',
+    placeholder: 'ai:plan',
+    group: 'Conversation',
+  },
+  {
+    key: 'conversation_routing_tag_auto',
+    label: 'Auto Tag',
+    type: 'text',
+    required: false,
+    description: 'Custom label/tag to trigger auto-execute mode',
+    placeholder: 'ai:auto',
+    group: 'Conversation',
+  },
+  {
+    key: 'conversation_routing_tag_assist',
+    label: 'Assist Tag',
+    type: 'text',
+    required: false,
+    description: 'Custom label/tag to trigger assist-only mode',
+    placeholder: 'ai:assist',
+    group: 'Conversation',
+  },
+];
+
 // Register built-in schemas
 registerSettingsSchema(systemSettingsSchema);
 registerSettingsSchema(githubSettingsSchema);
 registerSettingsSchema(sentrySettingsSchema);
 registerSettingsSchema(circleCISettingsSchema);
 registerSettingsSchema(notificationsSettingsSchema);
+registerSettingsSchema(conversationSettingsSchema);

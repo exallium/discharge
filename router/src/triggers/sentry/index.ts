@@ -1,6 +1,5 @@
-import { Request } from 'express';
 import crypto from 'crypto';
-import { TriggerPlugin, TriggerEvent, Tool, FixStatus } from '../base';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest } from '../base';
 import { findProjectsBySource } from '../../config/projects';
 import { SentryWebhookPayload, SentryTag, isIssueCreatedEvent } from '../../types/webhooks/sentry';
 import { getErrorMessage } from '../../types/errors';
@@ -20,11 +19,18 @@ export class SentryTrigger implements TriggerPlugin {
   type = 'sentry';
 
   /**
+   * Get header value from WebhookRequest
+   */
+  private getHeader(req: WebhookRequest, name: string): string | null {
+    return req.headers.get(name);
+  }
+
+  /**
    * Validate Sentry webhook signature
    * https://docs.sentry.io/product/integrations/integration-platform/webhooks/#sentry-hook-signature
    */
-  async validateWebhook(req: Request): Promise<boolean> {
-    const signature = req.headers['sentry-hook-signature'] as string;
+  async validateWebhook(req: WebhookRequest): Promise<boolean> {
+    const signature = this.getHeader(req, 'sentry-hook-signature');
 
     // If no signature provided and no secret configured, accept it
     if (!signature) {

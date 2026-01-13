@@ -7,6 +7,16 @@ import { getVCSPlugin } from '../vcs';
 import { formatPRBody } from '../vcs/base';
 import { GitHubVCS } from '../vcs/github';
 import { getErrorMessage } from '../types/errors';
+import type {
+  ConversationEvent,
+  RouteMode,
+  RunnerConversationResult,
+} from '../types/conversation';
+import { getConversationService } from '../conversation';
+import { getPlanManager } from '../conversation/plan-manager';
+import { getConfidenceAssessor } from '../conversation/confidence';
+import { buildUserMessage } from '../conversation/prompts';
+import { logger } from '../logger';
 
 /**
  * Main orchestrator for the fix workflow
@@ -254,4 +264,297 @@ ${analysis.filesInvolved.map((f) => `- \`${f}\``).join('\n')}
 ---
 *This analysis was generated automatically by AI Bug Fixer*
   `.trim();
+}
+
+// ========================================
+// Conversation Orchestration
+// ========================================
+
+/**
+ * Orchestrate a conversation job
+ */
+export async function orchestrateConversation(
+  trigger: TriggerPlugin,
+  conversationId: string,
+  projectId: string,
+  events: ConversationEvent[],
+  routeMode: RouteMode,
+  iteration: number
+): Promise<RunnerConversationResult> {
+  logger.info('Starting conversation orchestration', {
+    conversationId,
+    projectId,
+    eventCount: events.length,
+    routeMode,
+    iteration,
+  });
+
+  try {
+    // Get project configuration
+    const project = await findProjectById(projectId);
+    if (!project) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
+
+    // Get services
+    const conversationService = getConversationService();
+    const planManager = getPlanManager();
+    const confidenceAssessor = getConfidenceAssessor();
+
+    // Get runner
+    const runnerId = project.runner?.type || 'claude-code';
+    const runner = getRunner(runnerId);
+    if (!runner) {
+      throw new Error(`Runner plugin not found: ${runnerId}`);
+    }
+
+    // Check if runner supports conversation mode
+    if (!runner.supportsConversation || !runner.runConversation) {
+      throw new Error(`Runner ${runnerId} does not support conversation mode`);
+    }
+
+    // Pre-flight checks
+    await performPreflightChecks(runner);
+
+    // Get conversation message history
+    const conversation = await conversationService.getOrCreateConversation(
+      trigger.type,
+      conversationId,
+      projectId,
+      {}
+    );
+    const messageHistory = await conversationService.getMessageHistory(conversation.id);
+
+    // Get existing plan if applicable
+    let existingPlan = undefined;
+    if (conversation.planRef) {
+      const vcs = getVCSPlugin(project.vcs.type);
+      if (vcs?.supportsPlanFiles && vcs.getPlanFile) {
+        // Cast to any to avoid type mismatch between config/projects and db/repositories
+        const planContent = await vcs.getPlanFile(project as any, conversation.planRef);
+        if (planContent) {
+          existingPlan = planManager.parsePlanFromMarkdown(planContent);
+        }
+      }
+    }
+
+    // Build user message from events
+    const userMessage = buildUserMessage(events, existingPlan);
+
+    // Add events as user message
+    await conversationService.addMessage(
+      conversation.id,
+      'user',
+      userMessage,
+      events[0] ? {
+        type: events[0].type,
+        id: events[0].source.externalId,
+        author: 'user',
+      } : undefined
+    );
+
+    // Generate tools if trigger provides them
+    const triggerEvent: TriggerEvent = {
+      triggerType: trigger.type,
+      triggerId: conversationId,
+      projectId,
+      title: events[0]?.target.title || 'Conversation',
+      description: events[0]?.target.body || '',
+      metadata: {
+        labels: events[0]?.target.labels,
+      },
+      raw: events,
+    };
+    const tools = trigger.getTools(triggerEvent);
+
+    // Run conversation
+    const result = await runner.runConversation({
+      repoUrl: project.repo,
+      branch: project.branch,
+      prompt: userMessage,
+      tools,
+      timeoutMs: project.runner?.timeout || 600000,
+      env: project.runner?.env,
+      conversationHistory: messageHistory,
+      routeMode,
+      iteration,
+      existingPlan,
+    });
+
+    // Store assistant response
+    await conversationService.addMessage(
+      conversation.id,
+      'assistant',
+      result.response
+    );
+
+    // Handle result action
+    await handleConversationAction(
+      trigger,
+      triggerEvent,
+      project,
+      conversation,
+      result,
+      conversationService,
+      planManager
+    );
+
+    logger.info('Conversation orchestration completed', {
+      conversationId,
+      actionType: result.action.type,
+      complete: result.complete,
+    });
+
+    return result;
+  } catch (error) {
+    const errorMessage = getErrorMessage(error);
+    logger.error('Conversation orchestration failed', {
+      conversationId,
+      error: errorMessage,
+    });
+
+    // Post error feedback if possible
+    if (trigger.postFeedback) {
+      const triggerEvent: TriggerEvent = {
+        triggerType: trigger.type,
+        triggerId: conversationId,
+        projectId,
+        title: 'Conversation Error',
+        description: '',
+        metadata: {},
+        raw: events,
+      };
+      await trigger.postFeedback(
+        triggerEvent,
+        `⚠️ I encountered an error: ${errorMessage}`
+      ).catch(() => {});
+    }
+
+    return {
+      response: `Error: ${errorMessage}`,
+      action: { type: 'comment', body: `An error occurred: ${errorMessage}` },
+      complete: false,
+    };
+  }
+}
+
+/**
+ * Handle the action from conversation result
+ */
+async function handleConversationAction(
+  trigger: TriggerPlugin,
+  triggerEvent: TriggerEvent,
+  project: NonNullable<Awaited<ReturnType<typeof findProjectById>>>,
+  conversation: { id: string; planRef?: string | null },
+  result: RunnerConversationResult,
+  conversationService: ReturnType<typeof getConversationService>,
+  planManager: ReturnType<typeof getPlanManager>
+): Promise<void> {
+  const action = result.action;
+
+  switch (action.type) {
+    case 'create_plan': {
+      // Create plan file via VCS
+      const vcs = getVCSPlugin(project.vcs.type);
+      if (!vcs?.supportsPlanFiles || !vcs.createPlanFile) {
+        throw new Error(`VCS ${project.vcs.type} does not support plan files`);
+      }
+
+      const planPath = planManager.getPlanPath(conversation.id);
+      const planContent = planManager.renderPlanToMarkdown(action.plan);
+
+      const planResult = await vcs.createPlanFile(
+        project as any,
+        planContent,
+        planPath,
+        triggerEvent.metadata.issueNumber as number | undefined
+      );
+
+      // Update conversation with plan reference
+      await conversationService.updateStatus(conversation.id, {
+        planRef: planResult.planRef,
+        planVersion: 1,
+        status: 'reviewing',
+      });
+
+      // Post feedback with plan link
+      if (trigger.postFeedback) {
+        const planUrl = planResult.url || planResult.planRef;
+        await trigger.postFeedback(
+          triggerEvent,
+          `📋 I've created an implementation plan for review.\n\n**Plan:** ${planUrl}\n\nPlease review and provide feedback. I'll iterate based on your comments.`
+        );
+      }
+      break;
+    }
+
+    case 'update_plan': {
+      // Update existing plan
+      const vcs = getVCSPlugin(project.vcs.type);
+      if (!vcs?.supportsPlanFiles || !vcs.updatePlanFile || !conversation.planRef) {
+        throw new Error('Cannot update plan: VCS does not support plan files or no plan exists');
+      }
+
+      await vcs.updatePlanFile(project as any, conversation.planRef, action.content);
+
+      // Update plan version
+      await conversationService.updateStatus(conversation.id, {
+        planVersion: action.planVersion,
+      });
+
+      // Post feedback
+      if (trigger.postFeedback) {
+        await trigger.postFeedback(
+          triggerEvent,
+          `📝 I've updated the plan based on your feedback. Please review the changes.`
+        );
+      }
+      break;
+    }
+
+    case 'execute': {
+      // Mark as executing
+      await conversationService.updateStatus(conversation.id, {
+        status: 'executing',
+      });
+
+      // Post feedback
+      if (trigger.postFeedback) {
+        await trigger.postFeedback(
+          triggerEvent,
+          `🚀 Executing the approved plan: ${action.description}`
+        );
+      }
+      break;
+    }
+
+    case 'comment': {
+      // Just post a comment
+      if (trigger.postFeedback) {
+        await trigger.postFeedback(triggerEvent, action.body);
+      }
+      break;
+    }
+
+    case 'request_info': {
+      // Post questions
+      if (trigger.postFeedback) {
+        const questionList = action.questions
+          .map((q, i) => `${i + 1}. ${q}`)
+          .join('\n');
+        await trigger.postFeedback(
+          triggerEvent,
+          `❓ I need some clarification before proceeding:\n\n${questionList}`
+        );
+      }
+      break;
+    }
+  }
+
+  // Update conversation status based on completion
+  if (result.complete) {
+    await conversationService.updateStatus(conversation.id, {
+      status: 'complete',
+    });
+  }
 }

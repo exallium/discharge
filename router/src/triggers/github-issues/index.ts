@@ -1,20 +1,22 @@
-import { Request } from 'express';
 import crypto from 'crypto';
-import { TriggerPlugin, TriggerEvent, Tool, FixStatus } from '../base';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest } from '../base';
 import { findProjectByRepo } from '../../config/projects';
+import type { ProjectConfig } from '../../db/repositories/projects';
 import {
   GitHubIssueEventPayload,
   GitHubIssueCommentEventPayload,
+  GitHubPullRequestReviewEventPayload,
+  GitHubPullRequestReviewCommentEventPayload,
   GitHubLabel,
+  GitHubWebhookPayload,
   isIssueEvent,
   isIssueCommentEvent,
+  isPullRequestReviewEvent,
+  isPullRequestReviewCommentEvent,
 } from '../../types/webhooks/github';
 import { getErrorMessage } from '../../types/errors';
-
-/**
- * GitHub webhook payload union type
- */
-type GitHubWebhookPayload = GitHubIssueEventPayload | GitHubIssueCommentEventPayload;
+import type { ConversationEvent } from '../../types/conversation';
+import { DEFAULT_ROUTING_TAGS } from '../../types/conversation';
 
 /**
  * GitHub Issues trigger plugin
@@ -35,12 +37,22 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
   id = 'github-issues';
   type = 'github-issues';
 
+  // Conversation support
+  supportsConversation = true;
+
+  /**
+   * Get header value from WebhookRequest
+   */
+  private getHeader(req: WebhookRequest, name: string): string | null {
+    return req.headers.get(name);
+  }
+
   /**
    * Validate GitHub webhook signature
    * https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries
    */
-  async validateWebhook(req: Request): Promise<boolean> {
-    const signature = req.headers['x-hub-signature-256'] as string;
+  async validateWebhook(req: WebhookRequest): Promise<boolean> {
+    const signature = this.getHeader(req, 'x-hub-signature-256');
 
     if (!signature) {
       console.warn('[GitHubIssuesTrigger] No signature provided - rejecting webhook');
@@ -504,5 +516,272 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
     } catch (error: unknown) {
       console.error(`[GitHubIssuesTrigger] Failed to post comment:`, getErrorMessage(error));
     }
+  }
+
+  // ========================================
+  // Conversation Support Methods
+  // ========================================
+
+  /**
+   * Parse webhook payload into a ConversationEvent
+   * Handles: issue_opened, issue_comment, issue_labeled, pr_review, pr_review_comment
+   */
+  async parseConversationEvent(
+    payload: unknown,
+    project?: ProjectConfig
+  ): Promise<ConversationEvent | null> {
+    const typedPayload = payload as GitHubWebhookPayload;
+
+    // Handle issue opened
+    if (isIssueEvent(typedPayload) && typedPayload.action === 'opened') {
+      return this.parseIssueOpenedConversationEvent(typedPayload);
+    }
+
+    // Handle issue labeled
+    if (isIssueEvent(typedPayload) && typedPayload.action === 'labeled') {
+      return this.parseIssueLabeledConversationEvent(typedPayload);
+    }
+
+    // Handle issue comment
+    if (isIssueCommentEvent(typedPayload) && typedPayload.action === 'created') {
+      return this.parseIssueCommentConversationEvent(typedPayload);
+    }
+
+    // Handle PR review
+    if (isPullRequestReviewEvent(typedPayload) && typedPayload.action === 'submitted') {
+      return this.parsePRReviewConversationEvent(typedPayload);
+    }
+
+    // Handle PR review comment
+    if (isPullRequestReviewCommentEvent(typedPayload) && typedPayload.action === 'created') {
+      return this.parsePRReviewCommentConversationEvent(typedPayload);
+    }
+
+    return null;
+  }
+
+  /**
+   * Parse issue opened event to ConversationEvent
+   */
+  private parseIssueOpenedConversationEvent(
+    payload: GitHubIssueEventPayload
+  ): ConversationEvent {
+    const { issue, repository } = payload;
+    const issueLabels = (issue.labels || []).map((l: GitHubLabel) => l.name);
+
+    return {
+      type: 'issue_opened',
+      source: {
+        platform: 'github',
+        externalId: `${repository.full_name}#${issue.number}`,
+        url: issue.html_url,
+      },
+      target: {
+        type: 'issue',
+        number: issue.number,
+        title: issue.title,
+        body: issue.body || '',
+        labels: issueLabels,
+        url: issue.html_url,
+      },
+      payload: {
+        action: 'opened',
+      },
+      timestamp: new Date(issue.created_at).toISOString(),
+    };
+  }
+
+  /**
+   * Parse issue labeled event to ConversationEvent
+   */
+  private parseIssueLabeledConversationEvent(
+    payload: GitHubIssueEventPayload
+  ): ConversationEvent {
+    const { issue, repository, label } = payload;
+    const issueLabels = (issue.labels || []).map((l: GitHubLabel) => l.name);
+
+    return {
+      type: 'issue_labeled',
+      source: {
+        platform: 'github',
+        externalId: `${repository.full_name}#${issue.number}`,
+        url: issue.html_url,
+      },
+      target: {
+        type: 'issue',
+        number: issue.number,
+        title: issue.title,
+        body: issue.body || '',
+        labels: issueLabels,
+        url: issue.html_url,
+      },
+      payload: {
+        action: 'labeled',
+        label: label ? { name: label.name, color: label.color } : undefined,
+      },
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Parse issue comment event to ConversationEvent
+   */
+  private parseIssueCommentConversationEvent(
+    payload: GitHubIssueCommentEventPayload
+  ): ConversationEvent {
+    const { issue, comment, repository } = payload;
+    const issueLabels = (issue.labels || []).map((l: GitHubLabel) => l.name);
+
+    return {
+      type: 'issue_comment',
+      source: {
+        platform: 'github',
+        externalId: `${repository.full_name}#${issue.number}`,
+        url: comment.html_url,
+      },
+      target: {
+        type: 'issue',
+        number: issue.number,
+        title: issue.title,
+        body: issue.body || '',
+        labels: issueLabels,
+        url: issue.html_url,
+      },
+      payload: {
+        action: 'created',
+        comment: {
+          id: String(comment.id),
+          body: comment.body,
+          author: comment.user?.login || 'unknown',
+          url: comment.html_url,
+        },
+      },
+      timestamp: new Date(comment.created_at).toISOString(),
+    };
+  }
+
+  /**
+   * Parse PR review event to ConversationEvent
+   */
+  private parsePRReviewConversationEvent(
+    payload: GitHubPullRequestReviewEventPayload
+  ): ConversationEvent {
+    const { pull_request, review, repository } = payload;
+    const prLabels = (pull_request.labels || []).map((l: GitHubLabel) => l.name);
+
+    return {
+      type: 'pr_review',
+      source: {
+        platform: 'github',
+        externalId: `${repository.full_name}#${pull_request.number}`,
+        url: review.html_url,
+      },
+      target: {
+        type: 'pull_request',
+        number: pull_request.number,
+        title: pull_request.title,
+        body: pull_request.body || '',
+        labels: prLabels,
+        url: pull_request.html_url,
+      },
+      payload: {
+        action: 'submitted',
+        review: {
+          id: String(review.id),
+          state: review.state,
+          body: review.body || '',
+          author: review.user?.login || 'unknown',
+          url: review.html_url,
+        },
+      },
+      timestamp: new Date(review.submitted_at).toISOString(),
+    };
+  }
+
+  /**
+   * Parse PR review comment event to ConversationEvent
+   */
+  private parsePRReviewCommentConversationEvent(
+    payload: GitHubPullRequestReviewCommentEventPayload
+  ): ConversationEvent {
+    const { pull_request, comment, repository } = payload;
+    const prLabels = (pull_request.labels || []).map((l: GitHubLabel) => l.name);
+
+    return {
+      type: 'pr_review_comment',
+      source: {
+        platform: 'github',
+        externalId: `${repository.full_name}#${pull_request.number}`,
+        url: comment.html_url,
+      },
+      target: {
+        type: 'pull_request',
+        number: pull_request.number,
+        title: pull_request.title,
+        body: pull_request.body || '',
+        labels: prLabels,
+        url: pull_request.html_url,
+      },
+      payload: {
+        action: 'created',
+        comment: {
+          id: String(comment.id),
+          body: comment.body,
+          author: comment.user?.login || 'unknown',
+          url: comment.html_url,
+        },
+        reviewComments: [
+          {
+            id: String(comment.id),
+            path: comment.path,
+            line: comment.line || undefined,
+            body: comment.body,
+            author: comment.user?.login || 'unknown',
+            diffHunk: comment.diff_hunk,
+          },
+        ],
+      },
+      timestamp: new Date(comment.created_at).toISOString(),
+    };
+  }
+
+  /**
+   * Get unique conversation identifier from trigger event
+   * Format: owner/repo#number
+   */
+  getConversationId(event: TriggerEvent): string {
+    const issueNumber = event.metadata.issueNumber as number;
+    const repoFullName = event.triggerId.split('#')[0];
+    return `${repoFullName}#${issueNumber}`;
+  }
+
+  /**
+   * Get routing tags from trigger event labels
+   * Checks for ai:plan, ai:auto, ai:assist tags
+   */
+  getRoutingTags(event: TriggerEvent): string[] {
+    const labels = event.metadata.labels as string[] | undefined;
+    if (!labels) return [];
+
+    // Filter for routing tags
+    const routingTagValues: string[] = [
+      DEFAULT_ROUTING_TAGS.plan,
+      DEFAULT_ROUTING_TAGS.auto,
+      DEFAULT_ROUTING_TAGS.assist,
+    ];
+    return labels.filter(label => routingTagValues.includes(label));
+  }
+
+  /**
+   * Post feedback/reply to the trigger's platform
+   * Posts a comment on the GitHub issue or PR
+   */
+  async postFeedback(
+    event: TriggerEvent,
+    message: string,
+    project?: ProjectConfig
+  ): Promise<void> {
+    // Use the existing addComment method
+    await this.addComment(event, message);
   }
 }

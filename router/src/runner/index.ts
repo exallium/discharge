@@ -6,11 +6,14 @@
 export { orchestrateFix } from './orchestrator';
 
 // Re-export runner plugin system
-export {
+export type {
   RunnerPlugin,
   RunOptions,
   RunResult,
   AnalysisResult,
+} from './base';
+
+export {
   getRunner,
   getAllRunners,
   validateAllRunners,
@@ -22,12 +25,11 @@ export {
 export { initializeRunners as initRunners } from './runners';
 
 // Re-export legacy Claude runner (for backwards compatibility)
+export type { RunClaudeOptions, RunClaudeResult } from './claude';
 export {
   runClaudeInContainer,
   isDockerAvailable,
   isClaudeRunnerImageAvailable,
-  RunClaudeOptions,
-  RunClaudeResult,
 } from './claude';
 
 // Re-export prompts

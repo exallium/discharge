@@ -6,6 +6,9 @@
  * - settings: Global configuration (tokens, secrets)
  * - job_history: AI fix attempt tracking
  * - audit_log: Configuration change tracking
+ * - conversations: Conversational feedback loop state
+ * - conversation_messages: Message history for conversations
+ * - pending_events: Queued events for active conversations
  */
 
 import {
@@ -19,8 +22,16 @@ import {
   integer,
   inet,
   index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
+import type {
+  ConversationState,
+  RouteMode,
+  WorkflowStatus,
+  ConfidenceAssessment,
+  ConversationEvent,
+} from '../types/conversation';
 
 /**
  * Projects table - Repository configurations
@@ -54,6 +65,19 @@ export const projects = pgTable(
       maxAttemptsPerDay?: number;
       allowedPaths?: string[];
       excludedPaths?: string[];
+    }>(),
+
+    // Conversation mode configuration
+    conversation: jsonb('conversation').$type<{
+      enabled?: boolean;
+      autoExecuteThreshold?: number;
+      maxIterations?: number;
+      planDirectory?: string;
+      routingTags?: {
+        plan?: string;
+        auto?: string;
+        assist?: string;
+      };
     }>(),
 
     // Status
@@ -167,16 +191,139 @@ export const auditLog = pgTable(
 );
 
 /**
+ * Conversations table - Conversational feedback loop state
+ */
+export const conversations = pgTable(
+  'conversations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+
+    // Unique key - trigger-specific identifier
+    triggerType: varchar('trigger_type', { length: 100 }).notNull(),
+    externalId: varchar('external_id', { length: 500 }).notNull(), // e.g., 'owner/repo#123'
+    projectId: varchar('project_id', { length: 255 })
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+
+    // State machine
+    state: varchar('state', { length: 20 }).notNull().default('idle').$type<ConversationState>(),
+    currentJobId: varchar('current_job_id', { length: 255 }),
+
+    // Routing
+    routeMode: varchar('route_mode', { length: 20 }).notNull().default('plan_review').$type<RouteMode>(),
+    status: varchar('status', { length: 20 }).notNull().default('pending').$type<WorkflowStatus>(),
+    iteration: integer('iteration').notNull().default(0),
+
+    // Plan tracking (VCS-agnostic reference)
+    planRef: varchar('plan_ref', { length: 500 }),
+    planVersion: integer('plan_version').default(1),
+
+    // Analysis
+    confidence: jsonb('confidence').$type<ConfidenceAssessment>(),
+    triggerEvent: jsonb('trigger_event').$type<Record<string, unknown>>(),
+
+    // Timestamps
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_conversations_target').on(table.triggerType, table.externalId),
+    index('idx_conversations_state').on(table.state),
+    index('idx_conversations_status').on(table.status),
+    index('idx_conversations_project').on(table.projectId),
+  ]
+);
+
+/**
+ * Conversation messages table - Message history for conversations
+ */
+export const conversationMessages = pgTable(
+  'conversation_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+
+    // Message content
+    role: varchar('role', { length: 20 }).notNull(), // 'user' | 'assistant' | 'system'
+    content: text('content').notNull(),
+
+    // Source event info (for traceability)
+    sourceType: varchar('source_type', { length: 50 }), // Trigger-specific event type
+    sourceId: varchar('source_id', { length: 255 }), // External ID from trigger
+    sourceAuthor: varchar('source_author', { length: 255 }),
+
+    // Timestamps
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_messages_conversation').on(table.conversationId),
+    index('idx_messages_created_at').on(table.createdAt),
+  ]
+);
+
+/**
+ * Pending events table - Queued events for active conversations
+ */
+export const pendingEvents = pgTable(
+  'pending_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+
+    // Event data
+    eventType: varchar('event_type', { length: 50 }).notNull(), // Trigger-specific event type
+    eventPayload: jsonb('event_payload').notNull().$type<ConversationEvent>(),
+
+    // Timestamps
+    queuedAt: timestamp('queued_at', { withTimezone: true }).notNull().defaultNow(),
+    processedAt: timestamp('processed_at', { withTimezone: true }), // null = unprocessed
+  },
+  (table) => [
+    index('idx_pending_events_conversation').on(table.conversationId),
+    index('idx_pending_events_unprocessed').on(table.conversationId, table.processedAt),
+  ]
+);
+
+/**
  * Relations
  */
 export const projectsRelations = relations(projects, ({ many }) => ({
   jobs: many(jobHistory),
+  conversations: many(conversations),
 }));
 
 export const jobHistoryRelations = relations(jobHistory, ({ one }) => ({
   project: one(projects, {
     fields: [jobHistory.projectId],
     references: [projects.id],
+  }),
+}));
+
+export const conversationsRelations = relations(conversations, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [conversations.projectId],
+    references: [projects.id],
+  }),
+  messages: many(conversationMessages),
+  pendingEvents: many(pendingEvents),
+}));
+
+export const conversationMessagesRelations = relations(conversationMessages, ({ one }) => ({
+  conversation: one(conversations, {
+    fields: [conversationMessages.conversationId],
+    references: [conversations.id],
+  }),
+}));
+
+export const pendingEventsRelations = relations(pendingEvents, ({ one }) => ({
+  conversation: one(conversations, {
+    fields: [pendingEvents.conversationId],
+    references: [conversations.id],
   }),
 }));
 
@@ -194,3 +341,12 @@ export type NewJobHistory = typeof jobHistory.$inferInsert;
 
 export type AuditLog = typeof auditLog.$inferSelect;
 export type NewAuditLog = typeof auditLog.$inferInsert;
+
+export type Conversation = typeof conversations.$inferSelect;
+export type NewConversation = typeof conversations.$inferInsert;
+
+export type ConversationMessage = typeof conversationMessages.$inferSelect;
+export type NewConversationMessage = typeof conversationMessages.$inferInsert;
+
+export type PendingEvent = typeof pendingEvents.$inferSelect;
+export type NewPendingEvent = typeof pendingEvents.$inferInsert;

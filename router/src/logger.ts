@@ -1,5 +1,4 @@
 import winston from 'winston';
-import { Request, Response, NextFunction } from 'express';
 import { getErrorMessage } from './types/errors';
 
 /**
@@ -162,61 +161,9 @@ export function createTriggerLogger(triggerType: string, triggerId: string): Log
 }
 
 /**
- * Extended request type with requestId
- */
-interface RequestWithId extends Request {
-  requestId?: string;
-}
-
-/**
- * Express middleware for request logging
- */
-export function requestLogger() {
-  const shouldLog = process.env.LOG_REQUESTS !== 'false';
-
-  return (req: RequestWithId, res: Response, next: NextFunction) => {
-    if (!shouldLog) {
-      return next();
-    }
-
-    const start = Date.now();
-    const requestIdHeader = req.headers['x-request-id'];
-    const requestId = typeof requestIdHeader === 'string' ? requestIdHeader : generateRequestId();
-
-    // Add request ID to request object
-    req.requestId = requestId;
-
-    // Log request
-    logger.info('HTTP Request', {
-      requestId,
-      method: req.method,
-      url: req.url,
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-    });
-
-    // Log response
-    res.on('finish', () => {
-      const duration = Date.now() - start;
-      const level = res.statusCode >= 500 ? LogLevel.ERROR : res.statusCode >= 400 ? LogLevel.WARN : LogLevel.INFO;
-
-      logger.log(level, 'HTTP Response', {
-        requestId,
-        method: req.method,
-        url: req.url,
-        statusCode: res.statusCode,
-        duration: `${duration}ms`,
-      });
-    });
-
-    next();
-  };
-}
-
-/**
  * Generate unique request ID
  */
-function generateRequestId(): string {
+export function generateRequestId(): string {
   return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 

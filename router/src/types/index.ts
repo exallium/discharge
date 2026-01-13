@@ -5,3 +5,4 @@
 export * from './errors';
 export * from './webhooks';
 export * from './settings';
+export * from './conversation';

@@ -32,6 +32,17 @@ export interface ProjectConfig {
     allowedPaths?: string[];
     excludedPaths?: string[];
   };
+  conversation?: {
+    enabled?: boolean;
+    autoExecuteThreshold?: number;
+    maxIterations?: number;
+    planDirectory?: string;
+    routingTags?: {
+      plan?: string;
+      auto?: string;
+      assist?: string;
+    };
+  };
   enabled: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -50,6 +61,7 @@ function toProjectConfig(row: Project): ProjectConfig {
     runner: row.runner ?? undefined,
     triggers: row.triggers as Record<string, unknown>,
     constraints: row.constraints ?? undefined,
+    conversation: row.conversation ?? undefined,
     enabled: row.enabled,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -141,6 +153,7 @@ export async function create(
     runner: project.runner ?? null,
     triggers: project.triggers,
     constraints: project.constraints ?? null,
+    conversation: project.conversation ?? null,
     enabled: project.enabled ?? true,
   };
 
@@ -168,6 +181,8 @@ export async function update(
     ...(updates.runner !== undefined && { runner: updates.runner }),
     ...(updates.triggers !== undefined && { triggers: updates.triggers }),
     ...(updates.constraints !== undefined && { constraints: updates.constraints }),
+    // Use 'in' check to allow explicitly setting to null (to disable)
+    ...('conversation' in updates && { conversation: updates.conversation ?? null }),
     ...(updates.enabled !== undefined && { enabled: updates.enabled }),
     updatedAt: new Date(),
   };

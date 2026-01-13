@@ -57,3 +57,7 @@ workspaces/
 tmp/
 temp/
 *.tmp
+
+# Playwright
+playwright-report/
+test-results/

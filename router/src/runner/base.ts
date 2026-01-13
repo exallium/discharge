@@ -6,6 +6,12 @@
  */
 
 import { Tool, AnalysisResult } from '../triggers/base';
+import type {
+  ConversationMessage,
+  RouteMode,
+  PlanFile,
+  RunnerConversationResult,
+} from '../types/conversation';
 
 // Re-export for convenience
 export type { AnalysisResult };
@@ -34,6 +40,17 @@ export interface RunResult {
   branchName?: string;       // Fix branch name (if commit made)
   analysis?: AnalysisResult; // Parsed analysis (if exists)
   error?: string;            // Error message (if failed)
+}
+
+/**
+ * Options for running in conversation mode
+ */
+export interface ConversationRunOptions extends RunOptions {
+  conversationHistory: ConversationMessage[];  // Previous messages in conversation
+  routeMode: RouteMode;                        // 'plan_review' | 'auto_execute' | 'assist_only'
+  iteration: number;                           // Current iteration number
+  existingPlan?: PlanFile;                     // Existing plan to iterate on
+  workspacePath?: string;                      // Pre-prepared workspace (from RepoManager)
 }
 
 /**
@@ -77,6 +94,31 @@ export interface RunnerPlugin {
    * @returns Validation result with error message if invalid
    */
   validate(): Promise<{ valid: boolean; error?: string }>;
+
+  // ========================================
+  // Conversation Mode (Optional)
+  // ========================================
+
+  /**
+   * Whether this runner supports conversation mode
+   */
+  supportsConversation?: boolean;
+
+  /**
+   * Execute AI agent in conversation mode
+   *
+   * Conversation mode provides:
+   * - Full conversation history
+   * - Existing plan context (if iterating)
+   * - Route mode (plan_review, auto_execute, assist_only)
+   * - Pre-prepared workspace (optional)
+   *
+   * @param options - Conversation run options
+   * @returns Conversation result with actions and output
+   */
+  runConversation?(
+    options: ConversationRunOptions
+  ): Promise<RunnerConversationResult>;
 }
 
 /**

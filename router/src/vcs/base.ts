@@ -1,4 +1,15 @@
 import { AnalysisResult } from '../triggers/base';
+import type { ProjectConfig } from '../db/repositories/projects';
+
+/**
+ * Result of creating a plan file
+ */
+export interface PlanFileResult {
+  planRef: string;         // VCS-specific reference to the plan
+  branch?: string;         // Branch containing the plan (if applicable)
+  prNumber?: number;       // PR number (if plan is in a PR)
+  url?: string;            // Web URL to view the plan
+}
 
 /**
  * Pull Request data
@@ -64,6 +75,69 @@ export interface VCSPlugin {
    * Validate VCS configuration/credentials
    */
   validate(): Promise<{ valid: boolean; error?: string }>;
+
+  // ========================================
+  // Plan File Operations (Optional)
+  // ========================================
+
+  /**
+   * Whether this VCS plugin supports plan file operations
+   */
+  supportsPlanFiles?: boolean;
+
+  /**
+   * Create a plan file in the repository
+   * Implementation varies by VCS (branch + PR, direct file, etc.)
+   *
+   * @param project - Project configuration
+   * @param content - Plan file content (markdown)
+   * @param filePath - Path for the plan file
+   * @param issueNumber - Associated issue/ticket number
+   * @returns Plan reference and metadata
+   */
+  createPlanFile?(
+    project: ProjectConfig,
+    content: string,
+    filePath: string,
+    issueNumber?: number | string
+  ): Promise<PlanFileResult>;
+
+  /**
+   * Update an existing plan file
+   *
+   * @param project - Project configuration
+   * @param planRef - VCS-specific reference to the plan
+   * @param content - Updated plan content
+   */
+  updatePlanFile?(
+    project: ProjectConfig,
+    planRef: string,
+    content: string
+  ): Promise<void>;
+
+  /**
+   * Get plan file content
+   *
+   * @param project - Project configuration
+   * @param planRef - VCS-specific reference to the plan
+   * @returns Plan file content or null if not found
+   */
+  getPlanFile?(
+    project: ProjectConfig,
+    planRef: string
+  ): Promise<string | null>;
+
+  /**
+   * Delete/close a plan file
+   * May close a PR, delete a branch, or remove the file
+   *
+   * @param project - Project configuration
+   * @param planRef - VCS-specific reference to the plan
+   */
+  deletePlanFile?(
+    project: ProjectConfig,
+    planRef: string
+  ): Promise<void>;
 }
 
 /**

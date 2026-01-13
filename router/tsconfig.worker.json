@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
+    "declaration": false,
+    "sourceMap": true
+  },
+  "include": ["src/worker.ts", "src/db/**/*", "src/queue/**/*", "src/runner/**/*", "src/triggers/**/*", "src/vcs/**/*", "src/types/**/*", "src/logger.ts", "src/env-validator.ts"],
+  "exclude": ["node_modules", "dist", "app", "components"]
+}
