@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Generic webhook router and orchestrator for AI Bug Fixer",
   "scripts": {
-    "dev": "next dev",
+    "dev": "dotenv -e .env.dev -- next dev",
     "dev:test": "dotenv -e .env.test -- next dev",
     "build": "next build && tsc -p tsconfig.worker.json",
     "start": "next start",
