@@ -2,21 +2,28 @@
 export const dynamic = 'force-dynamic';
 
 import { redirect } from 'next/navigation';
-import { getSession, isSetupRequired } from '@/lib/auth';
+import { getSession, isFirstRun } from '@/lib/auth';
 import { LoginForm } from './login-form';
 
-export default async function LoginPage() {
-  // Check if setup is required
-  const needsSetup = await isSetupRequired();
-  if (needsSetup) {
-    redirect('/setup');
-  }
+interface LoginPageProps {
+  searchParams: Promise<{ setup?: string }>;
+}
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const { setup } = await searchParams;
 
   // Check if already logged in
   const session = await getSession();
   if (session.isLoggedIn) {
+    // If setup mode, go to setup page; otherwise dashboard
+    if (setup === 'true') {
+      redirect('/setup');
+    }
     redirect('/dashboard');
   }
+
+  // Check if this is first run (no password configured anywhere)
+  const firstRun = await isFirstRun();
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
@@ -40,9 +47,26 @@ export default async function LoginPage() {
             </div>
           </div>
           <h1 className="text-2xl font-bold">AI Bug Fixer</h1>
-          <p className="text-muted-foreground">Sign in to your account</p>
+          {firstRun ? (
+            <p className="text-muted-foreground">
+              Check the server console for your temporary password
+            </p>
+          ) : (
+            <p className="text-muted-foreground">Sign in to your account</p>
+          )}
         </div>
-        <LoginForm />
+        {firstRun && (
+          <div className="rounded-md bg-muted p-3 text-sm text-muted-foreground">
+            <p className="font-medium">First Run Setup</p>
+            <p className="mt-1">
+              Username: <code className="bg-background px-1 rounded">admin</code>
+            </p>
+            <p>
+              Password: <code className="bg-background px-1 rounded">check server logs</code>
+            </p>
+          </div>
+        )}
+        <LoginForm redirectTo={firstRun ? '/setup' : '/dashboard'} />
       </div>
     </div>
   );

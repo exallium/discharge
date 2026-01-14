@@ -35,10 +35,13 @@ services:
       retries: 3
 
   # ─────────────────────────────────────────────
-  # Main Application
+  # Web Application (Next.js)
   # ─────────────────────────────────────────────
-  router:
+  web:
     build: ./router
+    command: npm run start
+    ports:
+      - "3000:3000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,6 +52,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgres://${POSTGRES_USER:-aibugfixer}:${POSTGRES_PASSWORD}@postgres:5432/ai_bug_fixer
       - DB_ENCRYPTION_KEY=${DB_ENCRYPTION_KEY}
+      - SESSION_SECRET=${SESSION_SECRET}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
@@ -57,7 +61,39 @@ services:
       - SENTRY_ORG=${SENTRY_ORG}
       - CIRCLECI_TOKEN=${CIRCLECI_TOKEN}
       - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ─────────────────────────────────────────────
+  # Background Worker (BullMQ Job Processor)
+  # ─────────────────────────────────────────────
+  worker:
+    build: ./router
+    command: npm run worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgres://${POSTGRES_USER:-aibugfixer}:${POSTGRES_PASSWORD}@postgres:5432/ai_bug_fixer
+      - DB_ENCRYPTION_KEY=${DB_ENCRYPTION_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+      - SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
+      - SENTRY_ORG=${SENTRY_ORG}
+      - CIRCLECI_TOKEN=${CIRCLECI_TOKEN}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
       - HOST_USER=${USER}
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-2}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspaces:/workspaces
@@ -93,7 +129,7 @@ services:
     networks:
       - internal
     depends_on:
-      - router
+      - web
     restart: unless-stopped
 
   # ─────────────────────────────────────────────

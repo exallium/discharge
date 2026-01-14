@@ -19,6 +19,7 @@ module.exports = tseslint.config(
     ignores: [
       'dist/**',
       'node_modules/**',
+      '.next/**',
       'jest.config.js',
       'eslint.config.js',
       'next.config.js',

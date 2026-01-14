@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { getIronSession, SessionOptions } from 'iron-session';
 import { settingsRepo } from '@/src/db/repositories';
+import { getGeneratedPassword, logGeneratedPassword } from './startup';
 
 export interface SessionData {
   username: string;
@@ -25,7 +26,7 @@ export async function getSession() {
 }
 
 export async function verifyCredentials(username: string, password: string): Promise<boolean> {
-  // Check against stored credentials
+  // Check against stored credentials in database (highest priority)
   const storedUsername = await settingsRepo.get('admin:username');
   const storedPassword = await settingsRepo.get('admin:password');
 
@@ -42,16 +43,33 @@ export async function verifyCredentials(username: string, password: string): Pro
   const envUsername = process.env.ADMIN_USERNAME || 'admin';
   const envPassword = process.env.ADMIN_PASSWORD;
 
-  if (!envPassword) {
-    // If no password is set anywhere, authentication fails
-    return false;
+  if (envPassword) {
+    return username === envUsername && password === envPassword;
   }
 
-  return username === envUsername && password === envPassword;
+  // Final fallback: generated password for first-run
+  // Log it to console so user can see it
+  logGeneratedPassword();
+  const generatedPwd = getGeneratedPassword();
+  return username === 'admin' && password === generatedPwd;
 }
 
+/**
+ * Check if setup is required (no permanent DB password configured)
+ * Even if ADMIN_PASSWORD env var is set, we still require setup
+ * to set a permanent hashed password in the database.
+ */
 export async function isSetupRequired(): Promise<boolean> {
-  const password = await settingsRepo.get('admin:password');
+  const dbPassword = await settingsRepo.get('admin:password');
+  return !dbPassword;
+}
+
+/**
+ * Check if this is a first-run scenario (no password anywhere)
+ * Used to show "check console for password" message on login page
+ */
+export async function isFirstRun(): Promise<boolean> {
+  const dbPassword = await settingsRepo.get('admin:password');
   const envPassword = process.env.ADMIN_PASSWORD;
-  return !password && !envPassword;
+  return !dbPassword && !envPassword;
 }

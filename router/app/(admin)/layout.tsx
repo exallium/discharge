@@ -1,11 +1,22 @@
+// Force dynamic rendering - layout checks database for setup status
+export const dynamic = 'force-dynamic';
+
+import { redirect } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Toaster } from '@/components/ui/sonner';
+import { isSetupRequired } from '@/lib/auth';
 
-export default function AdminLayout({
+export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Check if setup is required
+  const setupRequired = await isSetupRequired();
+  if (setupRequired) {
+    redirect('/setup');
+  }
+
   return (
     <div className="relative min-h-screen flex flex-col">
       <Header />
