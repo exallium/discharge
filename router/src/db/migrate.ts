@@ -51,10 +51,16 @@ async function createTables(
       runner JSONB,
       triggers JSONB NOT NULL DEFAULT '{}',
       constraints JSONB,
+      conversation JSONB,
       enabled BOOLEAN NOT NULL DEFAULT true,
       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
     )
+  `);
+
+  // Add conversation column if missing (for existing tables)
+  await db.execute(sql`
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS conversation JSONB
   `);
 
   await db.execute(sql`
@@ -142,6 +148,81 @@ async function createTables(
     CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action)
   `);
 
+  // Conversations table (for conversational feedback loop)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS conversations (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id VARCHAR(255) NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      trigger_type VARCHAR(100) NOT NULL,
+      external_id VARCHAR(500) NOT NULL,
+      state VARCHAR(50) NOT NULL DEFAULT 'idle',
+      status VARCHAR(50) NOT NULL DEFAULT 'investigating',
+      current_job_id VARCHAR(255),
+      iteration INTEGER NOT NULL DEFAULT 0,
+      max_iterations INTEGER NOT NULL DEFAULT 5,
+      context JSONB,
+      last_activity_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_target ON conversations(trigger_type, external_id)
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_conversations_state ON conversations(state)
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_conversations_status ON conversations(status)
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_conversations_project ON conversations(project_id)
+  `);
+
+  // Conversation messages table
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS conversation_messages (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      role VARCHAR(50) NOT NULL,
+      content TEXT NOT NULL,
+      metadata JSONB,
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation ON conversation_messages(conversation_id)
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_messages_created_at ON conversation_messages(created_at)
+  `);
+
+  // Pending events table (queued events for active conversations)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pending_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      event_type VARCHAR(100) NOT NULL,
+      payload JSONB NOT NULL,
+      processed_at TIMESTAMP WITH TIME ZONE,
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_pending_events_conversation ON pending_events(conversation_id)
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_pending_events_unprocessed ON pending_events(conversation_id, processed_at)
+  `);
+
   logger.debug('All database tables created/verified');
 }
 
@@ -157,6 +238,9 @@ export async function dropAllTables(
 
   logger.warn('Dropping all database tables...');
 
+  await db.execute(sql`DROP TABLE IF EXISTS pending_events CASCADE`);
+  await db.execute(sql`DROP TABLE IF EXISTS conversation_messages CASCADE`);
+  await db.execute(sql`DROP TABLE IF EXISTS conversations CASCADE`);
   await db.execute(sql`DROP TABLE IF EXISTS audit_log CASCADE`);
   await db.execute(sql`DROP TABLE IF EXISTS job_history CASCADE`);
   await db.execute(sql`DROP TABLE IF EXISTS settings CASCADE`);
