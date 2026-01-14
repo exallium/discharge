@@ -49,7 +49,7 @@ export async function orchestrateFix(
     await performPreflightChecks(runner);
 
     // Generate tools
-    const tools = trigger.getTools(event);
+    const tools = await trigger.getTools(event);
     console.log(`[Orchestrator] Generated ${tools.length} tools`);
 
     // Validate tools
@@ -363,7 +363,7 @@ export async function orchestrateConversation(
       },
       raw: events,
     };
-    const tools = trigger.getTools(triggerEvent);
+    const tools = await trigger.getTools(triggerEvent);
 
     // Run conversation
     const result = await runner.runConversation({

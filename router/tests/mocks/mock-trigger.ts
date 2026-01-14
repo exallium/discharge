@@ -72,7 +72,7 @@ export class MockTrigger implements TriggerPlugin {
     };
   }
 
-  getTools(event: TriggerEvent): Tool[] {
+  async getTools(event: TriggerEvent): Promise<Tool[]> {
     this.calls.getTools++;
 
     if (this.toolsToReturn.length > 0) {

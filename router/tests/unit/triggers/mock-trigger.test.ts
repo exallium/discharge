@@ -62,7 +62,7 @@ describe('MockTrigger', () => {
   });
 
   describe('getTools', () => {
-    it('should return default tools', () => {
+    it('should return default tools', async () => {
       const event: TriggerEvent = {
         triggerType: 'mock',
         triggerId: 'test-123',
@@ -73,7 +73,7 @@ describe('MockTrigger', () => {
         raw: {},
       };
 
-      const tools = trigger.getTools(event);
+      const tools = await trigger.getTools(event);
 
       expect(tools).toHaveLength(1);
       expect(tools[0].name).toBe('get-issue');
@@ -81,7 +81,7 @@ describe('MockTrigger', () => {
       expect(trigger.calls.getTools).toBe(1);
     });
 
-    it('should use configured tools', () => {
+    it('should use configured tools', async () => {
       const customTools = [
         {
           name: 'custom-tool',
@@ -91,7 +91,7 @@ describe('MockTrigger', () => {
       ];
 
       trigger.setTools(customTools);
-      const tools = trigger.getTools({} as any);
+      const tools = await trigger.getTools({} as any);
 
       expect(tools).toEqual(customTools);
     });

@@ -1,5 +1,6 @@
 import { VCSPlugin } from './base';
 import { GitHubVCS } from './github';
+import { getSecret } from '../secrets';
 
 /**
  * Registry of VCS plugins
@@ -7,11 +8,37 @@ import { GitHubVCS } from './github';
 const vcsPlugins = new Map<string, VCSPlugin>();
 
 /**
- * Initialize VCS plugins with credentials from environment
+ * Get GitHub token for a project (or global default)
  */
-export function initializeVCS(): void {
-  // GitHub VCS
-  const githubToken = process.env.GITHUB_TOKEN;
+export async function getGitHubToken(projectId?: string): Promise<string | null> {
+  return getSecret('github', 'token', projectId);
+}
+
+/**
+ * Get GitHub webhook secret for a project (or global default)
+ */
+export async function getGitHubWebhookSecret(projectId?: string): Promise<string | null> {
+  return getSecret('github', 'webhook_secret', projectId);
+}
+
+/**
+ * Get or create a GitHub VCS instance for a project
+ * Uses project-specific token if available, otherwise global
+ */
+export async function getGitHubVCS(projectId?: string): Promise<GitHubVCS | null> {
+  const token = await getGitHubToken(projectId);
+  if (!token) {
+    return null;
+  }
+  return new GitHubVCS(token);
+}
+
+/**
+ * Initialize global VCS plugins (for backwards compatibility)
+ */
+export async function initializeVCS(): Promise<void> {
+  // GitHub VCS (global instance)
+  const githubToken = await getGitHubToken();
   if (githubToken) {
     const github = new GitHubVCS(githubToken);
     vcsPlugins.set('github', github);
@@ -19,11 +46,6 @@ export function initializeVCS(): void {
   }
 
   // Future: GitLab, Bitbucket, etc.
-  // const gitlabToken = process.env.GITLAB_TOKEN;
-  // if (gitlabToken) {
-  //   const gitlab = new GitLabVCS(gitlabToken);
-  //   vcsPlugins.set('gitlab', gitlab);
-  // }
 }
 
 /**

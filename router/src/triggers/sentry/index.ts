@@ -3,6 +3,7 @@ import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest } from '..
 import { findProjectsBySource } from '../../config/projects';
 import { SentryWebhookPayload, SentryTag, isIssueCreatedEvent } from '../../types/webhooks/sentry';
 import { getErrorMessage } from '../../types/errors';
+import { getSecret } from '../../secrets';
 
 /**
  * Sentry trigger plugin
@@ -40,9 +41,9 @@ export class SentryTrigger implements TriggerPlugin {
     }
 
     // Verify signature if provided
-    const secret = process.env.SENTRY_WEBHOOK_SECRET;
+    const secret = await getSecret('sentry', 'webhook_secret');
     if (!secret) {
-      console.warn('[SentryTrigger] Signature provided but SENTRY_WEBHOOK_SECRET not set - rejecting webhook');
+      console.warn('[SentryTrigger] Signature provided but webhook secret not configured - rejecting webhook');
       return false;
     }
 
@@ -171,12 +172,12 @@ export class SentryTrigger implements TriggerPlugin {
    * Generate investigation tools for Claude
    * These are bash scripts that Claude can run to gather more information
    */
-  getTools(event: TriggerEvent): Tool[] {
+  async getTools(event: TriggerEvent): Promise<Tool[]> {
     const { triggerId, metadata } = event;
-    const sentryToken = process.env.SENTRY_AUTH_TOKEN;
+    const sentryToken = await getSecret('sentry', 'auth_token');
 
     if (!sentryToken) {
-      console.warn('[SentryTrigger] SENTRY_AUTH_TOKEN not set - tools will be limited');
+      console.warn('[SentryTrigger] Sentry auth token not configured - tools will be limited');
     }
 
     const tools: Tool[] = [];
@@ -315,9 +316,9 @@ EOF
    * Update issue status in Sentry
    */
   async updateStatus(event: TriggerEvent, status: FixStatus): Promise<void> {
-    const sentryToken = process.env.SENTRY_AUTH_TOKEN;
+    const sentryToken = await getSecret('sentry', 'auth_token');
     if (!sentryToken) {
-      console.warn('[SentryTrigger] Cannot update status - SENTRY_AUTH_TOKEN not set');
+      console.warn('[SentryTrigger] Cannot update status - Sentry auth token not configured');
       return;
     }
 
@@ -355,9 +356,9 @@ EOF
    * Add a comment to the Sentry issue
    */
   async addComment(event: TriggerEvent, comment: string): Promise<void> {
-    const sentryToken = process.env.SENTRY_AUTH_TOKEN;
+    const sentryToken = await getSecret('sentry', 'auth_token');
     if (!sentryToken) {
-      console.warn('[SentryTrigger] Cannot add comment - SENTRY_AUTH_TOKEN not set');
+      console.warn('[SentryTrigger] Cannot add comment - Sentry auth token not configured');
       return;
     }
 

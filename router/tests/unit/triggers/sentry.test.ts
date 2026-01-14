@@ -220,18 +220,18 @@ describe('SentryTrigger', () => {
       raw: {},
     };
 
-    it('should return basic tools when no auth token is configured', () => {
-      const tools = trigger.getTools(mockEvent);
+    it('should return basic tools when no auth token is configured', async () => {
+      const tools = await trigger.getTools(mockEvent);
 
       expect(tools).toHaveLength(1);
       expect(tools[0].name).toBe('show-issue-summary');
       expect(tools[0].script).toContain('Test error');
     });
 
-    it('should return API tools when auth token is configured', () => {
+    it('should return API tools when auth token is configured', async () => {
       process.env.SENTRY_AUTH_TOKEN = 'test-token';
 
-      const tools = trigger.getTools(mockEvent);
+      const tools = await trigger.getTools(mockEvent);
 
       expect(tools).toHaveLength(4);
       expect(tools.map(t => t.name)).toEqual([

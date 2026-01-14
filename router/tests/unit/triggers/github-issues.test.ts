@@ -344,7 +344,7 @@ describe('GitHubIssuesTrigger', () => {
         raw: {},
       };
 
-      const tools = trigger.getTools(event);
+      const tools = await trigger.getTools(event);
 
       expect(tools).toHaveLength(5);
       expect(tools[0].name).toBe('get-issue-details');

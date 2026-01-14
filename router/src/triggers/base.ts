@@ -95,8 +95,8 @@ export interface TriggerPlugin {
   validateWebhook(req: WebhookRequest): Promise<boolean>;
   parseWebhook(payload: unknown): Promise<TriggerEvent | null>;
 
-  // Tool generation
-  getTools(event: TriggerEvent): Tool[];
+  // Tool generation (async to support secret retrieval)
+  getTools(event: TriggerEvent): Promise<Tool[]>;
 
   // Context generation for prompts
   getPromptContext(event: TriggerEvent): string;

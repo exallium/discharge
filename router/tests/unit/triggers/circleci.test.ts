@@ -316,7 +316,7 @@ describe('CircleCITrigger', () => {
   });
 
   describe('getTools', () => {
-    it('should generate tools for workflow event', () => {
+    it('should generate tools for workflow event', async () => {
       const event = {
         triggerType: 'circleci',
         triggerId: 'workflow-123',
@@ -330,7 +330,7 @@ describe('CircleCITrigger', () => {
         raw: {},
       };
 
-      const tools = trigger.getTools(event);
+      const tools = await trigger.getTools(event);
 
       expect(tools.length).toBeGreaterThan(0);
       expect(tools.some((t) => t.name === 'get-workflow')).toBe(true);
@@ -343,7 +343,7 @@ describe('CircleCITrigger', () => {
       expect(workflowTool?.script).toContain('CIRCLECI_TOKEN');
     });
 
-    it('should generate tools for job event', () => {
+    it('should generate tools for job event', async () => {
       const event = {
         triggerType: 'circleci',
         triggerId: 'job-456',
@@ -358,7 +358,7 @@ describe('CircleCITrigger', () => {
         raw: {},
       };
 
-      const tools = trigger.getTools(event);
+      const tools = await trigger.getTools(event);
 
       expect(tools.length).toBeGreaterThan(0);
       expect(tools.some((t) => t.name === 'get-job-details')).toBe(true);

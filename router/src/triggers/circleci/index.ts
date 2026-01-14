@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest } from '../base';
 import { findProjectsBySource, ProjectConfig } from '../../config/projects';
 import { CircleCIWebhookPayload, isWorkflowEvent, isJobEvent, isFailedWorkflow, isFailedJob } from '../../types/webhooks/circleci';
+import { getSecret } from '../../secrets';
 
 /**
  * CircleCI trigger plugin
@@ -40,9 +41,9 @@ export class CircleCITrigger implements TriggerPlugin {
     }
 
     // Verify signature if provided
-    const secret = process.env.CIRCLECI_WEBHOOK_SECRET;
+    const secret = await getSecret('circleci', 'webhook_secret');
     if (!secret) {
-      console.warn('[CircleCITrigger] Signature provided but CIRCLECI_WEBHOOK_SECRET not set - rejecting webhook');
+      console.warn('[CircleCITrigger] Signature provided but webhook secret not configured - rejecting webhook');
       return false;
     }
 
@@ -236,7 +237,7 @@ export class CircleCITrigger implements TriggerPlugin {
   /**
    * Generate investigation tools for CircleCI issues
    */
-  getTools(event: TriggerEvent): Tool[] {
+  async getTools(event: TriggerEvent): Promise<Tool[]> {
     const tools: Tool[] = [];
 
     const workflowId = event.metadata.workflowId as string;

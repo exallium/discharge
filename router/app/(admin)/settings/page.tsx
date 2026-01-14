@@ -6,13 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { settingsRepo } from '@/src/db/repositories';
 
 export default async function SettingsPage() {
-  // Get current settings - the key format is "category:key"
-  const githubToken = await settingsRepo.get('github:token');
-  const githubWebhookSecret = await settingsRepo.get('github:webhook_secret');
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -21,43 +16,6 @@ export default async function SettingsPage() {
       />
 
       <div className="grid gap-6">
-        {/* GitHub Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle>GitHub</CardTitle>
-            <CardDescription>
-              Configure GitHub integration settings
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="github-token">GitHub Token</Label>
-              <Input
-                id="github-token"
-                type="password"
-                placeholder="ghp_xxxxxxxxxxxx"
-                defaultValue={githubToken ? '••••••••••••••••' : ''}
-              />
-              <p className="text-sm text-muted-foreground">
-                Personal access token with repo access
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="webhook-secret">Webhook Secret</Label>
-              <Input
-                id="webhook-secret"
-                type="password"
-                placeholder="your-webhook-secret"
-                defaultValue={githubWebhookSecret ? '••••••••••••••••' : ''}
-              />
-              <p className="text-sm text-muted-foreground">
-                Secret used to verify webhook signatures
-              </p>
-            </div>
-            <Button>Save GitHub Settings</Button>
-          </CardContent>
-        </Card>
-
         {/* Password Change */}
         <Card>
           <CardHeader>

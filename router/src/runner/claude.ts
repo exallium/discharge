@@ -5,6 +5,7 @@ import { rm, readFile } from 'fs/promises';
 import { join } from 'path';
 import { AnalysisResult } from '../triggers/base';
 import { getErrorMessage, isExecError } from '../types/errors';
+import { getSecret } from '../secrets';
 
 const execAsync = promisify(exec);
 
@@ -62,11 +63,17 @@ export async function runClaudeInContainer(
     console.log(`[${jobId}] Creating branch ${fixBranch}`);
     await execAsync(`git checkout -b ${fixBranch}`, { cwd: workspacePath });
 
-    // Build environment variables
+    // Build environment variables from secrets store
+    const [sentryToken, circleCiToken, githubToken] = await Promise.all([
+      getSecret('sentry', 'auth_token'),
+      getSecret('circleci', 'token'),
+      getSecret('github', 'token'),
+    ]);
+
     const envVars = {
-      SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN || '',
-      CIRCLECI_TOKEN: process.env.CIRCLECI_TOKEN || '',
-      GITHUB_TOKEN: process.env.GITHUB_TOKEN || '',
+      SENTRY_AUTH_TOKEN: sentryToken || '',
+      CIRCLECI_TOKEN: circleCiToken || '',
+      GITHUB_TOKEN: githubToken || '',
       ...options.env,
     };
 

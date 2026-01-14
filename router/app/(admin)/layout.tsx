@@ -18,11 +18,13 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="relative min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       <Header />
-      <main className="flex-1 container py-6">{children}</main>
-      <footer className="border-t py-4">
-        <div className="container flex items-center justify-between text-sm text-muted-foreground">
+      <main className="flex-1 overflow-auto">
+        <div className="container mx-auto max-w-7xl px-6 py-6">{children}</div>
+      </main>
+      <footer className="border-t py-3 shrink-0">
+        <div className="container mx-auto max-w-7xl px-6 flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <span className="flex h-2 w-2 rounded-full bg-success" />
             System healthy

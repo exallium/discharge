@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest } from '../base';
 import { findProjectByRepo } from '../../config/projects';
 import type { ProjectConfig } from '../../db/repositories/projects';
+import { getGitHubToken, getGitHubWebhookSecret } from '../../vcs';
 import {
   GitHubIssueEventPayload,
   GitHubIssueCommentEventPayload,
@@ -59,9 +60,9 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       return false;
     }
 
-    const secret = process.env.GITHUB_WEBHOOK_SECRET;
+    const secret = await getGitHubWebhookSecret();
     if (!secret) {
-      console.error('[GitHubIssuesTrigger] GITHUB_WEBHOOK_SECRET not set');
+      console.error('[GitHubIssuesTrigger] GITHUB_WEBHOOK_SECRET not configured');
       return false;
     }
 
@@ -347,7 +348,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
   /**
    * Generate investigation tools for GitHub issues
    */
-  getTools(event: TriggerEvent): Tool[] {
+  async getTools(event: TriggerEvent): Promise<Tool[]> {
     const { issueNumber } = event.metadata;
     const repoFullName = event.triggerId.split('#')[0];
     const [owner, repo] = repoFullName.split('/');
@@ -422,9 +423,9 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
     const repoFullName = event.triggerId.split('#')[0];
     const [owner, repo] = repoFullName.split('/');
 
-    const token = process.env.GITHUB_TOKEN;
+    const token = await getGitHubToken();
     if (!token) {
-      console.error('[GitHubIssuesTrigger] GITHUB_TOKEN not set');
+      console.error('[GitHubIssuesTrigger] GITHUB_TOKEN not configured');
       return;
     }
 
@@ -495,9 +496,9 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
     const repoFullName = event.triggerId.split('#')[0];
     const [owner, repo] = repoFullName.split('/');
 
-    const token = process.env.GITHUB_TOKEN;
+    const token = await getGitHubToken();
     if (!token) {
-      console.error('[GitHubIssuesTrigger] GITHUB_TOKEN not set');
+      console.error('[GitHubIssuesTrigger] GITHUB_TOKEN not configured');
       return;
     }
 
