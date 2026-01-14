@@ -120,6 +120,15 @@ export const systemSettingsSchema: PluginSettingsSchema = {
   description: 'General system configuration',
   settings: [
     {
+      key: 'base_url',
+      label: 'Base URL',
+      type: 'url',
+      required: false,
+      description: 'Public URL where this server is accessible (used for webhook URLs)',
+      placeholder: 'https://ai-bug-fixer.example.com',
+      group: 'General',
+    },
+    {
       key: 'log_level',
       label: 'Log Level',
       type: 'select',
@@ -132,6 +141,7 @@ export const systemSettingsSchema: PluginSettingsSchema = {
         { value: 'info', label: 'Info' },
         { value: 'debug', label: 'Debug' },
       ],
+      group: 'General',
     },
     {
       key: 'worker_concurrency',
@@ -140,6 +150,7 @@ export const systemSettingsSchema: PluginSettingsSchema = {
       required: false,
       description: 'Number of concurrent job workers',
       defaultValue: 2,
+      group: 'General',
     },
   ],
 };

@@ -33,3 +33,10 @@ export function getTriggerByType(type: string): TriggerPlugin | undefined {
 export function listTriggerIds(): string[] {
   return triggers.map(t => t.id);
 }
+
+/**
+ * List all registered triggers
+ */
+export function listTriggers(): TriggerPlugin[] {
+  return triggers;
+}

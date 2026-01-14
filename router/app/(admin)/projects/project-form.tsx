@@ -7,8 +7,30 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
+import { ProjectSecrets } from '@/components/projects/project-secrets';
+import { WebhookInfo } from '@/components/projects/webhook-info';
 import type { ProjectConfig } from '@/src/db/repositories/projects';
+
+// Available VCS options (only show implemented ones)
+const VCS_OPTIONS = [
+  { value: 'github', label: 'GitHub' },
+] as const;
+
+// Available Runner options (only show implemented ones)
+const RUNNER_OPTIONS = [
+  { value: 'claude-code', label: 'Claude Code' },
+] as const;
+
+type VCSType = (typeof VCS_OPTIONS)[number]['value'];
+type RunnerType = (typeof RUNNER_OPTIONS)[number]['value'];
 
 interface ProjectFormProps {
   project?: ProjectConfig;
@@ -21,6 +43,12 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
 
   // Form state
   const [id, setId] = useState(project?.id || '');
+  const [vcsType, setVcsType] = useState<VCSType>(
+    (project?.vcs?.type as VCSType) || 'github'
+  );
+  const [runnerType, setRunnerType] = useState<RunnerType>(
+    (project?.runner?.type as RunnerType) || 'claude-code'
+  );
   const [repoFullName, setRepoFullName] = useState(project?.repoFullName || '');
   const [repo, setRepo] = useState(project?.repo || '');
   const [branch, setBranch] = useState(project?.branch || 'main');
@@ -73,8 +101,8 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
         repoFullName,
         repo,
         branch,
-        vcs: { type: 'github' as const },
-        runner: { type: 'claude-code' as const },
+        vcs: { type: vcsType },
+        runner: { type: runnerType },
         triggers,
         enabled,
         // Use null instead of undefined when disabled, so JSON.stringify includes the key
@@ -145,7 +173,7 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
       <Card>
         <CardHeader>
           <CardTitle>Basic Information</CardTitle>
-          <CardDescription>Configure the repository and branch settings</CardDescription>
+          <CardDescription>Configure project identity and status</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -159,10 +187,45 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
               required
               disabled={!isNew}
             />
+            <p className="text-xs text-muted-foreground">
+              Unique identifier for this project. Cannot be changed after creation.
+            </p>
+          </div>
+
+          {!isNew && (
+            <div className="flex items-center space-x-2">
+              <Switch id="enabled" name="enabled" checked={enabled} onCheckedChange={setEnabled} />
+              <Label htmlFor="enabled">Enabled</Label>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* VCS Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Version Control</CardTitle>
+          <CardDescription>Configure the repository source</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="vcsType">VCS Provider</Label>
+            <Select value={vcsType} onValueChange={(v) => setVcsType(v as VCSType)}>
+              <SelectTrigger id="vcsType">
+                <SelectValue placeholder="Select VCS provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {VCS_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="repoFullName">Repository (owner/name)</Label>
+            <Label htmlFor="repoFullName">Repository (owner/repo)</Label>
             <Input
               id="repoFullName"
               name="repoFullName"
@@ -183,10 +246,13 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
               placeholder="https://github.com/owner/repo.git"
               required
             />
+            <p className="text-xs text-muted-foreground">
+              Auto-filled from repository name. Modify for SSH or custom URLs.
+            </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="branch">Branch</Label>
+            <Label htmlFor="branch">Default Branch</Label>
             <Input
               id="branch"
               name="branch"
@@ -196,13 +262,34 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
               required
             />
           </div>
+        </CardContent>
+      </Card>
 
-          {!isNew && (
-            <div className="flex items-center space-x-2">
-              <Switch id="enabled" name="enabled" checked={enabled} onCheckedChange={setEnabled} />
-              <Label htmlFor="enabled">Enabled</Label>
-            </div>
-          )}
+      {/* Runner Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle>AI Runner</CardTitle>
+          <CardDescription>Select the AI agent that will investigate and fix bugs</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="runnerType">Runner</Label>
+            <Select value={runnerType} onValueChange={(v) => setRunnerType(v as RunnerType)}>
+              <SelectTrigger id="runnerType">
+                <SelectValue placeholder="Select AI runner" />
+              </SelectTrigger>
+              <SelectContent>
+                {RUNNER_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Runs Claude Code in Docker to analyze code and create fixes.
+            </p>
+          </div>
         </CardContent>
       </Card>
 
@@ -334,6 +421,29 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Secrets - only show when editing existing project */}
+      {!isNew && project?.id && (
+        <ProjectSecrets
+          projectId={project.id}
+          enabledTriggers={[
+            ...(githubIssues ? ['github-issues'] : []),
+            ...(sentry ? ['sentry'] : []),
+            ...(circleci ? ['circleci'] : []),
+          ]}
+        />
+      )}
+
+      {/* Webhook URLs - only show when editing and triggers are enabled */}
+      {!isNew && (githubIssues || sentry || circleci) && (
+        <WebhookInfo
+          enabledTriggers={[
+            ...(githubIssues ? ['github-issues'] : []),
+            ...(sentry ? ['sentry'] : []),
+            ...(circleci ? ['circleci'] : []),
+          ]}
+        />
+      )}
 
       {/* Actions */}
       <div className="flex items-center justify-between">

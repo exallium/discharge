@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest } from '../base';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest, WebhookConfig } from '../base';
 import { findProjectsBySource, ProjectConfig } from '../../config/projects';
 import { CircleCIWebhookPayload, isWorkflowEvent, isJobEvent, isFailedWorkflow, isFailedJob } from '../../types/webhooks/circleci';
 import { getSecret } from '../../secrets';
@@ -19,6 +19,11 @@ import { getSecret } from '../../secrets';
 export class CircleCITrigger implements TriggerPlugin {
   id = 'circleci';
   type = 'circleci';
+
+  webhookConfig: WebhookConfig = {
+    events: ['workflow-completed', 'job-completed'],
+    docsUrl: 'https://circleci.com/docs/webhooks/',
+  };
 
   /**
    * Get header value from WebhookRequest

@@ -84,12 +84,27 @@ export interface FixStatus {
 }
 
 /**
+ * Webhook configuration info for setup documentation
+ */
+export interface WebhookConfig {
+  /** Events to subscribe to in the external service */
+  events: string[];
+  /** URL to setup documentation */
+  docsUrl: string;
+  /** Content type expected (usually application/json) */
+  contentType?: string;
+}
+
+/**
  * Trigger plugin interface - all bug tracking systems implement this
  */
 export interface TriggerPlugin {
   // Identification
   id: string;
   type: string;
+
+  // Webhook setup info
+  webhookConfig: WebhookConfig;
 
   // Webhook handling
   validateWebhook(req: WebhookRequest): Promise<boolean>;

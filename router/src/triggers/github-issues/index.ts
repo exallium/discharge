@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest } from '../base';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest, WebhookConfig } from '../base';
 import { findProjectByRepo } from '../../config/projects';
 import type { ProjectConfig } from '../../db/repositories/projects';
 import { getGitHubToken, getGitHubWebhookSecret } from '../../vcs';
@@ -37,6 +37,11 @@ import { DEFAULT_ROUTING_TAGS } from '../../types/conversation';
 export class GitHubIssuesTrigger implements TriggerPlugin {
   id = 'github-issues';
   type = 'github-issues';
+
+  webhookConfig: WebhookConfig = {
+    events: ['issues', 'issue_comment'],
+    docsUrl: 'https://docs.github.com/en/webhooks/using-webhooks/creating-webhooks',
+  };
 
   // Conversation support
   supportsConversation = true;

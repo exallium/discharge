@@ -1,5 +1,5 @@
 import { Request } from 'express';
-import { TriggerPlugin, TriggerEvent, Tool, FixStatus } from '../../src/triggers/base';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookConfig } from '../../src/triggers/base';
 
 /**
  * Mock trigger plugin for testing
@@ -8,6 +8,11 @@ import { TriggerPlugin, TriggerEvent, Tool, FixStatus } from '../../src/triggers
 export class MockTrigger implements TriggerPlugin {
   id = 'mock';
   type = 'mock';
+
+  webhookConfig: WebhookConfig = {
+    events: ['test-event'],
+    docsUrl: 'https://example.com/docs',
+  };
 
   // Track method calls for assertions
   calls: {

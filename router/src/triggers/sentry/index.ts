@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest } from '../base';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest, WebhookConfig } from '../base';
 import { findProjectsBySource } from '../../config/projects';
 import { SentryWebhookPayload, SentryTag, isIssueCreatedEvent } from '../../types/webhooks/sentry';
 import { getErrorMessage } from '../../types/errors';
@@ -18,6 +18,11 @@ import { getSecret } from '../../secrets';
 export class SentryTrigger implements TriggerPlugin {
   id = 'sentry';
   type = 'sentry';
+
+  webhookConfig: WebhookConfig = {
+    events: ['issue'],
+    docsUrl: 'https://docs.sentry.io/product/integrations/integration-platform/webhooks/',
+  };
 
   /**
    * Get header value from WebhookRequest

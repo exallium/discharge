@@ -47,8 +47,9 @@ coverage/
 .dockerignore
 
 # Cloudflare tunnel credentials
-cloudflared/*.json
-!cloudflared/config.yml
+cloudflared/
+.cloudflared/
+!**/.cloudflared/config.example.yml
 
 # Workspace mounts
 workspaces/
