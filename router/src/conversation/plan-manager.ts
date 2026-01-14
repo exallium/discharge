@@ -6,9 +6,35 @@
  */
 
 import type { PlanFile, PlanStep } from '../types/conversation';
-import type { VCSPlugin } from '../vcs/base';
-import type { ProjectConfig } from '../db/repositories/projects';
+import type { VCSPlugin, PlanFileResult, VCSProjectConfig } from '../vcs/base';
 import { logger } from '../logger';
+
+/**
+ * VCS plugin with plan file support
+ */
+interface VCSWithPlanSupport extends VCSPlugin {
+  supportsPlanFiles: true;
+  createPlanFile(
+    project: VCSProjectConfig,
+    content: string,
+    filePath: string,
+    issueNumber?: number | string
+  ): Promise<PlanFileResult>;
+  updatePlanFile(project: VCSProjectConfig, planRef: string, content: string): Promise<void>;
+  getPlanFile(project: VCSProjectConfig, planRef: string): Promise<string | null>;
+}
+
+/**
+ * Type guard for VCS plugins that support plan files
+ */
+function vcsSupportsPlans(vcs: VCSPlugin): vcs is VCSWithPlanSupport {
+  return (
+    vcs.supportsPlanFiles === true &&
+    typeof vcs.createPlanFile === 'function' &&
+    typeof vcs.updatePlanFile === 'function' &&
+    typeof vcs.getPlanFile === 'function'
+  );
+}
 
 /**
  * Plan reference returned from creation
@@ -47,12 +73,12 @@ export class PlanManager {
    */
   async createPlan(
     vcs: VCSPlugin,
-    project: ProjectConfig,
+    project: VCSProjectConfig,
     issueNumber: number | string,
     plan: PlanFile
   ): Promise<PlanRef | null> {
     // Check if VCS supports plan files
-    if (!this.vcsSupportsPlans(vcs)) {
+    if (!vcsSupportsPlans(vcs)) {
       logger.warn('VCS does not support plan files', { vcsType: vcs.type });
       return null;
     }
@@ -61,7 +87,7 @@ export class PlanManager {
     const content = this.renderPlanToMarkdown(plan);
 
     try {
-      const result = await (vcs as any).createPlanFile(project, content, planPath);
+      const result = await vcs.createPlanFile(project, content, planPath);
 
       logger.info('Plan created', {
         issueNumber,
@@ -84,12 +110,12 @@ export class PlanManager {
    */
   async updatePlan(
     vcs: VCSPlugin,
-    project: ProjectConfig,
+    project: VCSProjectConfig,
     planRef: string,
     plan: PlanFile,
     iteration: number
   ): Promise<void> {
-    if (!this.vcsSupportsPlans(vcs)) {
+    if (!vcsSupportsPlans(vcs)) {
       logger.warn('VCS does not support plan files', { vcsType: vcs.type });
       return;
     }
@@ -101,7 +127,7 @@ export class PlanManager {
     const content = this.renderPlanToMarkdown(plan);
 
     try {
-      await (vcs as any).updatePlanFile(project, planRef, content);
+      await vcs.updatePlanFile(project, planRef, content);
 
       logger.info('Plan updated', {
         planRef,
@@ -121,15 +147,15 @@ export class PlanManager {
    */
   async getPlan(
     vcs: VCSPlugin,
-    project: ProjectConfig,
+    project: VCSProjectConfig,
     planRef: string
   ): Promise<PlanFile | null> {
-    if (!this.vcsSupportsPlans(vcs)) {
+    if (!vcsSupportsPlans(vcs)) {
       return null;
     }
 
     try {
-      const content = await (vcs as any).getPlanFile(project, planRef);
+      const content = await vcs.getPlanFile(project, planRef);
       if (!content) {
         return null;
       }
@@ -142,18 +168,6 @@ export class PlanManager {
       });
       return null;
     }
-  }
-
-  /**
-   * Check if VCS supports plan files
-   */
-  private vcsSupportsPlans(vcs: VCSPlugin): boolean {
-    return (
-      'supportsPlanFiles' in vcs &&
-      (vcs as any).supportsPlanFiles === true &&
-      'createPlanFile' in vcs &&
-      typeof (vcs as any).createPlanFile === 'function'
-    );
   }
 
   /**
@@ -260,7 +274,9 @@ export class PlanManager {
               metadata.issue = parseInt(value) || value;
               break;
             case 'status':
-              metadata.status = value as any;
+              if (['draft', 'reviewing', 'approved', 'executing', 'complete'].includes(value)) {
+                metadata.status = value as PlanFile['metadata']['status'];
+              }
               break;
             case 'iteration':
               metadata.iteration = parseInt(value) || 1;
@@ -325,7 +341,10 @@ export class PlanManager {
         // Parse complexity
         const complexityMatch = stepContent.match(/\*\*Complexity:\*\* (\w+)/);
         if (complexityMatch) {
-          step.estimatedComplexity = complexityMatch[1].toLowerCase() as any;
+          const complexity = complexityMatch[1].toLowerCase();
+          if (['trivial', 'low', 'medium', 'high'].includes(complexity)) {
+            step.estimatedComplexity = complexity as PlanStep['estimatedComplexity'];
+          }
         }
 
         // Parse files

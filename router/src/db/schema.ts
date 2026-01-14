@@ -6,6 +6,7 @@
  * - settings: Global configuration (tokens, secrets)
  * - job_history: AI fix attempt tracking
  * - audit_log: Configuration change tracking
+ * - trusted_devices: Device trust for TOTP 2FA
  * - conversations: Conversational feedback loop state
  * - conversation_messages: Message history for conversations
  * - pending_events: Queued events for active conversations
@@ -191,6 +192,27 @@ export const auditLog = pgTable(
 );
 
 /**
+ * Trusted devices table - Device trust for TOTP 2FA
+ */
+export const trustedDevices = pgTable(
+  'trusted_devices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    username: varchar('username', { length: 255 }).notNull(),
+    deviceToken: varchar('device_token', { length: 255 }).notNull().unique(),
+    userAgent: text('user_agent'),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index('idx_trusted_devices_username').on(table.username),
+    index('idx_trusted_devices_token').on(table.deviceToken),
+    index('idx_trusted_devices_expires').on(table.expiresAt),
+  ]
+);
+
+/**
  * Conversations table - Conversational feedback loop state
  */
 export const conversations = pgTable(
@@ -350,3 +372,6 @@ export type NewConversationMessage = typeof conversationMessages.$inferInsert;
 
 export type PendingEvent = typeof pendingEvents.$inferSelect;
 export type NewPendingEvent = typeof pendingEvents.$inferInsert;
+
+export type TrustedDevice = typeof trustedDevices.$inferSelect;
+export type NewTrustedDevice = typeof trustedDevices.$inferInsert;

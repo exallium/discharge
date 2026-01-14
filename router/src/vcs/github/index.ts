@@ -1,6 +1,5 @@
 import { Octokit } from '@octokit/rest';
-import { VCSPlugin, PullRequest, PlanFileResult } from '../base';
-import type { ProjectConfig } from '../../db/repositories/projects';
+import { VCSPlugin, PullRequest, PlanFileResult, VCSProjectConfig } from '../base';
 import { getErrorMessage } from '../../types/errors';
 import { logger } from '../../logger';
 
@@ -136,7 +135,7 @@ export class GitHubVCS implements VCSPlugin {
    * Creates a branch, commits the file, and opens a PR
    */
   async createPlanFile(
-    project: ProjectConfig,
+    project: VCSProjectConfig,
     content: string,
     filePath: string,
     issueNumber?: number | string
@@ -226,7 +225,7 @@ export class GitHubVCS implements VCSPlugin {
    * Update an existing plan file
    */
   async updatePlanFile(
-    project: ProjectConfig,
+    project: VCSProjectConfig,
     planRef: string,
     content: string
   ): Promise<void> {
@@ -282,7 +281,7 @@ export class GitHubVCS implements VCSPlugin {
    * Get plan file content
    */
   async getPlanFile(
-    project: ProjectConfig,
+    project: VCSProjectConfig,
     planRef: string
   ): Promise<string | null> {
     const { owner, repo: repoName } = this.parseRepoIdentifier(project.repoFullName);
@@ -320,7 +319,7 @@ export class GitHubVCS implements VCSPlugin {
    * Closes the associated PR and optionally deletes the branch
    */
   async deletePlanFile(
-    project: ProjectConfig,
+    project: VCSProjectConfig,
     planRef: string
   ): Promise<void> {
     const { owner, repo: repoName } = this.parseRepoIdentifier(project.repoFullName);

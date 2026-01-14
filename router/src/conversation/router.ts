@@ -8,9 +8,13 @@
 import { randomUUID } from 'crypto';
 import { ConversationService, getConversationService } from './index';
 import { queueFixJob } from '../queue';
+import type { ConversationJobData } from '../queue/types';
 import type { ConversationEvent, RouteMode } from '../types/conversation';
 import type { TriggerPlugin, TriggerEvent } from '../triggers/base';
 import { logger } from '../logger';
+
+// Re-export ConversationJobData for consumers
+export type { ConversationJobData } from '../queue/types';
 
 /**
  * Result of routing an event
@@ -20,22 +24,6 @@ export interface EventRouteResult {
   conversationId?: string;
   jobId?: string;
   reason?: string;
-}
-
-/**
- * Conversation job data for the queue
- */
-export interface ConversationJobData {
-  jobId: string;
-  conversationId: string;
-  projectId: string;
-  triggerType: string;
-  triggerId: string;
-  events: ConversationEvent[];
-  routeMode: RouteMode;
-  iteration: number;
-  isInitial: boolean;
-  queuedAt: string;
 }
 
 /**
@@ -236,9 +224,8 @@ export class EventRouter {
       event: triggerEvent,
       triggerType,
       queuedAt: jobData.queuedAt,
-      // Add conversation-specific data
       conversationData: jobData,
-    } as any);
+    });
   }
 
   /**
@@ -250,8 +237,8 @@ export class EventRouter {
     _event: ConversationEvent
   ): string | null {
     // If trigger implements getConversationId, use it
-    if ('getConversationId' in trigger && typeof trigger.getConversationId === 'function') {
-      return (trigger as any).getConversationId(triggerEvent);
+    if (trigger.getConversationId) {
+      return trigger.getConversationId(triggerEvent);
     }
 
     // Default: use triggerId (e.g., 'owner/repo#123')
@@ -267,8 +254,8 @@ export class EventRouter {
     event: ConversationEvent
   ): string[] {
     // If trigger implements getRoutingTags, use it
-    if ('getRoutingTags' in trigger && typeof trigger.getRoutingTags === 'function') {
-      return (trigger as any).getRoutingTags(triggerEvent);
+    if (trigger.getRoutingTags) {
+      return trigger.getRoutingTags(triggerEvent);
     }
 
     // Default: use event target labels

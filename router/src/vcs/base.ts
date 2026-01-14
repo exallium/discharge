@@ -1,5 +1,18 @@
 import { AnalysisResult } from '../triggers/base';
-import type { ProjectConfig } from '../db/repositories/projects';
+
+/**
+ * Minimal project info needed for VCS operations
+ * Compatible with both config/projects.ProjectConfig and db/repositories/projects.ProjectConfig
+ */
+export interface VCSProjectConfig {
+  repoFullName: string;
+  branch: string;
+  vcs: {
+    type: 'github' | 'gitlab' | 'bitbucket' | 'self-hosted';
+    owner: string;
+    repo: string;
+  };
+}
 
 /**
  * Result of creating a plan file
@@ -96,7 +109,7 @@ export interface VCSPlugin {
    * @returns Plan reference and metadata
    */
   createPlanFile?(
-    project: ProjectConfig,
+    project: VCSProjectConfig,
     content: string,
     filePath: string,
     issueNumber?: number | string
@@ -110,7 +123,7 @@ export interface VCSPlugin {
    * @param content - Updated plan content
    */
   updatePlanFile?(
-    project: ProjectConfig,
+    project: VCSProjectConfig,
     planRef: string,
     content: string
   ): Promise<void>;
@@ -123,7 +136,7 @@ export interface VCSPlugin {
    * @returns Plan file content or null if not found
    */
   getPlanFile?(
-    project: ProjectConfig,
+    project: VCSProjectConfig,
     planRef: string
   ): Promise<string | null>;
 
@@ -135,7 +148,7 @@ export interface VCSPlugin {
    * @param planRef - VCS-specific reference to the plan
    */
   deletePlanFile?(
-    project: ProjectConfig,
+    project: VCSProjectConfig,
     planRef: string
   ): Promise<void>;
 }

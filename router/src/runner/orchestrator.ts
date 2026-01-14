@@ -329,7 +329,7 @@ export async function orchestrateConversation(
       const vcs = getVCSPlugin(project.vcs.type);
       if (vcs?.supportsPlanFiles && vcs.getPlanFile) {
         // Cast to any to avoid type mismatch between config/projects and db/repositories
-        const planContent = await vcs.getPlanFile(project as any, conversation.planRef);
+        const planContent = await vcs.getPlanFile(project, conversation.planRef);
         if (planContent) {
           existingPlan = planManager.parsePlanFromMarkdown(planContent);
         }
@@ -462,7 +462,7 @@ async function handleConversationAction(
       const planContent = planManager.renderPlanToMarkdown(action.plan);
 
       const planResult = await vcs.createPlanFile(
-        project as any,
+        project,
         planContent,
         planPath,
         triggerEvent.metadata.issueNumber as number | undefined
@@ -493,7 +493,7 @@ async function handleConversationAction(
         throw new Error('Cannot update plan: VCS does not support plan files or no plan exists');
       }
 
-      await vcs.updatePlanFile(project as any, conversation.planRef, action.content);
+      await vcs.updatePlanFile(project, conversation.planRef, action.content);
 
       // Update plan version
       await conversationService.updateStatus(conversation.id, {

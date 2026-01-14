@@ -3,6 +3,8 @@
 .env.local
 .env.*.local
 
+.next
+
 # Dependencies
 node_modules/
 package-lock.json

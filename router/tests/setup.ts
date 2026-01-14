@@ -31,3 +31,16 @@ global.console = {
   // Keep error for actual errors
   error: console.error,
 };
+
+// Cleanup after all tests complete
+afterAll(async () => {
+  // Close database connection if it was opened
+  try {
+    const { closeDatabase, isDatabaseInitialized } = await import('../src/db/index');
+    if (isDatabaseInitialized()) {
+      await closeDatabase();
+    }
+  } catch {
+    // Database module may not have been loaded
+  }
+});

@@ -6,6 +6,10 @@ import { getGeneratedPassword, logGeneratedPassword } from './startup';
 export interface SessionData {
   username: string;
   isLoggedIn: boolean;
+  // TOTP fields
+  pendingTotpVerification?: boolean;  // Password OK, awaiting TOTP
+  totpVerified?: boolean;             // TOTP completed this session
+  pendingTotpSecret?: string;         // Temp storage during setup
 }
 
 const sessionOptions: SessionOptions = {
