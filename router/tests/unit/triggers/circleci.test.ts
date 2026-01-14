@@ -1,5 +1,5 @@
 import { CircleCITrigger } from '../../../src/triggers/circleci';
-import { Request } from 'express';
+import { createMockWebhookRequest } from '../../mocks/webhook-request';
 import * as projectsModule from '../../../src/config/projects';
 
 // Mock projects module
@@ -47,10 +47,7 @@ describe('CircleCITrigger', () => {
 
   describe('validateWebhook', () => {
     it('should accept webhook without signature if no secret configured', async () => {
-      const mockReq = {
-        headers: {},
-        body: {},
-      } as Request;
+      const mockReq = createMockWebhookRequest({}, {});
 
       const result = await trigger.validateWebhook(mockReq);
       expect(result).toBe(true);
@@ -66,12 +63,10 @@ describe('CircleCITrigger', () => {
         .update(JSON.stringify(body))
         .digest('hex');
 
-      const mockReq = {
-        headers: {
-          'circleci-signature': `v1=${signature}`,
-        },
-        body,
-      } as unknown as Request;
+      const mockReq = createMockWebhookRequest(
+        { 'circleci-signature': `v1=${signature}` },
+        body
+      );
 
       const result = await trigger.validateWebhook(mockReq);
       expect(result).toBe(true);
@@ -80,12 +75,10 @@ describe('CircleCITrigger', () => {
     it('should reject invalid CircleCI signature', async () => {
       process.env.CIRCLECI_WEBHOOK_SECRET = 'test-secret';
 
-      const mockReq = {
-        headers: {
-          'circleci-signature': 'v1=invalid-signature',
-        },
-        body: { test: 'payload' },
-      } as unknown as Request;
+      const mockReq = createMockWebhookRequest(
+        { 'circleci-signature': 'v1=invalid-signature' },
+        { test: 'payload' }
+      );
 
       const result = await trigger.validateWebhook(mockReq);
       expect(result).toBe(false);
@@ -94,24 +87,20 @@ describe('CircleCITrigger', () => {
     it('should reject signature with wrong version', async () => {
       process.env.CIRCLECI_WEBHOOK_SECRET = 'test-secret';
 
-      const mockReq = {
-        headers: {
-          'circleci-signature': 'v2=somehash',
-        },
-        body: { test: 'payload' },
-      } as unknown as Request;
+      const mockReq = createMockWebhookRequest(
+        { 'circleci-signature': 'v2=somehash' },
+        { test: 'payload' }
+      );
 
       const result = await trigger.validateWebhook(mockReq);
       expect(result).toBe(false);
     });
 
     it('should reject webhook if signature provided but no secret configured', async () => {
-      const mockReq = {
-        headers: {
-          'circleci-signature': 'v1=somehash',
-        },
-        body: { test: 'payload' },
-      } as unknown as Request;
+      const mockReq = createMockWebhookRequest(
+        { 'circleci-signature': 'v1=somehash' },
+        { test: 'payload' }
+      );
 
       const result = await trigger.validateWebhook(mockReq);
       expect(result).toBe(false);

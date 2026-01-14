@@ -12,14 +12,12 @@ import type {
   PendingEventEntry,
 } from '../db/repositories/conversations';
 import type {
-  ConversationState,
   RouteMode,
   WorkflowStatus,
   ConfidenceAssessment,
   ConversationEvent,
   ConversationConfig,
   ConversationMessage,
-  DEFAULT_ROUTING_TAGS,
 } from '../types/conversation';
 import { logger } from '../logger';
 

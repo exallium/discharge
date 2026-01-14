@@ -1,7 +1,7 @@
-import { Request } from 'express';
 import { SentryTrigger } from '../../../src/triggers/sentry';
 import { mockWebhookPayloads } from '../../fixtures/webhook-payloads';
 import { TriggerEvent } from '../../../src/triggers/base';
+import { createMockWebhookRequest } from '../../mocks/webhook-request';
 import * as projectsModule from '../../../src/config/projects';
 
 // Mock the projects module
@@ -55,22 +55,17 @@ describe('SentryTrigger', () => {
 
   describe('validateWebhook', () => {
     it('should accept webhook without signature when no secret is configured', async () => {
-      const req = {
-        headers: {},
-        body: mockWebhookPayloads.sentry.issueCreated,
-      } as unknown as Request;
+      const req = createMockWebhookRequest({}, mockWebhookPayloads.sentry.issueCreated);
 
       const result = await trigger.validateWebhook(req);
       expect(result).toBe(true);
     });
 
     it('should reject webhook with signature when no secret is configured', async () => {
-      const req = {
-        headers: {
-          'sentry-hook-signature': 'some-signature',
-        },
-        body: mockWebhookPayloads.sentry.issueCreated,
-      } as unknown as Request;
+      const req = createMockWebhookRequest(
+        { 'sentry-hook-signature': 'some-signature' },
+        mockWebhookPayloads.sentry.issueCreated
+      );
 
       const result = await trigger.validateWebhook(req);
       expect(result).toBe(false);
@@ -87,12 +82,10 @@ describe('SentryTrigger', () => {
         .update(JSON.stringify(body))
         .digest('hex');
 
-      const req = {
-        headers: {
-          'sentry-hook-signature': expectedSignature,
-        },
-        body,
-      } as unknown as Request;
+      const req = createMockWebhookRequest(
+        { 'sentry-hook-signature': expectedSignature },
+        body
+      );
 
       const result = await trigger.validateWebhook(req);
       expect(result).toBe(true);
@@ -101,12 +94,10 @@ describe('SentryTrigger', () => {
     it('should reject incorrect signature', async () => {
       process.env.SENTRY_WEBHOOK_SECRET = 'test-secret';
 
-      const req = {
-        headers: {
-          'sentry-hook-signature': 'invalid-signature',
-        },
-        body: mockWebhookPayloads.sentry.issueCreated,
-      } as unknown as Request;
+      const req = createMockWebhookRequest(
+        { 'sentry-hook-signature': 'invalid-signature' },
+        mockWebhookPayloads.sentry.issueCreated
+      );
 
       const result = await trigger.validateWebhook(req);
       expect(result).toBe(false);

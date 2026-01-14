@@ -247,7 +247,7 @@ export class EventRouter {
   private getConversationId(
     trigger: TriggerPlugin,
     triggerEvent: TriggerEvent,
-    event: ConversationEvent
+    _event: ConversationEvent
   ): string | null {
     // If trigger implements getConversationId, use it
     if ('getConversationId' in trigger && typeof trigger.getConversationId === 'function') {

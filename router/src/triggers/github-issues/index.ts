@@ -528,7 +528,7 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
    */
   async parseConversationEvent(
     payload: unknown,
-    project?: ProjectConfig
+    _project?: ProjectConfig
   ): Promise<ConversationEvent | null> {
     const typedPayload = payload as GitHubWebhookPayload;
 
@@ -779,7 +779,7 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
   async postFeedback(
     event: TriggerEvent,
     message: string,
-    project?: ProjectConfig
+    _project?: ProjectConfig
   ): Promise<void> {
     // Use the existing addComment method
     await this.addComment(event, message);

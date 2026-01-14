@@ -16,6 +16,16 @@ module.exports = tseslint.config(
     },
   },
   {
-    ignores: ['dist/**', 'node_modules/**', 'jest.config.js', 'eslint.config.js'],
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      'jest.config.js',
+      'eslint.config.js',
+      'next.config.js',
+      'postcss.config.js',
+      'tailwind.config.ts',
+      'playwright.config.ts',
+      'tests/**',
+    ],
   }
 );

@@ -13,31 +13,6 @@ import type {
 import type { AnalysisResult } from '../runner/base';
 
 /**
- * Known confidence factors and their default weights
- */
-const CONFIDENCE_FACTORS: Record<
-  string,
-  { weight: number; impact: 'positive' | 'negative' }
-> = {
-  // Positive factors
-  clear_reproduction_steps: { weight: 0.1, impact: 'positive' },
-  isolated_to_single_file: { weight: 0.15, impact: 'positive' },
-  existing_test_coverage: { weight: 0.15, impact: 'positive' },
-  similar_past_fix: { weight: 0.1, impact: 'positive' },
-  trivial_complexity: { weight: 0.1, impact: 'positive' },
-  simple_complexity: { weight: 0.05, impact: 'positive' },
-
-  // Negative factors
-  touches_auth_security: { weight: 0.25, impact: 'negative' },
-  touches_payments_billing: { weight: 0.25, impact: 'negative' },
-  multiple_files_affected: { weight: 0.1, impact: 'negative' },
-  schema_migration_changes: { weight: 0.2, impact: 'negative' },
-  public_api_changes: { weight: 0.15, impact: 'negative' },
-  complex_complexity: { weight: 0.15, impact: 'negative' },
-  no_test_coverage: { weight: 0.1, impact: 'negative' },
-};
-
-/**
  * High-risk paths that reduce confidence
  */
 const HIGH_RISK_PATHS = [

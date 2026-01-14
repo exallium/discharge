@@ -136,7 +136,7 @@ export function formatEvent(event: ConversationEvent): string {
       parts.push(event.payload.comment?.body || '_Empty comment_');
       break;
 
-    case 'pr_review':
+    case 'pr_review': {
       const state = event.payload.review?.state || 'unknown';
       const stateEmoji = getReviewStateEmoji(state);
       parts.push(`## Review ${stateEmoji} from @${event.payload.review?.author || 'unknown'}`);
@@ -162,6 +162,7 @@ export function formatEvent(event: ConversationEvent): string {
         }
       }
       break;
+    }
 
     case 'pr_review_comment':
       parts.push(`## Inline Comment from @${event.payload.comment?.author || 'unknown'}`);

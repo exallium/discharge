@@ -134,7 +134,7 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
       toast.success('Project deleted');
       router.push('/projects');
       router.refresh();
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete project');
     }
   };

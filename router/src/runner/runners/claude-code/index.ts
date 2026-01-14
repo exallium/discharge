@@ -21,7 +21,6 @@ import { Tool } from '../../../triggers/base';
 import type { RunnerConversationResult, RunnerAction, PlanFile } from '../../../types/conversation';
 import {
   buildConversationSystemPrompt,
-  buildUserMessage,
   formatConversationHistory,
   buildPlanCreationPrompt,
   buildPlanIterationPrompt,

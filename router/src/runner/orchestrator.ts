@@ -14,7 +14,6 @@ import type {
 } from '../types/conversation';
 import { getConversationService } from '../conversation';
 import { getPlanManager } from '../conversation/plan-manager';
-import { getConfidenceAssessor } from '../conversation/confidence';
 import { buildUserMessage } from '../conversation/prompts';
 import { logger } from '../logger';
 
@@ -299,7 +298,6 @@ export async function orchestrateConversation(
     // Get services
     const conversationService = getConversationService();
     const planManager = getPlanManager();
-    const confidenceAssessor = getConfidenceAssessor();
 
     // Get runner
     const runnerId = project.runner?.type || 'claude-code';

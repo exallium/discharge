@@ -1,5 +1,6 @@
 import { GitHubIssuesTrigger } from '../../../src/triggers/github-issues';
 import { mockWebhookPayloads } from '../../fixtures/webhook-payloads';
+import { createMockWebhookRequest } from '../../mocks/webhook-request';
 import crypto from 'crypto';
 
 // Mock the projects config
@@ -56,10 +57,7 @@ describe('GitHubIssuesTrigger', () => {
         .update(JSON.stringify(body))
         .digest('hex');
 
-      const mockReq = {
-        headers: { 'x-hub-signature-256': signature },
-        body,
-      } as any;
+      const mockReq = createMockWebhookRequest({ 'x-hub-signature-256': signature }, body);
 
       const result = await trigger.validateWebhook(mockReq);
       expect(result).toBe(true);
@@ -68,10 +66,10 @@ describe('GitHubIssuesTrigger', () => {
     it('should reject incorrect signature', async () => {
       process.env.GITHUB_WEBHOOK_SECRET = 'test-secret';
 
-      const mockReq = {
-        headers: { 'x-hub-signature-256': 'sha256=invalid' },
-        body: { test: 'payload' },
-      } as any;
+      const mockReq = createMockWebhookRequest(
+        { 'x-hub-signature-256': 'sha256=invalid' },
+        { test: 'payload' }
+      );
 
       const result = await trigger.validateWebhook(mockReq);
       expect(result).toBe(false);
@@ -80,10 +78,7 @@ describe('GitHubIssuesTrigger', () => {
     it('should reject webhook without signature', async () => {
       process.env.GITHUB_WEBHOOK_SECRET = 'test-secret';
 
-      const mockReq = {
-        headers: {},
-        body: { test: 'payload' },
-      } as any;
+      const mockReq = createMockWebhookRequest({}, { test: 'payload' });
 
       const result = await trigger.validateWebhook(mockReq);
       expect(result).toBe(false);
@@ -96,10 +91,7 @@ describe('GitHubIssuesTrigger', () => {
         .update(JSON.stringify(body))
         .digest('hex');
 
-      const mockReq = {
-        headers: { 'x-hub-signature-256': signature },
-        body,
-      } as any;
+      const mockReq = createMockWebhookRequest({ 'x-hub-signature-256': signature }, body);
 
       const result = await trigger.validateWebhook(mockReq);
       expect(result).toBe(false);

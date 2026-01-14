@@ -479,7 +479,6 @@ export async function drainEvents(conversationId: string): Promise<PendingEventE
   }
 
   // Mark them as processed
-  const eventIds = events.map((e) => e.id);
   await db
     .update(pendingEvents)
     .set({ processedAt: new Date() })
