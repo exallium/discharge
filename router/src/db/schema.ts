@@ -214,12 +214,27 @@ export const trustedDevices = pgTable(
 );
 
 /**
+ * Outcome type for API logs
+ * Describes what happened with the request
+ */
+export type ApiLogOutcome =
+  | 'success'           // Request completed successfully
+  | 'queued'            // Job was queued for processing
+  | 'filtered'          // Event was filtered (not processed)
+  | 'validation_failed' // Webhook signature/auth failed
+  | 'not_found'         // Resource not found
+  | 'error';            // Server error
+
+/**
  * API logs table - HTTP request/response tracking with webhook focus
  */
 export const apiLogs = pgTable(
   'api_logs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+
+    // Request tracing
+    requestId: varchar('request_id', { length: 50 }).notNull(),
 
     // Request info
     method: varchar('method', { length: 10 }).notNull(),
@@ -234,6 +249,24 @@ export const apiLogs = pgTable(
     eventType: varchar('event_type', { length: 100 }),
     payloadSummary: jsonb('payload_summary').$type<Record<string, unknown>>(),
 
+    // Outcome tracking
+    outcome: varchar('outcome', { length: 50 }).$type<ApiLogOutcome>(),
+    outcomeReason: text('outcome_reason'), // Human-readable explanation
+    jobId: varchar('job_id', { length: 255 }), // Link to queued job if applicable
+    projectId: varchar('project_id', { length: 255 }), // Project that handled the request
+
+    // Detailed info for debugging (expandable in UI)
+    details: jsonb('details').$type<{
+      validationResult?: { valid: boolean; reason?: string };
+      parseResult?: { success: boolean; reason?: string };
+      filterResult?: { processed: boolean; reason?: string };
+      queueResult?: { jobId?: string; error?: string; conversationId?: string; action?: string };
+      eventInfo?: { triggerType?: string; triggerId?: string; title?: string };
+      responseBody?: Record<string, unknown>;
+      error?: { message?: string; stack?: string };
+      [key: string]: unknown;
+    }>(),
+
     // Response/error
     error: text('error'),
 
@@ -245,6 +278,9 @@ export const apiLogs = pgTable(
     index('idx_api_logs_path').on(table.path),
     index('idx_api_logs_trigger_id').on(table.triggerId),
     index('idx_api_logs_status_code').on(table.statusCode),
+    index('idx_api_logs_request_id').on(table.requestId),
+    index('idx_api_logs_outcome').on(table.outcome),
+    index('idx_api_logs_job_id').on(table.jobId),
   ]
 );
 

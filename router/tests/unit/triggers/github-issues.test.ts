@@ -3,6 +3,13 @@ import { mockWebhookPayloads } from '../../fixtures/webhook-payloads';
 import { createMockWebhookRequest } from '../../mocks/webhook-request';
 import crypto from 'crypto';
 
+// Mock the VCS module for secret retrieval
+const mockGetGitHubWebhookSecret = jest.fn();
+jest.mock('../../../src/vcs', () => ({
+  getGitHubToken: jest.fn().mockResolvedValue('test-token'),
+  getGitHubWebhookSecret: (...args: unknown[]) => mockGetGitHubWebhookSecret(...args),
+}));
+
 // Mock the projects config
 jest.mock('../../../src/config/projects', () => ({
   findProjectByRepo: jest.fn((repoFullName: string) => {
@@ -37,6 +44,7 @@ describe('GitHubIssuesTrigger', () => {
   beforeEach(() => {
     trigger = new GitHubIssuesTrigger();
     jest.clearAllMocks();
+    mockGetGitHubWebhookSecret.mockReset();
     delete process.env.GITHUB_WEBHOOK_SECRET;
     delete process.env.GITHUB_TOKEN;
   });
@@ -49,7 +57,7 @@ describe('GitHubIssuesTrigger', () => {
 
   describe('validateWebhook', () => {
     it('should validate correct GitHub signature', async () => {
-      process.env.GITHUB_WEBHOOK_SECRET = 'test-secret';
+      mockGetGitHubWebhookSecret.mockResolvedValue('test-secret');
 
       const body = { test: 'payload' };
       const signature = 'sha256=' + crypto
@@ -64,7 +72,7 @@ describe('GitHubIssuesTrigger', () => {
     });
 
     it('should reject incorrect signature', async () => {
-      process.env.GITHUB_WEBHOOK_SECRET = 'test-secret';
+      mockGetGitHubWebhookSecret.mockResolvedValue('test-secret');
 
       const mockReq = createMockWebhookRequest(
         { 'x-hub-signature-256': 'sha256=invalid' },
@@ -76,7 +84,7 @@ describe('GitHubIssuesTrigger', () => {
     });
 
     it('should reject webhook without signature', async () => {
-      process.env.GITHUB_WEBHOOK_SECRET = 'test-secret';
+      mockGetGitHubWebhookSecret.mockResolvedValue('test-secret');
 
       const mockReq = createMockWebhookRequest({}, { test: 'payload' });
 
@@ -85,6 +93,8 @@ describe('GitHubIssuesTrigger', () => {
     });
 
     it('should reject webhook when secret not configured', async () => {
+      mockGetGitHubWebhookSecret.mockResolvedValue(null);
+
       const body = { test: 'payload' };
       const signature = 'sha256=' + crypto
         .createHmac('sha256', 'test-secret')
@@ -95,6 +105,126 @@ describe('GitHubIssuesTrigger', () => {
 
       const result = await trigger.validateWebhook(mockReq);
       expect(result).toBe(false);
+    });
+
+    it('should extract projectId from payload and use project-specific secret', async () => {
+      mockGetGitHubWebhookSecret.mockResolvedValue('project-secret');
+
+      const body = {
+        action: 'opened',
+        repository: { full_name: 'owner/repo' },
+        issue: { number: 1 },
+      };
+      const signature = 'sha256=' + crypto
+        .createHmac('sha256', 'project-secret')
+        .update(JSON.stringify(body))
+        .digest('hex');
+
+      const mockReq = createMockWebhookRequest({ 'x-hub-signature-256': signature }, body);
+
+      const result = await trigger.validateWebhook(mockReq);
+
+      expect(result).toBe(true);
+      // Verify getGitHubWebhookSecret was called with the project ID
+      expect(mockGetGitHubWebhookSecret).toHaveBeenCalledWith('test-project');
+    });
+
+    it('should fall back to global secret when repository not in payload', async () => {
+      mockGetGitHubWebhookSecret.mockResolvedValue('global-secret');
+
+      const body = { test: 'payload-without-repo' };
+      const signature = 'sha256=' + crypto
+        .createHmac('sha256', 'global-secret')
+        .update(JSON.stringify(body))
+        .digest('hex');
+
+      const mockReq = createMockWebhookRequest({ 'x-hub-signature-256': signature }, body);
+
+      const result = await trigger.validateWebhook(mockReq);
+
+      expect(result).toBe(true);
+      // Should be called with undefined (no projectId)
+      expect(mockGetGitHubWebhookSecret).toHaveBeenCalledWith(undefined);
+    });
+
+    it('should fall back to global secret when repository not configured', async () => {
+      mockGetGitHubWebhookSecret.mockResolvedValue('global-secret');
+
+      const body = {
+        action: 'opened',
+        repository: { full_name: 'unknown/repo' }, // Not in mock config
+        issue: { number: 1 },
+      };
+      const signature = 'sha256=' + crypto
+        .createHmac('sha256', 'global-secret')
+        .update(JSON.stringify(body))
+        .digest('hex');
+
+      const mockReq = createMockWebhookRequest({ 'x-hub-signature-256': signature }, body);
+
+      const result = await trigger.validateWebhook(mockReq);
+
+      expect(result).toBe(true);
+      // Should be called with undefined since project wasn't found
+      expect(mockGetGitHubWebhookSecret).toHaveBeenCalledWith(undefined);
+    });
+
+    it('should use rawBody for signature verification when available', async () => {
+      mockGetGitHubWebhookSecret.mockResolvedValue('test-secret');
+
+      // Raw body with different formatting than JSON.stringify would produce
+      const rawBody = '{"action":"opened","repository":{"full_name":"owner/repo"}}';
+      const body = JSON.parse(rawBody);
+
+      // Signature computed on rawBody, not JSON.stringify(body)
+      const signature = 'sha256=' + crypto
+        .createHmac('sha256', 'test-secret')
+        .update(rawBody)
+        .digest('hex');
+
+      const mockReq = createMockWebhookRequest(
+        { 'x-hub-signature-256': signature },
+        body,
+        rawBody
+      );
+
+      const result = await trigger.validateWebhook(mockReq);
+      expect(result).toBe(true);
+    });
+
+    it('should fail validation when rawBody differs from re-serialized body', async () => {
+      mockGetGitHubWebhookSecret.mockResolvedValue('test-secret');
+
+      // Simulate GitHub sending JSON with different key order/whitespace
+      const rawBody = '{ "repository": { "full_name": "owner/repo" }, "action": "opened" }';
+      const body = JSON.parse(rawBody);
+
+      // Signature computed on rawBody
+      const signature = 'sha256=' + crypto
+        .createHmac('sha256', 'test-secret')
+        .update(rawBody)
+        .digest('hex');
+
+      // Without rawBody, it would try JSON.stringify(body) which produces different output
+      const mockReqWithoutRaw = createMockWebhookRequest(
+        { 'x-hub-signature-256': signature },
+        body
+        // No rawBody - will fall back to JSON.stringify
+      );
+
+      // This should fail because JSON.stringify produces different output
+      const resultWithoutRaw = await trigger.validateWebhook(mockReqWithoutRaw);
+      expect(resultWithoutRaw).toBe(false);
+
+      // With rawBody, it should succeed
+      const mockReqWithRaw = createMockWebhookRequest(
+        { 'x-hub-signature-256': signature },
+        body,
+        rawBody
+      );
+
+      const resultWithRaw = await trigger.validateWebhook(mockReqWithRaw);
+      expect(resultWithRaw).toBe(true);
     });
   });
 

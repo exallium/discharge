@@ -1,6 +1,7 @@
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import { FixJobData, FixJobOptions } from './types';
+import * as jobHistoryRepo from '../db/repositories/job-history';
 
 /**
  * Lazy-initialized queue and connection
@@ -78,6 +79,18 @@ export async function queueFixJob(
 ): Promise<string> {
   const queue = getQueue();
   const job = await queue.add('fix', data, options);
+
+  // Create job history entry
+  try {
+    await jobHistoryRepo.create({
+      jobId: job.id!,
+      projectId: data.event.projectId,
+      triggerType: data.triggerType,
+      triggerId: data.event.triggerId,
+    });
+  } catch (error) {
+    console.error('Failed to create job history entry:', error);
+  }
 
   console.log('Job queued', {
     jobId: job.id,

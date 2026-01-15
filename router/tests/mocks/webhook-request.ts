@@ -18,10 +18,12 @@ export function createMockHeaders(headers: Record<string, string>): WebhookHeade
  */
 export function createMockWebhookRequest(
   headers: Record<string, string>,
-  body: unknown
+  body: unknown,
+  rawBody?: string
 ): WebhookRequest {
   return {
     headers: createMockHeaders(headers),
     body,
+    rawBody,
   };
 }

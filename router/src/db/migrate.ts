@@ -5,7 +5,7 @@
  * Uses Drizzle's migrate function with SQL migration files.
  */
 
-import { sql } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { logger } from '../logger';
 import * as schema from './schema';
@@ -152,6 +152,7 @@ async function createTables(
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS api_logs (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      request_id VARCHAR(50) NOT NULL,
       method VARCHAR(10) NOT NULL,
       path TEXT NOT NULL,
       status_code INTEGER NOT NULL,
@@ -161,9 +162,44 @@ async function createTables(
       trigger_id VARCHAR(255),
       event_type VARCHAR(100),
       payload_summary JSONB,
+      outcome VARCHAR(50),
+      outcome_reason TEXT,
+      job_id VARCHAR(255),
+      project_id VARCHAR(255),
+      details JSONB,
       error TEXT,
       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
     )
+  `);
+
+  // Add new columns to api_logs if they don't exist (for existing tables)
+  await db.execute(sql`
+    ALTER TABLE api_logs ADD COLUMN IF NOT EXISTS request_id VARCHAR(50)
+  `);
+  await db.execute(sql`
+    ALTER TABLE api_logs ADD COLUMN IF NOT EXISTS outcome VARCHAR(50)
+  `);
+  await db.execute(sql`
+    ALTER TABLE api_logs ADD COLUMN IF NOT EXISTS outcome_reason TEXT
+  `);
+  await db.execute(sql`
+    ALTER TABLE api_logs ADD COLUMN IF NOT EXISTS job_id VARCHAR(255)
+  `);
+  await db.execute(sql`
+    ALTER TABLE api_logs ADD COLUMN IF NOT EXISTS project_id VARCHAR(255)
+  `);
+  await db.execute(sql`
+    ALTER TABLE api_logs ADD COLUMN IF NOT EXISTS details JSONB
+  `);
+
+  // Backfill request_id for existing rows (generate a placeholder)
+  await db.execute(sql`
+    UPDATE api_logs SET request_id = 'legacy_' || SUBSTRING(id::text, 1, 8) WHERE request_id IS NULL
+  `);
+
+  // Now make request_id NOT NULL after backfill
+  await db.execute(sql`
+    ALTER TABLE api_logs ALTER COLUMN request_id SET NOT NULL
   `);
 
   await db.execute(sql`
@@ -180,6 +216,18 @@ async function createTables(
 
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS idx_api_logs_status_code ON api_logs(status_code)
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_api_logs_request_id ON api_logs(request_id)
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_api_logs_outcome ON api_logs(outcome)
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_api_logs_job_id ON api_logs(job_id)
   `);
 
   // Conversations table (for conversational feedback loop)
@@ -199,6 +247,23 @@ async function createTables(
       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
     )
+  `);
+
+  // Add missing columns to conversations table (for existing tables)
+  await db.execute(sql`
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS route_mode VARCHAR(20) NOT NULL DEFAULT 'plan_review'
+  `);
+  await db.execute(sql`
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS plan_ref VARCHAR(500)
+  `);
+  await db.execute(sql`
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS plan_version INTEGER DEFAULT 1
+  `);
+  await db.execute(sql`
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS confidence JSONB
+  `);
+  await db.execute(sql`
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS trigger_event JSONB
   `);
 
   await db.execute(sql`
@@ -229,6 +294,17 @@ async function createTables(
     )
   `);
 
+  // Add missing columns to conversation_messages table (for existing tables)
+  await db.execute(sql`
+    ALTER TABLE conversation_messages ADD COLUMN IF NOT EXISTS source_type VARCHAR(50)
+  `);
+  await db.execute(sql`
+    ALTER TABLE conversation_messages ADD COLUMN IF NOT EXISTS source_id VARCHAR(255)
+  `);
+  await db.execute(sql`
+    ALTER TABLE conversation_messages ADD COLUMN IF NOT EXISTS source_author VARCHAR(255)
+  `);
+
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON conversation_messages(conversation_id)
   `);
@@ -249,6 +325,26 @@ async function createTables(
     )
   `);
 
+  // Fix column names in pending_events (schema expects event_payload and queued_at)
+  // Try to rename payload -> event_payload (ignore if already renamed or doesn't exist)
+  try {
+    await db.execute(sql`
+      ALTER TABLE pending_events RENAME COLUMN payload TO event_payload
+    `);
+  } catch {
+    // Column may already be renamed or not exist
+  }
+  await db.execute(sql`
+    ALTER TABLE pending_events ADD COLUMN IF NOT EXISTS event_payload JSONB
+  `);
+  await db.execute(sql`
+    ALTER TABLE pending_events ADD COLUMN IF NOT EXISTS queued_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  `);
+  // Backfill queued_at from created_at if needed
+  await db.execute(sql`
+    UPDATE pending_events SET queued_at = created_at WHERE queued_at IS NULL
+  `);
+
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS idx_pending_events_conversation ON pending_events(conversation_id)
   `);
@@ -258,6 +354,164 @@ async function createTables(
   `);
 
   logger.debug('All database tables created/verified');
+
+  // Run data migrations
+  await migrateTriggerFormat(db);
+  await migrateVcsOwnerRepo(db);
+}
+
+/**
+ * Migrate trigger format from old to new structure
+ * Old: { 'github-issues': {} }
+ * New: { github: { issues: true } }
+ */
+async function migrateTriggerFormat(
+  db: PostgresJsDatabase<typeof schema>
+): Promise<void> {
+  // Get all projects and filter in JS (simpler than JSONB operators)
+  const allProjects = await db.select().from(schema.projects);
+
+  const projectsToMigrate = allProjects.filter((p) => {
+    const triggers = p.triggers as Record<string, unknown> | null;
+    if (!triggers) return false;
+
+    // Check for old format
+    if ('github-issues' in triggers) return true;
+
+    // Check sentry without enabled flag
+    if (triggers.sentry && typeof triggers.sentry === 'object') {
+      const sentry = triggers.sentry as Record<string, unknown>;
+      if (!('enabled' in sentry)) return true;
+    }
+
+    // Check circleci without enabled flag
+    if (triggers.circleci && typeof triggers.circleci === 'object') {
+      const circleci = triggers.circleci as Record<string, unknown>;
+      if (!('enabled' in circleci)) return true;
+    }
+
+    return false;
+  });
+
+  if (projectsToMigrate.length === 0) {
+    return;
+  }
+
+  logger.info(`Migrating trigger format for ${projectsToMigrate.length} project(s)`);
+
+  for (const project of projectsToMigrate) {
+    const oldTriggers = (project.triggers as Record<string, unknown>) || {};
+    const newTriggers: Record<string, unknown> = {};
+
+    // Migrate github-issues → github.issues
+    if ('github-issues' in oldTriggers) {
+      newTriggers.github = { issues: true };
+    } else if (oldTriggers.github) {
+      newTriggers.github = oldTriggers.github;
+    }
+
+    // Migrate sentry (ensure it has enabled: true)
+    if (oldTriggers.sentry) {
+      const sentry = oldTriggers.sentry as Record<string, unknown>;
+      if (!('enabled' in sentry)) {
+        newTriggers.sentry = { ...sentry, enabled: true };
+      } else {
+        newTriggers.sentry = sentry;
+      }
+    }
+
+    // Migrate circleci (ensure it has enabled: true)
+    if (oldTriggers.circleci) {
+      const circleci = oldTriggers.circleci as Record<string, unknown>;
+      if (!('enabled' in circleci)) {
+        newTriggers.circleci = { ...circleci, enabled: true };
+      } else {
+        newTriggers.circleci = circleci;
+      }
+    }
+
+    // Copy any other triggers as-is
+    for (const key of Object.keys(oldTriggers)) {
+      if (!['github-issues', 'github', 'sentry', 'circleci'].includes(key)) {
+        newTriggers[key] = oldTriggers[key];
+      }
+    }
+
+    // Update the project using Drizzle
+    await db
+      .update(schema.projects)
+      .set({
+        triggers: newTriggers,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.projects.id, project.id));
+
+    logger.debug(`Migrated triggers for project ${project.id}`, {
+      from: oldTriggers,
+      to: newTriggers,
+    });
+  }
+
+  logger.info('Trigger format migration completed');
+}
+
+/**
+ * Migrate vcs config to include owner and repo from repoFullName
+ * Old: { type: 'github' }
+ * New: { type: 'github', owner: 'owner', repo: 'repo' }
+ */
+async function migrateVcsOwnerRepo(
+  db: PostgresJsDatabase<typeof schema>
+): Promise<void> {
+  // Get all projects and filter those missing owner/repo in vcs
+  const allProjects = await db.select().from(schema.projects);
+
+  const projectsToMigrate = allProjects.filter((p) => {
+    const vcs = p.vcs as { type: string; owner?: string; repo?: string } | null;
+    if (!vcs) return false;
+    // Check if owner or repo is missing
+    return !vcs.owner || !vcs.repo;
+  });
+
+  if (projectsToMigrate.length === 0) {
+    return;
+  }
+
+  logger.info(`Migrating vcs owner/repo for ${projectsToMigrate.length} project(s)`);
+
+  for (const project of projectsToMigrate) {
+    const oldVcs = project.vcs as { type: 'github' | 'gitlab' | 'bitbucket' | 'self-hosted'; owner?: string; repo?: string };
+    const [owner, repo] = project.repoFullName.split('/');
+
+    if (!owner || !repo) {
+      logger.warn(`Cannot parse owner/repo from repoFullName: ${project.repoFullName}`);
+      continue;
+    }
+
+    const newVcs = {
+      type: oldVcs.type,
+      owner,
+      repo,
+      reviewers: (oldVcs as Record<string, unknown>).reviewers as string[] | undefined,
+      labels: (oldVcs as Record<string, unknown>).labels as string[] | undefined,
+    };
+
+    // Update the project using Drizzle
+    await db
+      .update(schema.projects)
+      .set({
+        vcs: newVcs,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.projects.id, project.id));
+
+    logger.debug(`Migrated vcs for project ${project.id}`, {
+      from: oldVcs,
+      to: newVcs,
+    });
+  }
+
+  logger.info('VCS owner/repo migration completed');
 }
 
 /**

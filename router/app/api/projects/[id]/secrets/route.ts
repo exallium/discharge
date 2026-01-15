@@ -52,7 +52,31 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    const enabledTriggers = Object.keys(project.triggers || {});
+    // Map the new trigger format to secret keys
+    // New format: { github: { issues: true }, sentry: { enabled: true } }
+    // Secret keys: 'github-issues', 'sentry', 'circleci'
+    const triggers = project.triggers as Record<string, unknown> || {};
+    const enabledTriggers: string[] = [];
+
+    if (triggers.github && typeof triggers.github === 'object') {
+      const github = triggers.github as Record<string, unknown>;
+      if (github.issues) {
+        enabledTriggers.push('github-issues');
+      }
+    }
+    if (triggers.sentry && typeof triggers.sentry === 'object') {
+      const sentry = triggers.sentry as Record<string, unknown>;
+      if (sentry.enabled) {
+        enabledTriggers.push('sentry');
+      }
+    }
+    if (triggers.circleci && typeof triggers.circleci === 'object') {
+      const circleci = triggers.circleci as Record<string, unknown>;
+      if (circleci.enabled) {
+        enabledTriggers.push('circleci');
+      }
+    }
+
     const secrets: SecretStatus[] = [];
 
     for (const trigger of enabledTriggers) {
@@ -69,8 +93,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         // Import settingsRepo to check specific levels
         const { settingsRepo } = await import('@/src/db/repositories');
 
-        const projectValue = await settingsRepo.get(projectKey);
-        const globalValue = await settingsRepo.get(globalKey);
+        // Use getDecrypted to properly decrypt encrypted values
+        const projectValue = await settingsRepo.getDecrypted(projectKey);
+        const globalValue = await settingsRepo.getDecrypted(globalKey);
         const envValue = process.env[envKey];
 
         let source: 'project' | 'global' | 'env' | 'none' = 'none';

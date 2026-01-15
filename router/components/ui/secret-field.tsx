@@ -96,6 +96,7 @@ export function SecretField({
           autoFocus
         />
         <Button
+          type="button"
           variant="ghost"
           size="icon"
           className="h-8 w-8 shrink-0"
@@ -105,6 +106,7 @@ export function SecretField({
           <Save className="h-4 w-4" />
         </Button>
         <Button
+          type="button"
           variant="ghost"
           size="icon"
           className="h-8 w-8 shrink-0"
@@ -123,6 +125,7 @@ export function SecretField({
         <span className="text-sm text-muted-foreground italic">Not configured</span>
         {onSave && (
           <Button
+            type="button"
             variant="outline"
             size="sm"
             className="h-7 text-xs"
@@ -150,6 +153,7 @@ export function SecretField({
       <div className="flex items-center gap-1 shrink-0">
         {/* Reveal toggle */}
         <Button
+          type="button"
           variant="ghost"
           size="icon"
           className="h-8 w-8"
@@ -161,6 +165,7 @@ export function SecretField({
 
         {/* Copy */}
         <Button
+          type="button"
           variant="ghost"
           size="icon"
           className="h-8 w-8"
@@ -173,6 +178,7 @@ export function SecretField({
         {/* Override (for global/env) or Edit (for project) */}
         {onSave && (
           <Button
+            type="button"
             variant="ghost"
             size="icon"
             className="h-8 w-8"
@@ -187,6 +193,7 @@ export function SecretField({
         {/* Delete (only for project-specific) */}
         {canDelete && onDelete && (
           <Button
+            type="button"
             variant="ghost"
             size="icon"
             className="h-8 w-8 text-destructive hover:text-destructive"

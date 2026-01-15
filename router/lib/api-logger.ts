@@ -6,7 +6,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { apiLogsRepo } from '@/src/db/repositories';
+import { apiLogsRepo, ApiLogDetails } from '@/src/db/repositories';
+import { ApiLogOutcome } from '@/src/db/schema';
 import { logger, generateRequestId } from '@/src/logger';
 
 /**
@@ -16,6 +17,44 @@ export interface LoggingContext {
   triggerId?: string;
   eventType?: string;
   payloadSummary?: Record<string, unknown>;
+  // Enhanced tracking
+  outcome?: ApiLogOutcome;
+  outcomeReason?: string;
+  jobId?: string;
+  projectId?: string;
+  details?: ApiLogDetails;
+}
+
+/**
+ * Helper to set logging context from within route handlers
+ * Attaches context to the request for later retrieval
+ */
+const REQUEST_CONTEXT_KEY = Symbol('loggingContext');
+
+export function setLoggingContext(request: NextRequest, context: Partial<LoggingContext>): void {
+  const existing = (request as unknown as Record<symbol, LoggingContext>)[REQUEST_CONTEXT_KEY] || {};
+  (request as unknown as Record<symbol, LoggingContext>)[REQUEST_CONTEXT_KEY] = {
+    ...existing,
+    ...context,
+    details: { ...existing.details, ...context.details },
+  };
+}
+
+export function getLoggingContext(request: NextRequest): LoggingContext {
+  return (request as unknown as Record<symbol, LoggingContext>)[REQUEST_CONTEXT_KEY] || {};
+}
+
+/**
+ * Get the request ID from a request (set by withLogging wrapper)
+ */
+const REQUEST_ID_KEY = Symbol('requestId');
+
+export function getRequestId(request: NextRequest): string {
+  return (request as unknown as Record<symbol, string>)[REQUEST_ID_KEY] || 'unknown';
+}
+
+function setRequestId(request: NextRequest, requestId: string): void {
+  (request as unknown as Record<symbol, string>)[REQUEST_ID_KEY] = requestId;
 }
 
 /**
@@ -35,6 +74,30 @@ type ContextExtractor = (
   request: NextRequest,
   body?: unknown
 ) => LoggingContext;
+
+/**
+ * Parse request body - handles both JSON and form-encoded payloads
+ */
+async function parseRequestBody(request: Request): Promise<unknown> {
+  const contentType = request.headers.get('content-type') || '';
+
+  if (contentType.includes('application/json')) {
+    return request.json();
+  }
+
+  if (contentType.includes('application/x-www-form-urlencoded')) {
+    const text = await request.text();
+    const params = new URLSearchParams(text);
+    const payload = params.get('payload');
+    if (payload) {
+      return JSON.parse(payload);
+    }
+    return null;
+  }
+
+  // Try JSON as fallback
+  return request.json();
+}
 
 /**
  * Extract IP address from request headers
@@ -71,6 +134,9 @@ export function withLogging(
     const path = request.nextUrl.pathname;
     const method = request.method;
 
+    // Attach requestId to request for use in handlers
+    setRequestId(request, requestId);
+
     let responseStatus = 500;
     let error: string | null = null;
     let loggingContext: LoggingContext = {};
@@ -80,10 +146,10 @@ export function withLogging(
       if (extractContext && ['POST', 'PUT', 'PATCH'].includes(method)) {
         try {
           const clonedRequest = request.clone();
-          const body = await clonedRequest.json();
+          const body = await parseRequestBody(clonedRequest);
           loggingContext = extractContext(request, body);
         } catch {
-          // Body might not be JSON, continue without context
+          // Body might not be parseable, continue without context
         }
       }
 
@@ -99,9 +165,17 @@ export function withLogging(
     } finally {
       const responseTimeMs = Date.now() - startTime;
 
+      // Merge in any context set by the handler
+      const handlerContext = getLoggingContext(request);
+      loggingContext = { ...loggingContext, ...handlerContext };
+
+      // Determine outcome from status code if not explicitly set
+      const outcome = loggingContext.outcome || inferOutcome(responseStatus, loggingContext);
+
       // Log to database (async, don't block response)
       apiLogsRepo
         .create({
+          requestId,
           method,
           path,
           statusCode: responseStatus,
@@ -111,6 +185,11 @@ export function withLogging(
           triggerId: loggingContext.triggerId || null,
           eventType: loggingContext.eventType || null,
           payloadSummary: loggingContext.payloadSummary || null,
+          outcome,
+          outcomeReason: loggingContext.outcomeReason || null,
+          jobId: loggingContext.jobId || null,
+          projectId: loggingContext.projectId || null,
+          details: loggingContext.details || null,
           error,
         })
         .catch((logError) => {
@@ -128,11 +207,27 @@ export function withLogging(
         path,
         statusCode: responseStatus,
         responseTimeMs,
+        outcome,
+        outcomeReason: loggingContext.outcomeReason,
         triggerId: loggingContext.triggerId,
         eventType: loggingContext.eventType,
+        jobId: loggingContext.jobId,
+        projectId: loggingContext.projectId,
       });
     }
   };
+}
+
+/**
+ * Infer outcome from status code when not explicitly set
+ */
+function inferOutcome(statusCode: number, context: LoggingContext): ApiLogOutcome {
+  if (context.jobId) return 'queued';
+  if (statusCode >= 200 && statusCode < 300) return 'success';
+  if (statusCode === 401) return 'validation_failed';
+  if (statusCode === 404) return 'not_found';
+  if (statusCode >= 400 && statusCode < 500) return 'filtered';
+  return 'error';
 }
 
 /**

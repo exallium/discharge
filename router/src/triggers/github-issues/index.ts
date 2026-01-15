@@ -65,13 +65,25 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       return false;
     }
 
-    const secret = await getGitHubWebhookSecret();
+    // Extract repository from payload to look up project-specific secret
+    const payload = req.body as GitHubWebhookPayload;
+    const repoFullName = payload?.repository?.full_name;
+    let projectId: string | undefined;
+
+    if (repoFullName) {
+      const project = await findProjectByRepo(repoFullName);
+      projectId = project?.id;
+    }
+
+    const secret = await getGitHubWebhookSecret(projectId);
     if (!secret) {
-      console.error('[GitHubIssuesTrigger] GITHUB_WEBHOOK_SECRET not configured');
+      console.error('[GitHubIssuesTrigger] GITHUB_WEBHOOK_SECRET not configured' +
+        (projectId ? ` for project ${projectId}` : ' (global)'));
       return false;
     }
 
-    const body = JSON.stringify(req.body);
+    // Use raw body for signature verification (JSON.stringify may produce different output)
+    const body = req.rawBody ?? JSON.stringify(req.body);
     const expectedSignature = 'sha256=' + crypto
       .createHmac('sha256', secret)
       .update(body)
@@ -428,9 +440,9 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
     const repoFullName = event.triggerId.split('#')[0];
     const [owner, repo] = repoFullName.split('/');
 
-    const token = await getGitHubToken();
+    const token = await getGitHubToken(event.projectId);
     if (!token) {
-      console.error('[GitHubIssuesTrigger] GITHUB_TOKEN not configured');
+      console.error('[GitHubIssuesTrigger] GITHUB_TOKEN not configured for project:', event.projectId);
       return;
     }
 
@@ -498,17 +510,31 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
    */
   async addComment(event: TriggerEvent, comment: string): Promise<void> {
     const { issueNumber } = event.metadata;
-    const repoFullName = event.triggerId.split('#')[0];
-    const [owner, repo] = repoFullName.split('/');
 
-    const token = await getGitHubToken();
+    // Get owner/repo from metadata (conversation mode) or triggerId (standard mode)
+    let owner: string;
+    let repo: string;
+    if (event.metadata.owner && event.metadata.repo) {
+      owner = event.metadata.owner as string;
+      repo = event.metadata.repo as string;
+    } else {
+      const repoFullName = event.triggerId.split('#')[0];
+      [owner, repo] = repoFullName.split('/');
+    }
+
+    if (!owner || !repo || !issueNumber) {
+      console.error('[GitHubIssuesTrigger] Missing required fields for comment:', { owner, repo, issueNumber });
+      return;
+    }
+
+    const token = await getGitHubToken(event.projectId);
     if (!token) {
-      console.error('[GitHubIssuesTrigger] GITHUB_TOKEN not configured');
+      console.error('[GitHubIssuesTrigger] GITHUB_TOKEN not configured for project:', event.projectId);
       return;
     }
 
     try {
-      await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
+      const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -518,7 +544,13 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
         body: JSON.stringify({ body: comment }),
       });
 
-      console.log(`[GitHubIssuesTrigger] Posted comment to issue #${issueNumber}`);
+      if (!response.ok) {
+        const errorBody = await response.text();
+        console.error(`[GitHubIssuesTrigger] GitHub API error ${response.status}:`, errorBody);
+        return;
+      }
+
+      console.log(`[GitHubIssuesTrigger] Posted comment to ${owner}/${repo}#${issueNumber}`);
     } catch (error: unknown) {
       console.error(`[GitHubIssuesTrigger] Failed to post comment:`, getErrorMessage(error));
     }

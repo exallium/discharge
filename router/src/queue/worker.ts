@@ -11,12 +11,21 @@ import {
 } from '../conversation/router';
 import { getConversationService } from '../conversation';
 import { logger } from '../logger';
+import * as jobHistoryRepo from '../db/repositories/job-history';
 
 /**
  * Process a fix job (handles both legacy and conversation jobs)
  */
 async function processFixJob(job: Job<FixJobData>): Promise<FixJobResult> {
   const startTime = Date.now();
+  const jobId = job.id!;
+
+  // Mark job as running
+  try {
+    await jobHistoryRepo.markRunning(jobId);
+  } catch (error) {
+    console.error('Failed to mark job as running:', error);
+  }
 
   // Check if this is a conversation job
   const conversationData = (job.data as unknown as { conversationData?: ConversationJobData }).conversationData;
@@ -27,7 +36,7 @@ async function processFixJob(job: Job<FixJobData>): Promise<FixJobResult> {
   // Legacy flow
   const { event, triggerType } = job.data;
 
-  console.log(`Processing job ${job.id}`, {
+  console.log(`Processing job ${jobId}`, {
     triggerType,
     triggerId: event.triggerId,
     projectId: event.projectId,
@@ -52,16 +61,44 @@ async function processFixJob(job: Job<FixJobData>): Promise<FixJobResult> {
       duration: Date.now() - startTime,
     };
 
-    console.log(`Job ${job.id} completed`, result);
+    // Mark job as complete
+    try {
+      await jobHistoryRepo.complete(jobId, {
+        status: 'success',
+        fixed: fixStatus.fixed,
+        reason: fixStatus.reason,
+        prUrl: fixStatus.prUrl,
+        analysis: fixStatus.analysis ? {
+          fixed: fixStatus.fixed,
+          reason: fixStatus.reason || '',
+          confidence: fixStatus.analysis.confidence === 'high' ? 1 : fixStatus.analysis.confidence === 'medium' ? 0.5 : 0,
+        } : null,
+      });
+    } catch (error) {
+      console.error('Failed to mark job as complete:', error);
+    }
+
+    console.log(`Job ${jobId} completed`, result);
     return result;
 
   } catch (error) {
-    console.error(`Job ${job.id} failed:`, getErrorMessage(error));
+    const errorMessage = getErrorMessage(error);
+    console.error(`Job ${jobId} failed:`, errorMessage);
+
+    // Mark job as failed
+    try {
+      await jobHistoryRepo.complete(jobId, {
+        status: 'failed',
+        error: errorMessage,
+      });
+    } catch (err) {
+      console.error('Failed to mark job as failed:', err);
+    }
 
     return {
       success: false,
       fixed: false,
-      reason: getErrorMessage(error),
+      reason: errorMessage,
       duration: Date.now() - startTime,
     };
   }
@@ -144,6 +181,17 @@ async function processConversationJob(
       );
     }
 
+    // Mark job as complete
+    try {
+      await jobHistoryRepo.complete(job.id!, {
+        status: 'success',
+        fixed: result.complete || false,
+        reason: result.response,
+      });
+    } catch (err) {
+      console.error('Failed to mark conversation job as complete:', err);
+    }
+
     return {
       success: true,
       fixed: result.complete || false,
@@ -152,11 +200,22 @@ async function processConversationJob(
       duration: Date.now() - startTime,
     };
   } catch (error) {
+    const errorMessage = getErrorMessage(error);
     logger.error('Conversation job failed', {
       jobId: job.id,
       conversationId,
-      error: getErrorMessage(error),
+      error: errorMessage,
     });
+
+    // Mark job as failed
+    try {
+      await jobHistoryRepo.complete(job.id!, {
+        status: 'failed',
+        error: errorMessage,
+      });
+    } catch (err) {
+      console.error('Failed to mark conversation job as failed:', err);
+    }
 
     // Try to release the lock even on failure
     const conversationService = getConversationService();
@@ -165,7 +224,7 @@ async function processConversationJob(
     return {
       success: false,
       fixed: false,
-      reason: getErrorMessage(error),
+      reason: errorMessage,
       duration: Date.now() - startTime,
     };
   }

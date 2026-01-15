@@ -3,14 +3,29 @@
  */
 
 import { eq, and, desc, gte, lte, like, or } from 'drizzle-orm';
-import { getDatabase, apiLogs, ApiLog, NewApiLog } from '../index';
+import { getDatabase, apiLogs, ApiLog, NewApiLog, ApiLogOutcome } from '../index';
 import { logger } from '../../logger';
+
+/**
+ * Details stored for expandable log view
+ */
+export interface ApiLogDetails {
+  validationResult?: { valid: boolean; reason?: string };
+  parseResult?: { success: boolean; reason?: string };
+  filterResult?: { processed: boolean; reason?: string };
+  queueResult?: { jobId?: string; error?: string; conversationId?: string; action?: string };
+  eventInfo?: { triggerType?: string; triggerId?: string; title?: string };
+  responseBody?: Record<string, unknown>;
+  error?: { message?: string; stack?: string };
+  [key: string]: unknown;
+}
 
 /**
  * API log entry
  */
 export interface ApiLogEntry {
   id: string;
+  requestId: string;
   method: string;
   path: string;
   statusCode: number;
@@ -20,6 +35,11 @@ export interface ApiLogEntry {
   triggerId: string | null;
   eventType: string | null;
   payloadSummary: Record<string, unknown> | null;
+  outcome: ApiLogOutcome | null;
+  outcomeReason: string | null;
+  jobId: string | null;
+  projectId: string | null;
+  details: ApiLogDetails | null;
   error: string | null;
   createdAt: Date;
 }
@@ -65,6 +85,7 @@ export interface ApiLogStats {
 function toApiLogEntry(row: ApiLog): ApiLogEntry {
   return {
     id: row.id,
+    requestId: row.requestId,
     method: row.method,
     path: row.path,
     statusCode: row.statusCode,
@@ -74,6 +95,11 @@ function toApiLogEntry(row: ApiLog): ApiLogEntry {
     triggerId: row.triggerId,
     eventType: row.eventType,
     payloadSummary: row.payloadSummary as Record<string, unknown> | null,
+    outcome: row.outcome,
+    outcomeReason: row.outcomeReason,
+    jobId: row.jobId,
+    projectId: row.projectId,
+    details: row.details as ApiLogDetails | null,
     error: row.error,
     createdAt: row.createdAt,
   };
@@ -83,6 +109,7 @@ function toApiLogEntry(row: ApiLog): ApiLogEntry {
  * Create a new API log entry
  */
 export async function create(entry: {
+  requestId: string;
   method: string;
   path: string;
   statusCode: number;
@@ -92,11 +119,17 @@ export async function create(entry: {
   triggerId?: string | null;
   eventType?: string | null;
   payloadSummary?: Record<string, unknown> | null;
+  outcome?: ApiLogOutcome | null;
+  outcomeReason?: string | null;
+  jobId?: string | null;
+  projectId?: string | null;
+  details?: ApiLogDetails | null;
   error?: string | null;
 }): Promise<ApiLogEntry> {
   const db = getDatabase();
 
   const newEntry: NewApiLog = {
+    requestId: entry.requestId,
     method: entry.method,
     path: entry.path,
     statusCode: entry.statusCode,
@@ -106,15 +139,22 @@ export async function create(entry: {
     triggerId: entry.triggerId ?? null,
     eventType: entry.eventType ?? null,
     payloadSummary: entry.payloadSummary ?? null,
+    outcome: entry.outcome ?? null,
+    outcomeReason: entry.outcomeReason ?? null,
+    jobId: entry.jobId ?? null,
+    projectId: entry.projectId ?? null,
+    details: entry.details ?? null,
     error: entry.error ?? null,
   };
 
   const result = await db.insert(apiLogs).values(newEntry).returning();
 
   logger.debug('API log entry created', {
+    requestId: entry.requestId,
     method: entry.method,
     path: entry.path,
     statusCode: entry.statusCode,
+    outcome: entry.outcome,
   });
 
   return toApiLogEntry(result[0]);

@@ -8,8 +8,9 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { randomUUID } from 'crypto';
-import { rm, readFile, writeFile, mkdir, chmod } from 'fs/promises';
+import { rm, readFile, writeFile, mkdir, chmod, cp } from 'fs/promises';
 import { join } from 'path';
+import { existsSync } from 'fs';
 import {
   RunnerPlugin,
   RunOptions,
@@ -34,8 +35,58 @@ import {
 } from '../../bug-config';
 import { buildCategoryPrompt, getMatchedCategoryName } from '../../prompts';
 import { getErrorMessage, isExecError } from '../../../types/errors';
+import { getGitHubToken } from '../../../vcs';
+import { getSecret } from '../../../secrets';
 
 const execAsync = promisify(exec);
+
+/**
+ * Prepare a writable .claude directory for the container
+ * Copies auth credentials from host but allows container to write session data
+ */
+async function prepareClaudeConfig(workspacePath: string, hostUser: string): Promise<string> {
+  const claudeConfigPath = join(workspacePath, '.claude-config');
+  const hostClaudePath = `/Users/${hostUser}/.claude`;
+
+  // Create the config directory
+  await mkdir(claudeConfigPath, { recursive: true });
+
+  // Copy auth-related files from host (if they exist)
+  const filesToCopy = ['.credentials.json', 'settings.json', 'settings.local.json'];
+
+  for (const file of filesToCopy) {
+    const srcPath = join(hostClaudePath, file);
+    const destPath = join(claudeConfigPath, file);
+    if (existsSync(srcPath)) {
+      await cp(srcPath, destPath);
+    }
+  }
+
+  // Create necessary subdirectories that Claude Code expects to write to
+  await mkdir(join(claudeConfigPath, 'projects'), { recursive: true });
+  await mkdir(join(claudeConfigPath, 'debug'), { recursive: true });
+  await mkdir(join(claudeConfigPath, 'statsig'), { recursive: true });
+
+  return claudeConfigPath;
+}
+
+/**
+ * Inject authentication token into git URL for cloning
+ */
+async function getAuthenticatedRepoUrl(repoUrl: string, projectId?: string): Promise<string> {
+  // Only modify HTTPS GitHub URLs
+  if (!repoUrl.startsWith('https://github.com/')) {
+    return repoUrl;
+  }
+
+  const token = await getGitHubToken(projectId);
+  if (!token) {
+    return repoUrl;
+  }
+
+  // Convert https://github.com/owner/repo.git to https://x-access-token:TOKEN@github.com/owner/repo.git
+  return repoUrl.replace('https://github.com/', `https://x-access-token:${token}@github.com/`);
+}
 
 /**
  * Claude Code Runner - Docker-based execution
@@ -53,7 +104,8 @@ export class ClaudeCodeRunner implements RunnerPlugin {
    */
   async run(options: RunOptions): Promise<RunResult> {
     const jobId = randomUUID();
-    const workspacePath = `/workspaces/${jobId}`;
+    const worktreeDir = process.env.WORKTREE_DIR || '/workspaces';
+    const workspacePath = `${worktreeDir}/${jobId}`;
     const hostUser = process.env.HOST_USER || process.env.USER || 'claude';
     const timeout = options.timeoutMs || 600000; // 10 minutes default
 
@@ -69,8 +121,9 @@ export class ClaudeCodeRunner implements RunnerPlugin {
     try {
       // Clone repository
       console.log(`[ClaudeCode:${jobId}] Cloning repository...`);
+      const authUrl = await getAuthenticatedRepoUrl(options.repoUrl, options.projectId);
       await execAsync(
-        `git clone --depth 1 -b ${options.branch} ${options.repoUrl} ${workspacePath}`,
+        `git clone --depth 1 -b ${options.branch} ${authUrl} ${workspacePath}`,
         { timeout: 60000 }
       );
 
@@ -137,8 +190,15 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         await this.writeToolsToWorkspace(workspacePath, options.tools);
       }
 
-      // Build environment variables (runner is sandboxed - no external tokens)
-      const envVars = {
+      // Get Anthropic API key for Claude authentication
+      const anthropicApiKey = await getSecret('anthropic', 'api_key', options.projectId, 'ANTHROPIC_API_KEY');
+      if (!anthropicApiKey) {
+        throw new Error('ANTHROPIC_API_KEY not configured. Add it as a project secret or set it in the environment.');
+      }
+
+      // Build environment variables
+      const envVars: Record<string, string> = {
+        ANTHROPIC_API_KEY: anthropicApiKey,
         ...options.env,
       };
 
@@ -160,14 +220,14 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         eventLabels
       );
 
-      // Escape prompt for shell
-      const escapedPrompt = enhancedPrompt
-        .replace(/\\/g, '\\\\')
-        .replace(/"/g, '\\"')
-        .replace(/`/g, '\\`')
-        .replace(/\$/g, '\\$');
+      // Write prompt to file (avoids shell argument length limits)
+      const promptFile = join(workspacePath, '.claude-prompt.txt');
+      await writeFile(promptFile, enhancedPrompt, 'utf-8');
 
-      // Run Claude Code
+      // Prepare writable .claude config directory
+      const claudeConfigPath = await prepareClaudeConfig(workspacePath, hostUser);
+
+      // Run Claude Code (read prompt from file inside container via cat pipe)
       console.log(`[ClaudeCode:${jobId}] Running Claude Code CLI...`);
       const { stdout } = await execAsync(
         `
@@ -175,17 +235,15 @@ export class ClaudeCodeRunner implements RunnerPlugin {
           --name claude-${jobId.slice(0, 8)} \
           --network ${process.env.DOCKER_NETWORK || 'ai-bug-fixer_internal'} \
           -v ${workspacePath}:/workspace \
-          -v /Users/${hostUser}/.claude:/home/agent/.claude:ro \
+          -v ${claudeConfigPath}:/home/agent/.claude \
           ${envFlags} \
           ${pathEnv} \
           --cpus="2" \
           --memory="4g" \
           --pids-limit 100 \
+          --entrypoint /bin/sh \
           agent-runner-claude:latest \
-          --print \
-          --dangerously-skip-permissions \
-          --max-turns 30 \
-          -p "${escapedPrompt}"
+          -c 'cat /workspace/.claude-prompt.txt | claude --print --dangerously-skip-permissions --max-turns 30 -p -'
       `,
         { timeout, maxBuffer: 10 * 1024 * 1024 }
       );
@@ -363,7 +421,8 @@ export class ClaudeCodeRunner implements RunnerPlugin {
     options: ConversationRunOptions
   ): Promise<RunnerConversationResult> {
     const jobId = randomUUID();
-    const workspacePath = options.workspacePath || `/workspaces/${jobId}`;
+    const worktreeDir = process.env.WORKTREE_DIR || '/workspaces';
+    const workspacePath = options.workspacePath || `${worktreeDir}/${jobId}`;
     const hostUser = process.env.HOST_USER || process.env.USER || 'claude';
     const timeout = options.timeoutMs || 600000;
 
@@ -381,8 +440,9 @@ export class ClaudeCodeRunner implements RunnerPlugin {
 
       if (!isPreConfiguredWorkspace) {
         console.log(`[ClaudeCode:${jobId}] Cloning repository...`);
+        const authUrl = await getAuthenticatedRepoUrl(options.repoUrl, options.projectId);
         await execAsync(
-          `git clone --depth 1 -b ${options.branch} ${options.repoUrl} ${workspacePath}`,
+          `git clone --depth 1 -b ${options.branch} ${authUrl} ${workspacePath}`,
           { timeout: 60000 }
         );
       }
@@ -398,15 +458,19 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       // Build the conversation prompt
       const conversationPrompt = this.buildConversationPrompt(options);
 
-      // Escape prompt for shell
-      const escapedPrompt = conversationPrompt
-        .replace(/\\/g, '\\\\')
-        .replace(/"/g, '\\"')
-        .replace(/`/g, '\\`')
-        .replace(/\$/g, '\\$');
+      // Write prompt to file (avoids shell argument length limits)
+      const promptFile = join(workspacePath, '.claude-prompt.txt');
+      await writeFile(promptFile, conversationPrompt, 'utf-8');
+
+      // Get Anthropic API key for Claude authentication
+      const anthropicApiKey = await getSecret('anthropic', 'api_key', options.projectId, 'ANTHROPIC_API_KEY');
+      if (!anthropicApiKey) {
+        throw new Error('ANTHROPIC_API_KEY not configured. Add it as a project secret or set it in the environment.');
+      }
 
       // Build environment variables
-      const envVars = {
+      const envVars: Record<string, string> = {
+        ANTHROPIC_API_KEY: anthropicApiKey,
         ...options.env,
         AI_CONVERSATION_MODE: 'true',
         AI_ROUTE_MODE: options.routeMode,
@@ -429,7 +493,10 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         await this.writeToolsToWorkspace(workspacePath, options.tools);
       }
 
-      // Run Claude Code
+      // Prepare writable .claude config directory
+      const claudeConfigPath = await prepareClaudeConfig(workspacePath, hostUser);
+
+      // Run Claude Code (read prompt from file inside container via cat pipe)
       console.log(`[ClaudeCode:${jobId}] Running Claude Code CLI in conversation mode...`);
       const { stdout } = await execAsync(
         `
@@ -437,17 +504,15 @@ export class ClaudeCodeRunner implements RunnerPlugin {
           --name claude-conv-${jobId.slice(0, 8)} \
           --network ${process.env.DOCKER_NETWORK || 'ai-bug-fixer_internal'} \
           -v ${workspacePath}:/workspace \
-          -v /Users/${hostUser}/.claude:/home/agent/.claude:ro \
+          -v ${claudeConfigPath}:/home/agent/.claude \
           ${envFlags} \
           ${pathEnv} \
           --cpus="2" \
           --memory="4g" \
           --pids-limit 100 \
+          --entrypoint /bin/sh \
           agent-runner-claude:latest \
-          --print \
-          --dangerously-skip-permissions \
-          --max-turns 30 \
-          -p "${escapedPrompt}"
+          -c 'cat /workspace/.claude-prompt.txt | claude --print --dangerously-skip-permissions --max-turns 30 -p -'
       `,
         { timeout, maxBuffer: 10 * 1024 * 1024 }
       );
@@ -474,7 +539,17 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       return result;
     } catch (error) {
       const errorMessage = getErrorMessage(error);
-      console.error(`[ClaudeCode:${jobId}] Conversation execution failed:`, errorMessage);
+      // Also capture stderr for exec errors
+      let fullError = errorMessage;
+      if (isExecError(error)) {
+        if (error.stderr) {
+          fullError += `\nstderr: ${error.stderr}`;
+        }
+        if (error.stdout) {
+          fullError += `\nstdout: ${error.stdout}`;
+        }
+      }
+      console.error(`[ClaudeCode:${jobId}] Conversation execution failed:`, fullError);
 
       return {
         response: `Execution failed: ${errorMessage}`,

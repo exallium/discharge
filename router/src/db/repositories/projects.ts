@@ -9,6 +9,25 @@ import { logger } from '../../logger';
 /**
  * Project configuration matching the existing ProjectConfig interface
  */
+/**
+ * GitHub trigger configuration
+ */
+export interface GitHubTriggerConfig {
+  issues?: boolean;
+  labels?: string[];
+  requireLabel?: boolean;
+  commentTrigger?: string;
+  allowedUsers?: string[];
+}
+
+/**
+ * Generic trigger configuration with enabled flag
+ */
+export interface EnabledTriggerConfig {
+  enabled?: boolean;
+  [key: string]: unknown;
+}
+
 export interface ProjectConfig {
   id: string;
   repo: string;
@@ -26,7 +45,12 @@ export interface ProjectConfig {
     timeout?: number;
     env?: Record<string, string>;
   };
-  triggers: Record<string, unknown>;
+  triggers: {
+    github?: GitHubTriggerConfig;
+    sentry?: EnabledTriggerConfig;
+    circleci?: EnabledTriggerConfig;
+    [key: string]: unknown;
+  };
   constraints?: {
     maxAttemptsPerDay?: number;
     allowedPaths?: string[];

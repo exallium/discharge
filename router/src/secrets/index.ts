@@ -44,7 +44,7 @@ export async function getSecret(
     // 1. Check project-specific secret first
     if (projectId) {
       const projectKey = `projects:${projectId}:${plugin}:${key}`;
-      const projectSecret = await settingsRepo.get(projectKey);
+      const projectSecret = await settingsRepo.getDecrypted(projectKey);
       if (projectSecret) {
         logger.debug('Secret retrieved (project-specific)', { plugin, key, projectId });
         return projectSecret;
@@ -53,7 +53,7 @@ export async function getSecret(
 
     // 2. Check global secret
     const globalKey = `${plugin}:${key}`;
-    const globalSecret = await settingsRepo.get(globalKey);
+    const globalSecret = await settingsRepo.getDecrypted(globalKey);
     if (globalSecret) {
       logger.debug('Secret retrieved (global)', { plugin, key });
       return globalSecret;

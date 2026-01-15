@@ -16,6 +16,7 @@ export interface WebhookHeaders {
 export interface WebhookRequest {
   headers: WebhookHeaders;
   body: unknown;
+  rawBody?: string; // Raw body string for signature verification
 }
 
 /**

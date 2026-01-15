@@ -52,7 +52,8 @@ export class SentryTrigger implements TriggerPlugin {
       return false;
     }
 
-    const body = JSON.stringify(req.body);
+    // Use raw body for signature verification (JSON.stringify may produce different output)
+    const body = req.rawBody ?? JSON.stringify(req.body);
     const expectedSignature = crypto
       .createHmac('sha256', secret)
       .update(body)

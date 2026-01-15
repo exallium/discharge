@@ -279,8 +279,9 @@ export async function hasAnySettings(): Promise<boolean> {
  * Only used during first-run setup
  */
 export async function initializeAdminFromEnv(): Promise<boolean> {
-  const hasAdminPassword = await hasPassword('admin');
-  if (hasAdminPassword) {
+  // Check if admin password already exists using the same key as auth.ts
+  const existingPassword = await get('admin:password');
+  if (existingPassword) {
     return false; // Already initialized
   }
 
@@ -292,12 +293,15 @@ export async function initializeAdminFromEnv(): Promise<boolean> {
 
   const username = process.env.ADMIN_USERNAME ?? 'admin';
 
-  await set('admin.username', username, {
+  // Use the same keys as auth.ts and setup/route.ts
+  await set('admin:username', username, {
     description: 'Admin UI username',
     category: 'auth',
   });
 
-  await setPassword('admin', envPassword, {
+  // Hash and store password directly (same as setup/route.ts)
+  const hashedPassword = await bcrypt.hash(envPassword, BCRYPT_ROUNDS);
+  await set('admin:password', hashedPassword, {
     description: 'Admin UI password hash',
     category: 'auth',
   });

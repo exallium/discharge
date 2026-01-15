@@ -41,7 +41,8 @@ export async function runClaudeInContainer(
   options: RunClaudeOptions
 ): Promise<RunClaudeResult> {
   const jobId = randomUUID();
-  const workspacePath = `/workspaces/${jobId}`;
+  const worktreeDir = process.env.WORKTREE_DIR || '/workspaces';
+  const workspacePath = `${worktreeDir}/${jobId}`;
   const hostUser = process.env.HOST_USER || process.env.USER || 'claude';
   const timeout = options.timeoutMs || 600000; // 10 minutes default
 

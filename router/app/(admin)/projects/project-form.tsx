@@ -55,9 +55,9 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
   const [enabled, setEnabled] = useState(project?.enabled ?? true);
 
   // Triggers
-  const [githubIssues, setGithubIssues] = useState(!!project?.triggers?.['github-issues']);
-  const [sentry, setSentry] = useState(!!project?.triggers?.sentry);
-  const [circleci, setCircleci] = useState(!!project?.triggers?.circleci);
+  const [githubIssues, setGithubIssues] = useState(!!project?.triggers?.github?.issues);
+  const [sentry, setSentry] = useState(!!project?.triggers?.sentry?.enabled);
+  const [circleci, setCircleci] = useState(!!project?.triggers?.circleci?.enabled);
 
   // Conversation mode
   const [conversationEnabled, setConversationEnabled] = useState(
@@ -91,17 +91,27 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
     setIsSubmitting(true);
 
     try {
+      // Build triggers in the nested structure expected by trigger plugins
       const triggers: Record<string, object> = {};
-      if (githubIssues) triggers['github-issues'] = {};
-      if (sentry) triggers.sentry = {};
-      if (circleci) triggers.circleci = {};
+      if (githubIssues) {
+        triggers.github = { issues: true };
+      }
+      if (sentry) {
+        triggers.sentry = { enabled: true };
+      }
+      if (circleci) {
+        triggers.circleci = { enabled: true };
+      }
+
+      // Parse owner/repo from repoFullName (e.g., "owner/repo")
+      const [vcsOwner, vcsRepo] = repoFullName.split('/');
 
       const data = {
         id,
         repoFullName,
         repo,
         branch,
-        vcs: { type: vcsType },
+        vcs: { type: vcsType, owner: vcsOwner, repo: vcsRepo },
         runner: { type: runnerType },
         triggers,
         enabled,

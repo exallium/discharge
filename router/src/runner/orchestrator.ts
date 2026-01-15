@@ -72,6 +72,7 @@ export async function orchestrateFix(
       timeoutMs: project.runner?.timeout || 600000, // 10 minutes default
       env: project.runner?.env,
       eventLabels: event.metadata?.tags || [],
+      projectId: event.projectId,
     });
 
     // Handle failure
@@ -288,12 +289,34 @@ export async function orchestrateConversation(
     iteration,
   });
 
+  // Get project configuration early so we can use it in error handling
+  const project = await findProjectById(projectId);
+  if (!project) {
+    // Can't do much without a project - return error
+    return {
+      response: `Error: Project not found: ${projectId}`,
+      action: { type: 'comment', body: `Project not found: ${projectId}` },
+      complete: false,
+    };
+  }
+
+  // Create triggerEvent early so it's available in catch block
+  const triggerEvent: TriggerEvent = {
+    triggerType: trigger.type,
+    triggerId: conversationId,
+    projectId,
+    title: events[0]?.target.title || 'Conversation',
+    description: events[0]?.target.body || '',
+    metadata: {
+      labels: events[0]?.target.labels,
+      issueNumber: events[0]?.target.number,
+      owner: project.vcs.owner,
+      repo: project.vcs.repo,
+    },
+    raw: events,
+  };
+
   try {
-    // Get project configuration
-    const project = await findProjectById(projectId);
-    if (!project) {
-      throw new Error(`Project not found: ${projectId}`);
-    }
 
     // Get services
     const conversationService = getConversationService();
@@ -352,17 +375,6 @@ export async function orchestrateConversation(
     );
 
     // Generate tools if trigger provides them
-    const triggerEvent: TriggerEvent = {
-      triggerType: trigger.type,
-      triggerId: conversationId,
-      projectId,
-      title: events[0]?.target.title || 'Conversation',
-      description: events[0]?.target.body || '',
-      metadata: {
-        labels: events[0]?.target.labels,
-      },
-      raw: events,
-    };
     const tools = await trigger.getTools(triggerEvent);
 
     // Run conversation
@@ -373,6 +385,7 @@ export async function orchestrateConversation(
       tools,
       timeoutMs: project.runner?.timeout || 600000,
       env: project.runner?.env,
+      projectId,
       conversationHistory: messageHistory,
       routeMode,
       iteration,
@@ -411,17 +424,8 @@ export async function orchestrateConversation(
       error: errorMessage,
     });
 
-    // Post error feedback if possible
+    // Post error feedback using pre-created triggerEvent (has owner/repo)
     if (trigger.postFeedback) {
-      const triggerEvent: TriggerEvent = {
-        triggerType: trigger.type,
-        triggerId: conversationId,
-        projectId,
-        title: 'Conversation Error',
-        description: '',
-        metadata: {},
-        raw: events,
-      };
       await trigger.postFeedback(
         triggerEvent,
         `⚠️ I encountered an error: ${errorMessage}`
