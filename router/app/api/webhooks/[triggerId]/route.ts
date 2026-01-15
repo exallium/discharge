@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic';
 import { getTriggerById, listTriggerIds } from '@/src/triggers';
 import { queueFixJob } from '@/src/queue';
 import { getEventRouter } from '@/src/conversation/router';
+import { withLogging, extractWebhookContext } from '@/lib/api-logger';
 import type { WebhookRequest } from '@/src/triggers/base';
 
 interface RouteParams {
@@ -26,7 +27,7 @@ function createWebhookRequest(req: NextRequest, body: unknown): WebhookRequest {
  * POST /api/webhooks/[triggerId]
  * Generic webhook endpoint - each trigger plugin handles its own validation and parsing
  */
-export async function POST(request: NextRequest, { params }: RouteParams) {
+async function handlePost(request: NextRequest, { params }: RouteParams) {
   const { triggerId } = await params;
   const trigger = getTriggerById(triggerId);
 
@@ -128,6 +129,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+// Export wrapped handler with logging
+export const POST = withLogging(handlePost, extractWebhookContext);
 
 /**
  * GET /api/webhooks/[triggerId]

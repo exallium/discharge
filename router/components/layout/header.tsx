@@ -11,6 +11,7 @@ import {
   FolderKanban,
   Settings,
   History,
+  FileText,
   Sun,
   Moon,
   Bug,
@@ -20,6 +21,7 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Projects', href: '/projects', icon: FolderKanban },
   { name: 'Jobs', href: '/jobs', icon: History },
+  { name: 'Logs', href: '/logs', icon: FileText },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

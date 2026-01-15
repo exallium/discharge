@@ -148,6 +148,40 @@ async function createTables(
     CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action)
   `);
 
+  // API logs table (HTTP request/response tracking)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS api_logs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      method VARCHAR(10) NOT NULL,
+      path TEXT NOT NULL,
+      status_code INTEGER NOT NULL,
+      response_time_ms INTEGER NOT NULL,
+      ip_address INET,
+      user_agent TEXT,
+      trigger_id VARCHAR(255),
+      event_type VARCHAR(100),
+      payload_summary JSONB,
+      error TEXT,
+      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_api_logs_created_at ON api_logs(created_at DESC)
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_api_logs_path ON api_logs(path)
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_api_logs_trigger_id ON api_logs(trigger_id)
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_api_logs_status_code ON api_logs(status_code)
+  `);
+
   // Conversations table (for conversational feedback loop)
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS conversations (
@@ -241,6 +275,7 @@ export async function dropAllTables(
   await db.execute(sql`DROP TABLE IF EXISTS pending_events CASCADE`);
   await db.execute(sql`DROP TABLE IF EXISTS conversation_messages CASCADE`);
   await db.execute(sql`DROP TABLE IF EXISTS conversations CASCADE`);
+  await db.execute(sql`DROP TABLE IF EXISTS api_logs CASCADE`);
   await db.execute(sql`DROP TABLE IF EXISTS audit_log CASCADE`);
   await db.execute(sql`DROP TABLE IF EXISTS job_history CASCADE`);
   await db.execute(sql`DROP TABLE IF EXISTS settings CASCADE`);

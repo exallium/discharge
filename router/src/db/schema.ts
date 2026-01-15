@@ -7,6 +7,7 @@
  * - job_history: AI fix attempt tracking
  * - audit_log: Configuration change tracking
  * - trusted_devices: Device trust for TOTP 2FA
+ * - api_logs: HTTP request/response tracking
  * - conversations: Conversational feedback loop state
  * - conversation_messages: Message history for conversations
  * - pending_events: Queued events for active conversations
@@ -213,6 +214,41 @@ export const trustedDevices = pgTable(
 );
 
 /**
+ * API logs table - HTTP request/response tracking with webhook focus
+ */
+export const apiLogs = pgTable(
+  'api_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+
+    // Request info
+    method: varchar('method', { length: 10 }).notNull(),
+    path: text('path').notNull(),
+    statusCode: integer('status_code').notNull(),
+    responseTimeMs: integer('response_time_ms').notNull(),
+    ipAddress: inet('ip_address'),
+    userAgent: text('user_agent'),
+
+    // Webhook-specific fields
+    triggerId: varchar('trigger_id', { length: 255 }),
+    eventType: varchar('event_type', { length: 100 }),
+    payloadSummary: jsonb('payload_summary').$type<Record<string, unknown>>(),
+
+    // Response/error
+    error: text('error'),
+
+    // Timestamps
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_api_logs_created_at').on(table.createdAt),
+    index('idx_api_logs_path').on(table.path),
+    index('idx_api_logs_trigger_id').on(table.triggerId),
+    index('idx_api_logs_status_code').on(table.statusCode),
+  ]
+);
+
+/**
  * Conversations table - Conversational feedback loop state
  */
 export const conversations = pgTable(
@@ -375,3 +411,6 @@ export type NewPendingEvent = typeof pendingEvents.$inferInsert;
 
 export type TrustedDevice = typeof trustedDevices.$inferSelect;
 export type NewTrustedDevice = typeof trustedDevices.$inferInsert;
+
+export type ApiLog = typeof apiLogs.$inferSelect;
+export type NewApiLog = typeof apiLogs.$inferInsert;
