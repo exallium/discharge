@@ -1,4 +1,4 @@
-import { AnalysisResult } from '../triggers/base';
+import { AnalysisResult, SecretRequirement } from '../triggers/base';
 
 /**
  * Minimal project info needed for VCS operations
@@ -151,6 +151,18 @@ export interface VCSPlugin {
     project: VCSProjectConfig,
     planRef: string
   ): Promise<void>;
+
+  // ========================================
+  // Secret Requirements
+  // ========================================
+
+  /**
+   * Get the secrets required by this VCS plugin
+   * Used to aggregate and display secrets in the UI
+   *
+   * @returns Array of secret requirements
+   */
+  getRequiredSecrets(): SecretRequirement[];
 }
 
 /**

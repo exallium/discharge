@@ -3,25 +3,27 @@ import { NextRequest, NextResponse } from 'next/server';
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
 
-import { projectsRepo } from '@/src/db/repositories';
+import { projectsRepo, settingsRepo } from '@/src/db/repositories';
 import { setSecret, deleteSecret } from '@/src/secrets';
+import { getProjectSecretRequirements, formatUsedBy } from '@/src/secrets/requirements';
+import type { ProjectConfig } from '@/src/config/projects';
 
 /**
- * Secret requirements per trigger type
+ * Map new secret IDs to storage format
+ * New format: github_token, sentry_token
+ * Storage format: github:token, sentry:auth_token
+ *
+ * This mapping allows backward compatibility until migration completes
  */
-const TRIGGER_SECRETS: Record<string, { key: string; label: string; description: string }[]> = {
-  'github-issues': [
-    { key: 'github:token', label: 'GitHub Token', description: 'Personal access token for GitHub API' },
-    { key: 'github:webhook_secret', label: 'Webhook Secret', description: 'Secret for validating webhook signatures' },
-  ],
-  sentry: [
-    { key: 'sentry:auth_token', label: 'Auth Token', description: 'Sentry API authentication token' },
-    { key: 'sentry:webhook_secret', label: 'Webhook Secret', description: 'Secret for validating webhook signatures' },
-  ],
-  circleci: [
-    { key: 'circleci:token', label: 'API Token', description: 'CircleCI API token' },
-    { key: 'circleci:webhook_secret', label: 'Webhook Secret', description: 'Secret for validating webhook signatures' },
-  ],
+const SECRET_ID_TO_STORAGE: Record<string, { plugin: string; key: string }> = {
+  github_token: { plugin: 'github', key: 'token' },
+  github_webhook_secret: { plugin: 'github', key: 'webhook_secret' },
+  sentry_token: { plugin: 'sentry', key: 'auth_token' },
+  sentry_webhook_secret: { plugin: 'sentry', key: 'webhook_secret' },
+  circleci_token: { plugin: 'circleci', key: 'token' },
+  circleci_webhook_secret: { plugin: 'circleci', key: 'webhook_secret' },
+  gitlab_token: { plugin: 'gitlab', key: 'token' },
+  bitbucket_token: { plugin: 'bitbucket', key: 'token' },
 };
 
 interface RouteParams {
@@ -29,13 +31,27 @@ interface RouteParams {
 }
 
 export interface SecretStatus {
-  key: string;
+  /** Shared secret identifier (e.g., 'github_token') */
+  id: string;
+  /** Plugin for storage (e.g., 'github') - for backward compatibility */
   plugin: string;
+  /** Key within plugin (e.g., 'token') - for backward compatibility */
   secretKey: string;
+  /** Display label */
   label: string;
+  /** Help text */
   description: string;
+  /** Whether this secret is required */
+  required: boolean;
+  /** Which plugins use this secret (e.g., ['vcs', 'github-issues']) */
+  usedBy: string[];
+  /** Formatted usedBy for display (e.g., 'VCS, GitHub Issues') */
+  usedByDisplay: string;
+  /** Where the secret value comes from */
   source: 'project' | 'global' | 'env' | 'none';
-  value?: string; // Only included if configured
+  /** The actual secret value (for reveal/copy in admin UI) */
+  value?: string;
+  /** Masked secret value for display */
   masked: string;
 }
 
@@ -52,77 +68,88 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    // Map the new trigger format to secret keys
-    // New format: { github: { issues: true }, sentry: { enabled: true } }
-    // Secret keys: 'github-issues', 'sentry', 'circleci'
-    const triggers = project.triggers as Record<string, unknown> || {};
-    const enabledTriggers: string[] = [];
+    // Convert to ProjectConfig format for aggregation
+    const projectConfig: ProjectConfig = {
+      id: project.id,
+      repo: project.repo,
+      repoFullName: project.repoFullName,
+      branch: project.branch,
+      vcs: project.vcs,
+      runner: project.runner,
+      triggers: project.triggers as ProjectConfig['triggers'],
+      constraints: project.constraints,
+      conversation: project.conversation,
+    };
 
-    if (triggers.github && typeof triggers.github === 'object') {
-      const github = triggers.github as Record<string, unknown>;
-      if (github.issues) {
-        enabledTriggers.push('github-issues');
-      }
-    }
-    if (triggers.sentry && typeof triggers.sentry === 'object') {
-      const sentry = triggers.sentry as Record<string, unknown>;
-      if (sentry.enabled) {
-        enabledTriggers.push('sentry');
-      }
-    }
-    if (triggers.circleci && typeof triggers.circleci === 'object') {
-      const circleci = triggers.circleci as Record<string, unknown>;
-      if (circleci.enabled) {
-        enabledTriggers.push('circleci');
-      }
-    }
+    // Get aggregated secret requirements from plugins
+    const requirements = getProjectSecretRequirements(projectConfig);
 
     const secrets: SecretStatus[] = [];
 
-    for (const trigger of enabledTriggers) {
-      const triggerSecrets = TRIGGER_SECRETS[trigger] || [];
-
-      for (const secretDef of triggerSecrets) {
-        const [plugin, secretKey] = secretDef.key.split(':');
-
-        // Check each level to determine source
-        const projectKey = `projects:${id}:${plugin}:${secretKey}`;
-        const globalKey = `${plugin}:${secretKey}`;
-        const envKey = `${plugin.toUpperCase()}_${secretKey.toUpperCase()}`;
-
-        // Import settingsRepo to check specific levels
-        const { settingsRepo } = await import('@/src/db/repositories');
-
-        // Use getDecrypted to properly decrypt encrypted values
-        const projectValue = await settingsRepo.getDecrypted(projectKey);
-        const globalValue = await settingsRepo.getDecrypted(globalKey);
-        const envValue = process.env[envKey];
-
-        let source: 'project' | 'global' | 'env' | 'none' = 'none';
-        let value: string | undefined;
-
-        if (projectValue) {
-          source = 'project';
-          value = projectValue;
-        } else if (globalValue) {
-          source = 'global';
-          value = globalValue;
-        } else if (envValue) {
-          source = 'env';
-          value = envValue;
-        }
-
-        secrets.push({
-          key: secretDef.key,
-          plugin,
-          secretKey,
-          label: secretDef.label,
-          description: secretDef.description,
-          source,
-          value,
-          masked: value ? maskValue(value) : '',
-        });
+    for (const req of requirements) {
+      // Map new secret ID to storage format
+      const storage = SECRET_ID_TO_STORAGE[req.id];
+      if (!storage) {
+        console.warn(`Unknown secret ID: ${req.id}, skipping`);
+        continue;
       }
+
+      const { plugin, key: secretKey } = storage;
+
+      // Check each level to determine source
+      const projectKey = `projects:${id}:${plugin}:${secretKey}`;
+      const globalKey = `${plugin}:${secretKey}`;
+      const envKey = `${plugin.toUpperCase()}_${secretKey.toUpperCase()}`;
+
+      // Use getDecrypted to properly decrypt encrypted values
+      const projectValue = await settingsRepo.getDecrypted(projectKey);
+      const globalValue = await settingsRepo.getDecrypted(globalKey);
+      const envValue = process.env[envKey];
+
+      let source: 'project' | 'global' | 'env' | 'none' = 'none';
+      let value: string | undefined;
+
+      if (projectValue) {
+        source = 'project';
+        value = projectValue;
+      } else if (globalValue) {
+        source = 'global';
+        value = globalValue;
+      } else if (envValue) {
+        source = 'env';
+        value = envValue;
+      }
+
+      secrets.push({
+        id: req.id,
+        plugin,
+        secretKey,
+        label: req.label,
+        description: req.description,
+        required: req.required,
+        usedBy: req.usedBy,
+        usedByDisplay: formatUsedBy(req.usedBy),
+        source,
+        value,
+        masked: value ? maskValue(value) : '',
+      });
+    }
+
+    // Extract enabled triggers for backward compatibility
+    const enabledTriggers: string[] = [];
+    const triggers = project.triggers as Record<string, unknown> || {};
+
+    if (triggers.github && typeof triggers.github === 'object') {
+      const github = triggers.github as Record<string, unknown>;
+      if (github.issues) enabledTriggers.push('github-issues');
+    }
+    if (triggers.sentry && typeof triggers.sentry === 'object') {
+      const sentry = triggers.sentry as Record<string, unknown>;
+      if (sentry.enabled) enabledTriggers.push('sentry');
+    }
+    if (triggers.circleci && typeof triggers.circleci === 'object') {
+      const circleci = triggers.circleci as Record<string, unknown>;
+      if (circleci.enabled) enabledTriggers.push('circleci');
     }
 
     return NextResponse.json({ secrets, triggers: enabledTriggers });

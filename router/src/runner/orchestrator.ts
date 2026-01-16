@@ -1,11 +1,12 @@
 import { TriggerPlugin, TriggerEvent, FixStatus, AnalysisResult } from '../triggers/base';
-import { findProjectById } from '../config/projects';
+import { findProjectById, ProjectConfig } from '../config/projects';
 import { validateTools } from './tools';
 import { buildInvestigationPrompt } from './prompts';
 import { getRunner, RunnerPlugin } from './base';
 import { getVCSForProject } from '../vcs';
 import { formatPRBody } from '../vcs/base';
 import { GitHubVCS } from '../vcs/github';
+import { findPRProvider, PRResult } from '../pr';
 import { getErrorMessage } from '../types/errors';
 import type {
   ConversationEvent,
@@ -138,57 +139,34 @@ export async function orchestrateFix(
       };
     }
 
-    // Success! Create PR using VCS plugin
+    // Success! Create PR using PR provider
     console.log(`[Orchestrator] Creating PR for branch ${result.branchName}`);
 
-    // Get VCS plugin (with project-specific credentials)
-    const vcs = await getVCSForProject(project.vcs.type, project.id);
-    if (!vcs) {
-      throw new Error(`VCS plugin not found or not configured: ${project.vcs.type}`);
-    }
+    // Use PR provider for deterministic PR creation
+    const prResult = await createPullRequest(
+      project,
+      result.branchName,
+      `fix: ${analysis.summary}`,
+      formatPRBody(analysis, trigger.getLink(event))
+    );
 
-    let prUrl: string;
-    let prNumber: number | undefined;
+    const prUrl = prResult.prUrl || prResult.compareUrl || '';
+    const prNumber = prResult.prNumber;
 
-    try {
-      // Create PR
-      const triggerLink = trigger.getLink(event);
-      const prBody = formatPRBody(analysis, triggerLink);
-
-      const pr = await vcs.createPullRequest(
-        project.vcs.owner,
-        project.vcs.repo,
-        result.branchName,
-        project.branch,
-        `fix: ${analysis.summary}`,
-        prBody
-      );
-
-      prUrl = pr.htmlUrl;
-      prNumber = pr.number;
-
+    if (prResult.success) {
       console.log(`[Orchestrator] PR created: ${prUrl}`);
 
-      // Add labels if configured (GitHub specific)
-      if (project.vcs.labels && project.vcs.labels.length > 0 && vcs instanceof GitHubVCS) {
-        await vcs.addLabels(project.vcs.owner, project.vcs.repo, pr.number, project.vcs.labels);
+      // Add labels and reviewers if configured (GitHub specific)
+      const vcs = await getVCSForProject(project.vcs.type, project.id);
+      if (vcs instanceof GitHubVCS && prNumber) {
+        if (project.vcs.labels && project.vcs.labels.length > 0) {
+          await vcs.addLabels(project.vcs.owner, project.vcs.repo, prNumber, project.vcs.labels);
+        }
+        if (project.vcs.reviewers && project.vcs.reviewers.length > 0) {
+          await vcs.requestReviewers(project.vcs.owner, project.vcs.repo, prNumber, project.vcs.reviewers);
+        }
       }
-
-      // Request reviewers if configured (GitHub specific)
-      if (project.vcs.reviewers && project.vcs.reviewers.length > 0 && vcs instanceof GitHubVCS) {
-        await vcs.requestReviewers(project.vcs.owner, project.vcs.repo, pr.number, project.vcs.reviewers);
-      }
-    } catch (error) {
-      console.error(`[Orchestrator] Failed to create PR:`, getErrorMessage(error));
-
-      // Fall back to compare URL
-      prUrl = vcs.getCompareUrl(
-        project.vcs.owner,
-        project.vcs.repo,
-        project.branch,
-        result.branchName
-      );
-
+    } else {
       console.log(`[Orchestrator] Using compare URL: ${prUrl}`);
     }
 
@@ -240,6 +218,56 @@ async function performPreflightChecks(runner: RunnerPlugin): Promise<void> {
   if (!available) {
     throw new Error(`Runner ${runner.name} is not available`);
   }
+}
+
+/**
+ * Create a pull request using the PR provider system
+ * Falls back to compare URL if PR creation fails
+ */
+async function createPullRequest(
+  project: ProjectConfig,
+  branchName: string,
+  title: string,
+  body: string
+): Promise<PRResult> {
+  // Find a PR provider that can handle this project
+  const provider = await findPRProvider(project);
+
+  if (!provider) {
+    // No provider available - return compare URL fallback
+    // We need to construct the compare URL ourselves
+    const baseUrl = project.vcs.type === 'github'
+      ? `https://github.com/${project.vcs.owner}/${project.vcs.repo}/compare/${project.branch}...${branchName}`
+      : `${project.repoFullName}/compare/${project.branch}...${branchName}`;
+
+    return {
+      success: false,
+      compareUrl: baseUrl,
+      error: 'No PR provider available for this project',
+    };
+  }
+
+  // Use the provider to create the PR
+  const result = await provider.createPullRequest({
+    owner: project.vcs.owner,
+    repo: project.vcs.repo,
+    head: branchName,
+    base: project.branch,
+    title,
+    body,
+  });
+
+  // If PR creation failed but we have a provider, get the compare URL from it
+  if (!result.success && !result.compareUrl) {
+    result.compareUrl = provider.getCompareUrl({
+      owner: project.vcs.owner,
+      repo: project.vcs.repo,
+      base: project.branch,
+      head: branchName,
+    });
+  }
+
+  return result;
 }
 
 /**
@@ -559,60 +587,41 @@ async function handleConversationAction(
         confidence: analysis.confidence,
       });
 
-      // Get VCS plugin
-      const vcs = await getVCSForProject(project.vcs.type, project.id);
-      if (!vcs) {
-        throw new Error(`VCS plugin not found or not configured: ${project.vcs.type}`);
-      }
+      // Use PR provider for deterministic PR creation
+      const triggerLink = trigger.getLink(triggerEvent);
+      const prResult = await createPullRequest(
+        project,
+        branchName,
+        `fix: ${analysis.summary}`,
+        formatPRBody(analysis, triggerLink)
+      );
 
-      let prUrl: string;
-      let prNumber: number | undefined;
+      const prUrl = prResult.prUrl || prResult.compareUrl || '';
+      const prNumber = prResult.prNumber;
 
-      try {
-        // Create PR
-        const triggerLink = trigger.getLink(triggerEvent);
-        const prBody = formatPRBody(analysis, triggerLink);
-
-        const pr = await vcs.createPullRequest(
-          project.vcs.owner,
-          project.vcs.repo,
-          branchName,
-          project.branch,
-          `fix: ${analysis.summary}`,
-          prBody
-        );
-
-        prUrl = pr.htmlUrl;
-        prNumber = pr.number;
-
+      if (prResult.success) {
         logger.info('PR created from conversation', {
           conversationId: conversation.id,
           prUrl,
           prNumber,
         });
 
-        // Add labels if configured (GitHub specific)
-        if (project.vcs.labels && project.vcs.labels.length > 0 && vcs instanceof GitHubVCS) {
-          await vcs.addLabels(project.vcs.owner, project.vcs.repo, pr.number, project.vcs.labels);
+        // Add labels and reviewers if configured (GitHub specific)
+        const vcs = await getVCSForProject(project.vcs.type, project.id);
+        if (vcs instanceof GitHubVCS && prNumber) {
+          if (project.vcs.labels && project.vcs.labels.length > 0) {
+            await vcs.addLabels(project.vcs.owner, project.vcs.repo, prNumber, project.vcs.labels);
+          }
+          if (project.vcs.reviewers && project.vcs.reviewers.length > 0) {
+            await vcs.requestReviewers(project.vcs.owner, project.vcs.repo, prNumber, project.vcs.reviewers);
+          }
         }
-
-        // Request reviewers if configured (GitHub specific)
-        if (project.vcs.reviewers && project.vcs.reviewers.length > 0 && vcs instanceof GitHubVCS) {
-          await vcs.requestReviewers(project.vcs.owner, project.vcs.repo, pr.number, project.vcs.reviewers);
-        }
-      } catch (error) {
-        logger.error('Failed to create PR from conversation', {
+      } else {
+        logger.warn('PR creation failed, using compare URL', {
           conversationId: conversation.id,
-          error: getErrorMessage(error),
+          compareUrl: prUrl,
+          error: prResult.error,
         });
-
-        // Fall back to compare URL
-        prUrl = vcs.getCompareUrl(
-          project.vcs.owner,
-          project.vcs.repo,
-          project.branch,
-          branchName
-        );
       }
 
       // Update conversation with PR info

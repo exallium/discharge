@@ -94,6 +94,8 @@ services:
       - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
       - HOST_USER=${USER}
       - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-2}
+      - USE_GIT_WORKSPACES=${USE_GIT_WORKSPACES:-false}
+      - STALE_WORKTREE_TTL_HOURS=${STALE_WORKTREE_TTL_HOURS:-24}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspaces:/workspaces

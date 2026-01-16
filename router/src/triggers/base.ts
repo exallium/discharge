@@ -97,6 +97,21 @@ export interface WebhookConfig {
 }
 
 /**
+ * Secret requirement declaration for plugins
+ * Allows multiple plugins to share the same secret
+ */
+export interface SecretRequirement {
+  /** Shared secret identifier (e.g., 'github_token') - used as storage key */
+  id: string;
+  /** Display label for UI (e.g., 'GitHub Token') */
+  label: string;
+  /** Help text describing what this secret is used for */
+  description: string;
+  /** Whether this secret is required for the plugin to function */
+  required: boolean;
+}
+
+/**
  * Trigger plugin interface - all bug tracking systems implement this
  */
 export interface TriggerPlugin {
@@ -178,4 +193,16 @@ export interface TriggerPlugin {
     message: string,
     project?: ProjectConfig
   ): Promise<void>;
+
+  // ========================================
+  // Secret Requirements
+  // ========================================
+
+  /**
+   * Get the secrets required by this trigger
+   * Used to aggregate and display secrets in the UI
+   *
+   * @returns Array of secret requirements
+   */
+  getRequiredSecrets(): SecretRequirement[];
 }

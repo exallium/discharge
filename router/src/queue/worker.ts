@@ -12,6 +12,12 @@ import {
 import { getConversationService } from '../conversation';
 import { logger } from '../logger';
 import * as jobHistoryRepo from '../db/repositories/job-history';
+import { cleanupStaleWorktrees } from '../runner/workspace';
+
+/**
+ * Whether git workspaces feature is enabled
+ */
+const USE_GIT_WORKSPACES = process.env.USE_GIT_WORKSPACES === 'true';
 
 /**
  * Process a fix job (handles both legacy and conversation jobs)
@@ -263,11 +269,25 @@ export function createWorker(concurrency = 2) {
     console.error('Worker error:', error);
   });
 
-  worker.on('ready', () => {
+  worker.on('ready', async () => {
     console.log('✓ Worker ready', {
       concurrency,
       queue: 'claude-fix-jobs',
     });
+
+    // Clean up stale worktrees on worker startup (if feature enabled)
+    if (USE_GIT_WORKSPACES) {
+      try {
+        const removed = await cleanupStaleWorktrees();
+        if (removed > 0) {
+          logger.info('Cleaned up stale worktrees on startup', { removed });
+        }
+      } catch (error) {
+        logger.warn('Failed to cleanup stale worktrees on startup', {
+          error: getErrorMessage(error),
+        });
+      }
+    }
   });
 
   return worker;

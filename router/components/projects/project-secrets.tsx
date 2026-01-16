@@ -4,19 +4,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { SecretField } from '@/components/ui/secret-field';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, AlertCircle, CheckCircle2, Globe, Server } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, Globe, Server, Users } from 'lucide-react';
 import type { SecretStatus } from '@/app/api/projects/[id]/secrets/route';
 
 interface ProjectSecretsProps {
   projectId: string;
   enabledTriggers: string[];
 }
-
-const TRIGGER_LABELS: Record<string, string> = {
-  'github-issues': 'GitHub Issues',
-  sentry: 'Sentry',
-  circleci: 'CircleCI',
-};
 
 const SOURCE_CONFIG = {
   project: { label: 'Project', variant: 'default' as const, icon: CheckCircle2 },
@@ -47,11 +41,8 @@ export function ProjectSecrets({ projectId, enabledTriggers }: ProjectSecretsPro
   }, [projectId]);
 
   useEffect(() => {
-    if (enabledTriggers.length > 0) {
-      fetchSecrets();
-    } else {
-      setIsLoading(false);
-    }
+    // Always fetch secrets (VCS secrets are always present)
+    fetchSecrets();
   }, [enabledTriggers, fetchSecrets]);
 
   const handleSaveSecret = async (plugin: string, key: string, value: string) => {
@@ -77,37 +68,6 @@ export function ProjectSecrets({ projectId, enabledTriggers }: ProjectSecretsPro
     }
     await fetchSecrets();
   };
-
-  // Group secrets by trigger
-  const secretsByTrigger = secrets.reduce(
-    (acc, secret) => {
-      // Map plugin to trigger name
-      const triggerName =
-        secret.plugin === 'github' ? 'github-issues' : secret.plugin;
-      if (!acc[triggerName]) {
-        acc[triggerName] = [];
-      }
-      acc[triggerName].push(secret);
-      return acc;
-    },
-    {} as Record<string, SecretStatus[]>
-  );
-
-  if (enabledTriggers.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Secrets</CardTitle>
-          <CardDescription>Configure credentials for enabled integrations</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Enable at least one trigger above to configure secrets.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
 
   if (isLoading) {
     return (
@@ -140,6 +100,22 @@ export function ProjectSecrets({ projectId, enabledTriggers }: ProjectSecretsPro
     );
   }
 
+  if (secrets.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Secrets</CardTitle>
+          <CardDescription>Configure credentials for enabled integrations</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            No secrets required for current configuration.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -149,42 +125,43 @@ export function ProjectSecrets({ projectId, enabledTriggers }: ProjectSecretsPro
           environment variables.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        {enabledTriggers.map((trigger) => {
-          const triggerSecrets = secretsByTrigger[trigger] || [];
-          if (triggerSecrets.length === 0) return null;
+      <CardContent className="space-y-4">
+        {secrets.map((secret) => {
+          const sourceConfig = SOURCE_CONFIG[secret.source];
+          const SourceIcon = sourceConfig.icon;
+          const isShared = secret.usedBy.length > 1;
 
           return (
-            <div key={trigger} className="space-y-3">
-              <h4 className="font-medium text-sm">
-                {TRIGGER_LABELS[trigger] || trigger}
-              </h4>
-              <div className="space-y-3 pl-4 border-l-2 border-muted">
-                {triggerSecrets.map((secret) => {
-                  const sourceConfig = SOURCE_CONFIG[secret.source];
-                  const SourceIcon = sourceConfig.icon;
-
-                  return (
-                    <div key={secret.key} className="space-y-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{secret.label}</span>
-                        <Badge variant={sourceConfig.variant} className="text-xs gap-1">
-                          <SourceIcon className="h-3 w-3" />
-                          {sourceConfig.label}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{secret.description}</p>
-                      <SecretField
-                        value={secret.value}
-                        masked={secret.masked}
-                        source={secret.source}
-                        onSave={(value) => handleSaveSecret(secret.plugin, secret.secretKey, value)}
-                        onDelete={() => handleDeleteSecret(secret.plugin, secret.secretKey)}
-                      />
-                    </div>
-                  );
-                })}
+            <div key={secret.id} className="space-y-1.5 p-3 rounded-lg border bg-card">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-medium">{secret.label}</span>
+                {secret.required && (
+                  <Badge variant="outline" className="text-xs">
+                    Required
+                  </Badge>
+                )}
+                <Badge variant={sourceConfig.variant} className="text-xs gap-1">
+                  <SourceIcon className="h-3 w-3" />
+                  {sourceConfig.label}
+                </Badge>
+                {isShared && (
+                  <Badge variant="secondary" className="text-xs gap-1">
+                    <Users className="h-3 w-3" />
+                    Shared
+                  </Badge>
+                )}
               </div>
+              <p className="text-xs text-muted-foreground">{secret.description}</p>
+              <p className="text-xs text-muted-foreground">
+                Used by: <span className="font-medium">{secret.usedByDisplay}</span>
+              </p>
+              <SecretField
+                value={secret.value}
+                masked={secret.masked}
+                source={secret.source}
+                onSave={(value) => handleSaveSecret(secret.plugin, secret.secretKey, value)}
+                onDelete={() => handleDeleteSecret(secret.plugin, secret.secretKey)}
+              />
             </div>
           );
         })}

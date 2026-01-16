@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest, WebhookConfig } from '../base';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest, WebhookConfig, SecretRequirement } from '../base';
 import { findProjectByRepo } from '../../config/projects';
 import type { ProjectConfig } from '../../db/repositories/projects';
 import { getGitHubToken, getGitHubWebhookSecret } from '../../vcs';
@@ -45,6 +45,26 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
 
   // Conversation support
   supportsConversation = true;
+
+  /**
+   * Get the secrets required by this trigger
+   */
+  getRequiredSecrets(): SecretRequirement[] {
+    return [
+      {
+        id: 'github_token',
+        label: 'GitHub Token',
+        description: 'Personal access token for GitHub API (repo scope required)',
+        required: true,
+      },
+      {
+        id: 'github_webhook_secret',
+        label: 'GitHub Webhook Secret',
+        description: 'Secret for validating webhook signatures',
+        required: true,
+      },
+    ];
+  }
 
   /**
    * Get header value from WebhookRequest

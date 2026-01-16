@@ -1,6 +1,7 @@
 import { VCSPlugin } from './base';
 import { GitHubVCS } from './github';
 import { getSecret } from '../secrets';
+import { registerPRProvider, getGitHubPRProvider } from '../pr';
 
 /**
  * Registry of VCS plugins
@@ -44,6 +45,10 @@ export async function initializeVCS(): Promise<void> {
     vcsPlugins.set('github', github);
     console.log('✓ GitHub VCS initialized');
   }
+
+  // Register GitHub PR provider (always available, checks token at runtime)
+  registerPRProvider(getGitHubPRProvider());
+  console.log('✓ GitHub PR provider registered');
 
   // Future: GitLab, Bitbucket, etc.
 }

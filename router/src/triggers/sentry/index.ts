@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest, WebhookConfig } from '../base';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest, WebhookConfig, SecretRequirement } from '../base';
 import { findProjectsBySource } from '../../config/projects';
 import { SentryWebhookPayload, SentryTag, isIssueCreatedEvent } from '../../types/webhooks/sentry';
 import { getErrorMessage } from '../../types/errors';
@@ -419,5 +419,25 @@ EOF
     }
 
     return true;
+  }
+
+  /**
+   * Get the secrets required by this trigger
+   */
+  getRequiredSecrets(): SecretRequirement[] {
+    return [
+      {
+        id: 'sentry_token',
+        label: 'Sentry Auth Token',
+        description: 'Authentication token for Sentry API (used to fetch issue details and post comments)',
+        required: true,
+      },
+      {
+        id: 'sentry_webhook_secret',
+        label: 'Sentry Webhook Secret',
+        description: 'Secret for validating Sentry webhook signatures (optional but recommended)',
+        required: false,
+      },
+    ];
   }
 }

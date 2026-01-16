@@ -37,8 +37,18 @@ import { buildCategoryPrompt, getMatchedCategoryName } from '../../prompts';
 import { getErrorMessage, isExecError } from '../../../types/errors';
 import { getGitHubToken } from '../../../vcs';
 import { getSecret } from '../../../secrets';
+import {
+  createWorktree,
+  removeWorktree,
+} from '../../workspace';
 
 const execAsync = promisify(exec);
+
+/**
+ * Whether to use git worktrees for faster job execution
+ * Enable with USE_GIT_WORKSPACES=true
+ */
+const USE_GIT_WORKSPACES = process.env.USE_GIT_WORKSPACES === 'true';
 
 /**
  * Get the path to Claude OAuth credentials directory.
@@ -135,9 +145,12 @@ export class ClaudeCodeRunner implements RunnerPlugin {
    */
   async run(options: RunOptions): Promise<RunResult> {
     const jobId = randomUUID();
-    const worktreeDir = process.env.WORKTREE_DIR || '/workspaces';
-    const workspacePath = `${worktreeDir}/${jobId}`;
     const timeout = options.timeoutMs || 600000; // 10 minutes default
+
+    // Track whether we're using worktrees (for cleanup logic)
+    const useWorktrees = USE_GIT_WORKSPACES && options.projectId;
+    let workspacePath = '';
+    let fixBranch = '';
 
     // Track matched category for infrastructure cleanup
     let matchedCategory: CategoryConfig | undefined;
@@ -146,21 +159,38 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       repo: options.repoUrl,
       branch: options.branch,
       labels: options.eventLabels,
+      useWorktrees,
     });
 
     try {
-      // Clone repository
-      console.log(`[ClaudeCode:${jobId}] Cloning repository...`);
-      const authUrl = await getAuthenticatedRepoUrl(options.repoUrl, options.projectId);
-      await execAsync(
-        `git clone --depth 1 -b ${options.branch} ${authUrl} ${workspacePath}`,
-        { timeout: 60000 }
-      );
+      if (useWorktrees) {
+        // Use workspace manager for efficient worktree-based execution
+        console.log(`[ClaudeCode:${jobId}] Creating worktree...`);
+        workspacePath = await createWorktree(
+          options.projectId!,
+          jobId,
+          options.branch,
+          options.repoUrl
+        );
+        fixBranch = `fix/auto-${jobId.slice(0, 8)}`;
+        console.log(`[ClaudeCode:${jobId}] Worktree created at ${workspacePath}`);
+      } else {
+        // Traditional clone approach
+        const worktreeDir = process.env.WORKTREE_DIR || '/workspaces';
+        workspacePath = `${worktreeDir}/${jobId}`;
 
-      // Create fix branch
-      const fixBranch = `fix/auto-${jobId.slice(0, 8)}`;
-      console.log(`[ClaudeCode:${jobId}] Creating branch ${fixBranch}`);
-      await execAsync(`git checkout -b ${fixBranch}`, { cwd: workspacePath });
+        console.log(`[ClaudeCode:${jobId}] Cloning repository...`);
+        const authUrl = await getAuthenticatedRepoUrl(options.repoUrl, options.projectId);
+        await execAsync(
+          `git clone --depth 1 -b ${options.branch} ${authUrl} ${workspacePath}`,
+          { timeout: 60000 }
+        );
+
+        // Create fix branch
+        fixBranch = `fix/auto-${jobId.slice(0, 8)}`;
+        console.log(`[ClaudeCode:${jobId}] Creating branch ${fixBranch}`);
+        await execAsync(`git checkout -b ${fixBranch}`, { cwd: workspacePath });
+      }
 
       // Read .ai-bugs.json if it exists
       let bugConfig: BugFixConfig | undefined;
@@ -362,12 +392,23 @@ export class ClaudeCodeRunner implements RunnerPlugin {
 
       // Cleanup workspace
       console.log(`[ClaudeCode:${jobId}] Cleaning up workspace...`);
-      await rm(workspacePath, { recursive: true, force: true }).catch((err) => {
-        console.error(
-          `[ClaudeCode:${jobId}] Failed to cleanup workspace:`,
-          getErrorMessage(err)
-        );
-      });
+      if (useWorktrees && options.projectId) {
+        // Use workspace manager for worktree cleanup
+        await removeWorktree(options.projectId, jobId).catch((err) => {
+          console.error(
+            `[ClaudeCode:${jobId}] Failed to remove worktree:`,
+            getErrorMessage(err)
+          );
+        });
+      } else {
+        // Traditional cleanup
+        await rm(workspacePath, { recursive: true, force: true }).catch((err) => {
+          console.error(
+            `[ClaudeCode:${jobId}] Failed to cleanup workspace:`,
+            getErrorMessage(err)
+          );
+        });
+      }
     }
   }
 
@@ -461,9 +502,13 @@ export class ClaudeCodeRunner implements RunnerPlugin {
     options: ConversationRunOptions
   ): Promise<RunnerConversationResult> {
     const jobId = randomUUID();
-    const worktreeDir = process.env.WORKTREE_DIR || '/workspaces';
-    const workspacePath = options.workspacePath || `${worktreeDir}/${jobId}`;
     const timeout = options.timeoutMs || 600000;
+
+    // Determine workspace approach
+    const isPreConfiguredWorkspace = !!options.workspacePath;
+    const useWorktrees = !isPreConfiguredWorkspace && USE_GIT_WORKSPACES && options.projectId;
+    let workspacePath = '';
+    let fixBranch = '';
 
     console.log(`[ClaudeCode:${jobId}] Starting conversation mode execution`, {
       repo: options.repoUrl,
@@ -471,28 +516,45 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       routeMode: options.routeMode,
       iteration: options.iteration,
       hasExistingPlan: !!options.existingPlan,
+      useWorktrees,
     });
 
     try {
-      // Use provided workspace or clone repository
-      const isPreConfiguredWorkspace = !!options.workspacePath;
+      if (isPreConfiguredWorkspace) {
+        // Use provided workspace
+        workspacePath = options.workspacePath!;
+        fixBranch = `fix/conversation-${jobId.slice(0, 8)}`;
+      } else if (useWorktrees) {
+        // Use workspace manager for efficient worktree-based execution
+        console.log(`[ClaudeCode:${jobId}] Creating worktree...`);
+        workspacePath = await createWorktree(
+          options.projectId!,
+          jobId,
+          options.branch,
+          options.repoUrl
+        );
+        fixBranch = `fix/auto-${jobId.slice(0, 8)}`;
+        console.log(`[ClaudeCode:${jobId}] Worktree created at ${workspacePath}`);
+      } else {
+        // Traditional clone approach
+        const worktreeDir = process.env.WORKTREE_DIR || '/workspaces';
+        workspacePath = `${worktreeDir}/${jobId}`;
 
-      if (!isPreConfiguredWorkspace) {
         console.log(`[ClaudeCode:${jobId}] Cloning repository...`);
         const authUrl = await getAuthenticatedRepoUrl(options.repoUrl, options.projectId);
         await execAsync(
           `git clone --depth 1 -b ${options.branch} ${authUrl} ${workspacePath}`,
           { timeout: 60000 }
         );
-      }
 
-      // Create fix branch if not already on one
-      const fixBranch = `fix/conversation-${jobId.slice(0, 8)}`;
-      console.log(`[ClaudeCode:${jobId}] Creating branch ${fixBranch}`);
-      await execAsync(`git checkout -b ${fixBranch}`, { cwd: workspacePath }).catch(() => {
-        // Branch might already exist if using pre-configured workspace
-        console.log(`[ClaudeCode:${jobId}] Branch already exists, continuing...`);
-      });
+        // Create fix branch
+        fixBranch = `fix/conversation-${jobId.slice(0, 8)}`;
+        console.log(`[ClaudeCode:${jobId}] Creating branch ${fixBranch}`);
+        await execAsync(`git checkout -b ${fixBranch}`, { cwd: workspacePath }).catch(() => {
+          // Branch might already exist
+          console.log(`[ClaudeCode:${jobId}] Branch already exists, continuing...`);
+        });
+      }
 
       // Build the conversation prompt
       const conversationPrompt = this.buildConversationPrompt(options);
@@ -606,15 +668,26 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         complete: false,
       };
     } finally {
-      // Only cleanup if we created the workspace
-      if (!options.workspacePath) {
+      // Only cleanup if we created the workspace (not pre-configured)
+      if (!isPreConfiguredWorkspace) {
         console.log(`[ClaudeCode:${jobId}] Cleaning up workspace...`);
-        await rm(workspacePath, { recursive: true, force: true }).catch((err) => {
-          console.error(
-            `[ClaudeCode:${jobId}] Failed to cleanup workspace:`,
-            getErrorMessage(err)
-          );
-        });
+        if (useWorktrees && options.projectId) {
+          // Use workspace manager for worktree cleanup
+          await removeWorktree(options.projectId, jobId).catch((err) => {
+            console.error(
+              `[ClaudeCode:${jobId}] Failed to remove worktree:`,
+              getErrorMessage(err)
+            );
+          });
+        } else {
+          // Traditional cleanup
+          await rm(workspacePath, { recursive: true, force: true }).catch((err) => {
+            console.error(
+              `[ClaudeCode:${jobId}] Failed to cleanup workspace:`,
+              getErrorMessage(err)
+            );
+          });
+        }
       }
     }
   }

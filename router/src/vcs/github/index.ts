@@ -1,5 +1,6 @@
 import { Octokit } from '@octokit/rest';
 import { VCSPlugin, PullRequest, PlanFileResult, VCSProjectConfig } from '../base';
+import { SecretRequirement } from '../../triggers/base';
 import { getErrorMessage } from '../../types/errors';
 import { logger } from '../../logger';
 
@@ -392,5 +393,19 @@ export class GitHubVCS implements VCSPlugin {
       throw new Error(`Invalid repository identifier: ${repository}`);
     }
     return { owner: parts[0], repo: parts[1] };
+  }
+
+  /**
+   * Get the secrets required by this VCS plugin
+   */
+  getRequiredSecrets(): SecretRequirement[] {
+    return [
+      {
+        id: 'github_token',
+        label: 'GitHub Token',
+        description: 'Personal access token for GitHub API (repo scope required for creating PRs)',
+        required: true,
+      },
+    ];
   }
 }

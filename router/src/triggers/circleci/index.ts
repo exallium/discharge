@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest, WebhookConfig } from '../base';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest, WebhookConfig, SecretRequirement } from '../base';
 import { findProjectsBySource, ProjectConfig } from '../../config/projects';
 import { CircleCIWebhookPayload, isWorkflowEvent, isJobEvent, isFailedWorkflow, isFailedJob } from '../../types/webhooks/circleci';
 import { getSecret } from '../../secrets';
@@ -431,5 +431,25 @@ curl -s "https://circleci.com/api/v2/pipeline/${event.metadata.pipelineId || eve
     // 1. Extract commit SHA from event.metadata.revision
     // 2. Use GitHub/GitLab API to add a commit comment
     // 3. Or add a PR comment if this is part of a PR
+  }
+
+  /**
+   * Get the secrets required by this trigger
+   */
+  getRequiredSecrets(): SecretRequirement[] {
+    return [
+      {
+        id: 'circleci_token',
+        label: 'CircleCI Token',
+        description: 'API token for CircleCI (used to fetch job details and test results)',
+        required: true,
+      },
+      {
+        id: 'circleci_webhook_secret',
+        label: 'CircleCI Webhook Secret',
+        description: 'Secret for validating CircleCI webhook signatures (optional but recommended)',
+        required: false,
+      },
+    ];
   }
 }
