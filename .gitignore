@@ -19,6 +19,7 @@ build/
 
 # TypeScript
 *.tsbuildinfo
+next-env.d.ts
 
 # Logs
 logs/
