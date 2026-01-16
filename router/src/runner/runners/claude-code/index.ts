@@ -840,20 +840,70 @@ export class ClaudeCodeRunner implements RunnerPlugin {
     parts.push('');
     parts.push('## Output Instructions');
     parts.push('');
-    parts.push('After completing your analysis or work, create a file at `.claude/conversation-result.json` with:');
-    parts.push('```json');
-    parts.push('{');
-    parts.push('  "response": "Your response message",');
-    parts.push('  "action": {');
-    parts.push('    "type": "create_plan|update_plan|execute|comment|request_info",');
-    parts.push('    "plan": { /* PlanFile structure if type is create_plan */ },');
-    parts.push('    "content": "/* updated content if type is update_plan */",');
-    parts.push('    "body": "/* message if type is comment */",');
-    parts.push('    "questions": ["/* questions if type is request_info */"]');
-    parts.push('  },');
-    parts.push('  "complete": false');
-    parts.push('}');
-    parts.push('```');
+    parts.push('**IMPORTANT:** After completing your analysis, you MUST create the file `.claude/conversation-result.json`.');
+    parts.push('First create the `.claude` directory if it does not exist, then write the JSON file.');
+    parts.push('');
+
+    if (options.routeMode === 'plan_review' && !options.existingPlan) {
+      // Plan creation mode - show complete plan structure
+      parts.push('Since you are creating a plan, use this exact structure:');
+      parts.push('```json');
+      parts.push(JSON.stringify({
+        response: "A brief summary of your analysis and proposed plan",
+        action: {
+          type: "create_plan",
+          plan: {
+            metadata: {
+              issue: options.issueNumber ?? options.iteration,
+              status: "draft",
+              iteration: 1,
+              confidence: 0.7,
+              created: new Date().toISOString(),
+              updated: new Date().toISOString(),
+              author: "claude"
+            },
+            sections: {
+              context: "Your understanding of the problem. What is being requested? What is the current state?",
+              approach: "Your high-level strategy. How will you solve this? What technologies/patterns will you use?",
+              steps: [
+                {
+                  title: "Step 1 title",
+                  description: "Detailed description of what this step accomplishes",
+                  tasks: ["Specific task 1", "Specific task 2"],
+                  files: ["path/to/file1.ts", "path/to/file2.ts"],
+                  estimatedComplexity: "low"
+                }
+              ],
+              risks: ["Potential risk 1", "Potential risk 2"],
+              questions: ["Any clarifying questions for the user"]
+            }
+          }
+        },
+        complete: false
+      }, null, 2));
+      parts.push('```');
+      parts.push('');
+      parts.push('**Requirements:**');
+      parts.push('- `context`: Must describe the problem in 2-4 sentences minimum');
+      parts.push('- `approach`: Must describe your solution strategy in 2-4 sentences minimum');
+      parts.push('- `steps`: Must have at least one step with title, description, tasks, and files');
+      parts.push('- `estimatedComplexity`: Must be one of "trivial", "low", "medium", "high"');
+    } else {
+      // Other modes - show general structure
+      parts.push('Use this structure for your result:');
+      parts.push('```json');
+      parts.push('{');
+      parts.push('  "response": "Your response message to the user",');
+      parts.push('  "action": {');
+      parts.push('    "type": "comment",');
+      parts.push('    "body": "The message to post as a comment"');
+      parts.push('  },');
+      parts.push('  "complete": false');
+      parts.push('}');
+      parts.push('```');
+      parts.push('');
+      parts.push('Action types: "create_plan", "update_plan", "execute", "comment", "request_info"');
+    }
 
     return parts.join('\n');
   }
