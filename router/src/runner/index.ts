@@ -2,8 +2,9 @@
  * Runner module - Pluggable AI agent execution and fix orchestration
  */
 
-// Re-export orchestrator
-export { orchestrateFix } from './orchestrator';
+// Re-export orchestrators
+// Note: orchestrateFix is legacy - new triggers should support conversation mode
+export { orchestrateFix, orchestrateConversation } from './orchestrator';
 
 // Re-export runner plugin system
 export type {

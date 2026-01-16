@@ -39,7 +39,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
   type = 'github-issues';
 
   webhookConfig: WebhookConfig = {
-    events: ['issues', 'issue_comment'],
+    events: ['issues', 'issue_comment', 'pull_request_review', 'pull_request_review_comment'],
     docsUrl: 'https://docs.github.com/en/webhooks/using-webhooks/creating-webhooks',
   };
 
@@ -699,7 +699,31 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
   }
 
   /**
+   * Extract linked issue number from PR body
+   * Looks for patterns like "Fixes #123", "Closes #456", "Resolves #789"
+   */
+  private extractLinkedIssueNumber(prBody: string | null): number | null {
+    if (!prBody) return null;
+
+    // Match common issue-linking patterns
+    const patterns = [
+      /(?:fix(?:es)?|close[sd]?|resolve[sd]?)\s*#(\d+)/i,
+      /(?:fix(?:es)?|close[sd]?|resolve[sd]?)\s+(?:issue\s+)?#(\d+)/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = prBody.match(pattern);
+      if (match && match[1]) {
+        return parseInt(match[1], 10);
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Parse PR review event to ConversationEvent
+   * Links back to the originating issue if found in PR body
    */
   private parsePRReviewConversationEvent(
     payload: GitHubPullRequestReviewEventPayload
@@ -707,11 +731,17 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
     const { pull_request, review, repository } = payload;
     const prLabels = (pull_request.labels || []).map((l: GitHubLabel) => l.name);
 
+    // Try to link back to the originating issue
+    const linkedIssueNumber = this.extractLinkedIssueNumber(pull_request.body);
+    const externalId = linkedIssueNumber
+      ? `${repository.full_name}#${linkedIssueNumber}`  // Route to issue conversation
+      : `${repository.full_name}#${pull_request.number}`; // Fallback to PR
+
     return {
       type: 'pr_review',
       source: {
         platform: 'github',
-        externalId: `${repository.full_name}#${pull_request.number}`,
+        externalId,
         url: review.html_url,
       },
       target: {
@@ -738,6 +768,7 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
 
   /**
    * Parse PR review comment event to ConversationEvent
+   * Links back to the originating issue if found in PR body
    */
   private parsePRReviewCommentConversationEvent(
     payload: GitHubPullRequestReviewCommentEventPayload
@@ -745,11 +776,17 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
     const { pull_request, comment, repository } = payload;
     const prLabels = (pull_request.labels || []).map((l: GitHubLabel) => l.name);
 
+    // Try to link back to the originating issue
+    const linkedIssueNumber = this.extractLinkedIssueNumber(pull_request.body);
+    const externalId = linkedIssueNumber
+      ? `${repository.full_name}#${linkedIssueNumber}`  // Route to issue conversation
+      : `${repository.full_name}#${pull_request.number}`; // Fallback to PR
+
     return {
       type: 'pr_review_comment',
       source: {
         platform: 'github',
-        externalId: `${repository.full_name}#${pull_request.number}`,
+        externalId,
         url: comment.html_url,
       },
       target: {

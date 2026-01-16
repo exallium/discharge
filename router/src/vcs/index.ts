@@ -49,10 +49,28 @@ export async function initializeVCS(): Promise<void> {
 }
 
 /**
- * Get a VCS plugin by ID
+ * Get a VCS plugin by ID (global instance)
+ * @deprecated Use getVCSForProject for project-specific tokens
  */
 export function getVCSPlugin(id: string): VCSPlugin | undefined {
   return vcsPlugins.get(id);
+}
+
+/**
+ * Get a VCS plugin for a specific project
+ * Creates a new instance with project-specific credentials
+ */
+export async function getVCSForProject(
+  vcsType: 'github' | 'gitlab' | 'bitbucket' | 'self-hosted',
+  projectId?: string
+): Promise<VCSPlugin | null> {
+  switch (vcsType) {
+    case 'github':
+      return getGitHubVCS(projectId);
+    // Future: case 'gitlab': return getGitLabVCS(projectId);
+    default:
+      return null;
+  }
 }
 
 /**

@@ -10,6 +10,9 @@ import {
   Plus,
   Settings,
   Download,
+  GitPullRequest,
+  MessageSquare,
+  Loader2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { StatCard } from '@/components/ui/stat-card';
@@ -23,17 +26,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { StatusBadge } from '@/components/ui/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { formatRelativeTime } from '@/lib/utils';
-import { projectsRepo, jobHistoryRepo } from '@/src/db/repositories';
+import { projectsRepo, jobHistoryRepo, conversationsRepo } from '@/src/db/repositories';
 
 async function getDashboardData() {
-  const [projects, jobStats, recentJobs] = await Promise.all([
+  const [projects, jobStats, recentJobs, conversationsData] = await Promise.all([
     projectsRepo.findAll(true),
     jobHistoryRepo.getStats(),
-    jobHistoryRepo.findAll({ limit: 5, offset: 0 }),
+    jobHistoryRepo.findAll({ limit: 10, offset: 0 }),
+    conversationsRepo.findAll({ limit: 5 }),
   ]);
 
   const activeProjects = projects.filter((p) => p.enabled).length;
@@ -48,6 +51,7 @@ async function getDashboardData() {
     bugsFixed: jobStats.fixedCount || 0,
     successRate,
     recentJobs,
+    recentConversations: conversationsData.conversations,
     projects: projects.slice(0, 5),
   };
 }
@@ -86,51 +90,101 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* Recent Jobs and Projects */}
+      {/* Recent Activity - Full Width */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Recent Activity</CardTitle>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/jobs">View all</Link>
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {data.recentJobs.length === 0 ? (
+            <EmptyState
+              title="No activity yet"
+              description="Activity will appear here once your triggers fire."
+            />
+          ) : (
+            <div className="space-y-3">
+              {data.recentJobs.slice(0, 8).map((job) => (
+                <div
+                  key={job.jobId}
+                  className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <JobStatusIcon status={job.status} fixed={job.fixed} />
+                    <div>
+                      <div className="font-medium">
+                        {job.triggerId}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {job.projectId} &middot; {job.triggerType}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {job.prUrl && (
+                      <Button variant="outline" size="sm" asChild>
+                        <a href={job.prUrl} target="_blank" rel="noopener noreferrer">
+                          <GitPullRequest className="h-4 w-4 mr-1" />
+                          View PR
+                        </a>
+                      </Button>
+                    )}
+                    <div className="text-sm text-muted-foreground text-right min-w-[80px]">
+                      {job.startedAt
+                        ? formatRelativeTime(job.startedAt)
+                        : 'Queued'}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Conversations and Projects */}
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Recent Jobs */}
+        {/* Active Conversations */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Recent Jobs</CardTitle>
+            <CardTitle>Active Conversations</CardTitle>
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/jobs">View all</Link>
+              <Link href="/jobs?tab=conversations">View all</Link>
             </Button>
           </CardHeader>
           <CardContent>
-            {data.recentJobs.length === 0 ? (
+            {data.recentConversations.length === 0 ? (
               <EmptyState
-                title="No jobs yet"
-                description="Jobs will appear here once your triggers fire."
+                title="No conversations"
+                description="Conversations track multi-turn interactions with issues."
               />
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Project</TableHead>
-                    <TableHead>Trigger</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Time</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.recentJobs.map((job) => (
-                    <TableRow key={job.jobId}>
-                      <TableCell className="font-mono text-sm">
-                        {job.projectId}
-                      </TableCell>
-                      <TableCell>{job.triggerType}</TableCell>
-                      <TableCell>
-                        <JobStatusBadge status={job.status} fixed={job.fixed} />
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {job.startedAt
-                          ? formatRelativeTime(job.startedAt)
-                          : 'Queued'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <div className="space-y-2">
+                {data.recentConversations.map((conv) => (
+                  <Link
+                    key={conv.id}
+                    href={`/jobs/${conv.id}`}
+                    className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <ConversationStateIcon state={conv.state} />
+                      <div>
+                        <div className="font-medium text-sm">
+                          {conv.externalId}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {conv.triggerType} &middot; {conv.iteration} iterations
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatRelativeTime(conv.lastActivityAt)}
+                    </div>
+                  </Link>
+                ))}
+              </div>
             )}
           </CardContent>
         </Card>
@@ -220,25 +274,53 @@ export default async function DashboardPage() {
   );
 }
 
-function JobStatusBadge({
-  status,
-  fixed,
-}: {
-  status: string;
-  fixed: boolean | null;
-}) {
+function JobStatusIcon({ status, fixed }: { status: string; fixed: boolean | null }) {
+  if (status === 'success' && fixed) {
+    return (
+      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-100 dark:bg-green-900">
+        <Bug className="h-4 w-4 text-green-600 dark:text-green-400" />
+      </div>
+    );
+  }
   if (status === 'success') {
-    return fixed ? (
-      <StatusBadge status="success" label="Fixed" />
-    ) : (
-      <Badge variant="secondary">Analyzed</Badge>
+    return (
+      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900">
+        <History className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+      </div>
     );
   }
   if (status === 'failed') {
-    return <StatusBadge status="error" label="Failed" />;
+    return (
+      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-red-100 dark:bg-red-900">
+        <Bug className="h-4 w-4 text-red-600 dark:text-red-400" />
+      </div>
+    );
   }
   if (status === 'running') {
-    return <StatusBadge status="running" />;
+    return (
+      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-yellow-100 dark:bg-yellow-900">
+        <Loader2 className="h-4 w-4 text-yellow-600 dark:text-yellow-400 animate-spin" />
+      </div>
+    );
   }
-  return <Badge variant="outline">{status}</Badge>;
+  return (
+    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted">
+      <History className="h-4 w-4 text-muted-foreground" />
+    </div>
+  );
+}
+
+function ConversationStateIcon({ state }: { state: string }) {
+  if (state === 'running') {
+    return (
+      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900">
+        <Loader2 className="h-4 w-4 text-blue-600 dark:text-blue-400 animate-spin" />
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted">
+      <MessageSquare className="h-4 w-4 text-muted-foreground" />
+    </div>
+  );
 }

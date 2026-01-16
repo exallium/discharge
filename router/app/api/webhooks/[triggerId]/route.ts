@@ -295,9 +295,8 @@ async function handlePost(request: NextRequest, { params }: RouteParams) {
       });
     }
 
-    // Check if trigger supports conversation mode
+    // Route through conversation system for triggers that support it
     if (trigger.supportsConversation && trigger.parseConversationEvent) {
-      // Try to route through conversation system
       const conversationEvent = await trigger.parseConversationEvent(body);
 
       if (conversationEvent) {
@@ -344,10 +343,10 @@ async function handlePost(request: NextRequest, { params }: RouteParams) {
           { status: 202 }
         );
       }
-      // If parseConversationEvent returns null, fall through to regular flow
+      // If parseConversationEvent returns null, fall through to legacy flow
     }
 
-    // Queue the job (legacy flow for non-conversation triggers)
+    // Legacy flow for triggers that don't support conversation mode
     const jobId = await queueFixJob({
       event,
       triggerType: trigger.type,
@@ -356,7 +355,7 @@ async function handlePost(request: NextRequest, { params }: RouteParams) {
 
     setLoggingContext(request, {
       outcome: 'queued',
-      outcomeReason: 'Job queued for processing',
+      outcomeReason: 'Job queued for processing (legacy flow)',
       jobId,
       details: {
         queueResult: { jobId },

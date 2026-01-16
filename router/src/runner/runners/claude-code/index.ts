@@ -10,7 +10,7 @@ import { promisify } from 'util';
 import { randomUUID } from 'crypto';
 import { rm, readFile, writeFile, mkdir, chmod, cp } from 'fs/promises';
 import { join } from 'path';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import {
   RunnerPlugin,
   RunOptions,
@@ -41,21 +41,52 @@ import { getSecret } from '../../../secrets';
 const execAsync = promisify(exec);
 
 /**
- * Prepare a writable .claude directory for the container
- * Copies auth credentials from host but allows container to write session data
+ * Get the path to Claude OAuth credentials directory.
+ * This is where credentials are stored for Docker-based execution.
+ * On macOS, native Claude stores creds in Keychain, so we use a separate
+ * directory for Docker containers which use file-based credentials.
  */
-async function prepareClaudeConfig(workspacePath: string, hostUser: string): Promise<string> {
+function getClaudeCredsPath(): string {
+  return process.env.CLAUDE_CREDS_PATH || join(process.env.HOME || '/root', '.claude-docker-creds');
+}
+
+/**
+ * Check if OAuth credentials exist and appear valid
+ */
+function hasOAuthCredentials(): boolean {
+  const credsPath = getClaudeCredsPath();
+  const credentialsFile = join(credsPath, '.credentials.json');
+
+  if (!existsSync(credentialsFile)) {
+    return false;
+  }
+
+  try {
+    const content = readFileSync(credentialsFile, 'utf-8');
+    const creds = JSON.parse(content);
+    // Check for required OAuth fields
+    return !!(creds.accessToken || creds.claudeAiOauth);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Prepare a writable .claude directory for the container
+ * Copies auth credentials from dedicated Docker creds path and allows container to write session data
+ */
+async function prepareClaudeConfig(workspacePath: string): Promise<string> {
   const claudeConfigPath = join(workspacePath, '.claude-config');
-  const hostClaudePath = `/Users/${hostUser}/.claude`;
+  const dockerCredsPath = getClaudeCredsPath();
 
   // Create the config directory
   await mkdir(claudeConfigPath, { recursive: true });
 
-  // Copy auth-related files from host (if they exist)
+  // Copy auth-related files from Docker credentials path (if they exist)
   const filesToCopy = ['.credentials.json', 'settings.json', 'settings.local.json'];
 
   for (const file of filesToCopy) {
-    const srcPath = join(hostClaudePath, file);
+    const srcPath = join(dockerCredsPath, file);
     const destPath = join(claudeConfigPath, file);
     if (existsSync(srcPath)) {
       await cp(srcPath, destPath);
@@ -106,7 +137,6 @@ export class ClaudeCodeRunner implements RunnerPlugin {
     const jobId = randomUUID();
     const worktreeDir = process.env.WORKTREE_DIR || '/workspaces';
     const workspacePath = `${worktreeDir}/${jobId}`;
-    const hostUser = process.env.HOST_USER || process.env.USER || 'claude';
     const timeout = options.timeoutMs || 600000; // 10 minutes default
 
     // Track matched category for infrastructure cleanup
@@ -190,15 +220,25 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         await this.writeToolsToWorkspace(workspacePath, options.tools);
       }
 
-      // Get Anthropic API key for Claude authentication
+      // Get Anthropic API key for Claude authentication (optional if OAuth credentials exist)
       const anthropicApiKey = await getSecret('anthropic', 'api_key', options.projectId, 'ANTHROPIC_API_KEY');
-      if (!anthropicApiKey) {
-        throw new Error('ANTHROPIC_API_KEY not configured. Add it as a project secret or set it in the environment.');
+      const useOAuth = hasOAuthCredentials();
+
+      if (!anthropicApiKey && !useOAuth) {
+        throw new Error(
+          'No authentication configured. Either:\n' +
+          '  1. Set ANTHROPIC_API_KEY as a project secret or environment variable, or\n' +
+          `  2. Run 'npm run claude:auth' to set up OAuth credentials`
+        );
       }
 
-      // Build environment variables
+      if (useOAuth) {
+        console.log(`[ClaudeCode:${jobId}] Using OAuth credentials from ${getClaudeCredsPath()}`);
+      }
+
+      // Build environment variables (only include API key if not using OAuth)
       const envVars: Record<string, string> = {
-        ANTHROPIC_API_KEY: anthropicApiKey,
+        ...(anthropicApiKey && !useOAuth ? { ANTHROPIC_API_KEY: anthropicApiKey } : {}),
         ...options.env,
       };
 
@@ -225,7 +265,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       await writeFile(promptFile, enhancedPrompt, 'utf-8');
 
       // Prepare writable .claude config directory
-      const claudeConfigPath = await prepareClaudeConfig(workspacePath, hostUser);
+      const claudeConfigPath = await prepareClaudeConfig(workspacePath);
 
       // Run Claude Code (read prompt from file inside container via cat pipe)
       console.log(`[ClaudeCode:${jobId}] Running Claude Code CLI...`);
@@ -423,7 +463,6 @@ export class ClaudeCodeRunner implements RunnerPlugin {
     const jobId = randomUUID();
     const worktreeDir = process.env.WORKTREE_DIR || '/workspaces';
     const workspacePath = options.workspacePath || `${worktreeDir}/${jobId}`;
-    const hostUser = process.env.HOST_USER || process.env.USER || 'claude';
     const timeout = options.timeoutMs || 600000;
 
     console.log(`[ClaudeCode:${jobId}] Starting conversation mode execution`, {
@@ -462,15 +501,25 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       const promptFile = join(workspacePath, '.claude-prompt.txt');
       await writeFile(promptFile, conversationPrompt, 'utf-8');
 
-      // Get Anthropic API key for Claude authentication
+      // Get Anthropic API key for Claude authentication (optional if OAuth credentials exist)
       const anthropicApiKey = await getSecret('anthropic', 'api_key', options.projectId, 'ANTHROPIC_API_KEY');
-      if (!anthropicApiKey) {
-        throw new Error('ANTHROPIC_API_KEY not configured. Add it as a project secret or set it in the environment.');
+      const useOAuth = hasOAuthCredentials();
+
+      if (!anthropicApiKey && !useOAuth) {
+        throw new Error(
+          'No authentication configured. Either:\n' +
+          '  1. Set ANTHROPIC_API_KEY as a project secret or environment variable, or\n' +
+          `  2. Run 'npm run claude:auth' to set up OAuth credentials`
+        );
       }
 
-      // Build environment variables
+      if (useOAuth) {
+        console.log(`[ClaudeCode:${jobId}] Using OAuth credentials from ${getClaudeCredsPath()}`);
+      }
+
+      // Build environment variables (only include API key if not using OAuth)
       const envVars: Record<string, string> = {
-        ANTHROPIC_API_KEY: anthropicApiKey,
+        ...(anthropicApiKey && !useOAuth ? { ANTHROPIC_API_KEY: anthropicApiKey } : {}),
         ...options.env,
         AI_CONVERSATION_MODE: 'true',
         AI_ROUTE_MODE: options.routeMode,
@@ -494,7 +543,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       }
 
       // Prepare writable .claude config directory
-      const claudeConfigPath = await prepareClaudeConfig(workspacePath, hostUser);
+      const claudeConfigPath = await prepareClaudeConfig(workspacePath);
 
       // Run Claude Code (read prompt from file inside container via cat pipe)
       console.log(`[ClaudeCode:${jobId}] Running Claude Code CLI in conversation mode...`);

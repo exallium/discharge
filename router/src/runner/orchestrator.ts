@@ -3,7 +3,7 @@ import { findProjectById } from '../config/projects';
 import { validateTools } from './tools';
 import { buildInvestigationPrompt } from './prompts';
 import { getRunner, RunnerPlugin } from './base';
-import { getVCSPlugin } from '../vcs';
+import { getVCSForProject } from '../vcs';
 import { formatPRBody } from '../vcs/base';
 import { GitHubVCS } from '../vcs/github';
 import { getErrorMessage } from '../types/errors';
@@ -18,7 +18,9 @@ import { buildUserMessage } from '../conversation/prompts';
 import { logger } from '../logger';
 
 /**
- * Main orchestrator for the fix workflow
+ * Legacy orchestrator for triggers that don't support conversation mode.
+ * New triggers should implement conversation support instead.
+ *
  * Coordinates: tools → prompt → runner → analysis → PR
  */
 export async function orchestrateFix(
@@ -139,10 +141,10 @@ export async function orchestrateFix(
     // Success! Create PR using VCS plugin
     console.log(`[Orchestrator] Creating PR for branch ${result.branchName}`);
 
-    // Get VCS plugin
-    const vcs = getVCSPlugin(project.vcs.type);
+    // Get VCS plugin (with project-specific credentials)
+    const vcs = await getVCSForProject(project.vcs.type, project.id);
     if (!vcs) {
-      throw new Error(`VCS plugin not found: ${project.vcs.type}`);
+      throw new Error(`VCS plugin not found or not configured: ${project.vcs.type}`);
     }
 
     let prUrl: string;
@@ -349,9 +351,8 @@ export async function orchestrateConversation(
     // Get existing plan if applicable
     let existingPlan = undefined;
     if (conversation.planRef) {
-      const vcs = getVCSPlugin(project.vcs.type);
+      const vcs = await getVCSForProject(project.vcs.type, project.id);
       if (vcs?.supportsPlanFiles && vcs.getPlanFile) {
-        // Cast to any to avoid type mismatch between config/projects and db/repositories
         const planContent = await vcs.getPlanFile(project, conversation.planRef);
         if (planContent) {
           existingPlan = planManager.parsePlanFromMarkdown(planContent);
@@ -457,9 +458,9 @@ async function handleConversationAction(
   switch (action.type) {
     case 'create_plan': {
       // Create plan file via VCS
-      const vcs = getVCSPlugin(project.vcs.type);
+      const vcs = await getVCSForProject(project.vcs.type, project.id);
       if (!vcs?.supportsPlanFiles || !vcs.createPlanFile) {
-        throw new Error(`VCS ${project.vcs.type} does not support plan files`);
+        throw new Error(`VCS ${project.vcs.type} does not support plan files or is not configured`);
       }
 
       const planPath = planManager.getPlanPath(conversation.id);
@@ -472,27 +473,45 @@ async function handleConversationAction(
         triggerEvent.metadata.issueNumber as number | undefined
       );
 
-      // Update conversation with plan reference
-      await conversationService.updateStatus(conversation.id, {
+      // Update conversation with plan reference and PR info if available
+      const updateData: Parameters<typeof conversationService.updateStatus>[1] = {
         planRef: planResult.planRef,
         planVersion: 1,
         status: 'reviewing',
-      });
+      };
+
+      // If the plan was created as a PR, save PR info to conversation
+      if (planResult.prNumber) {
+        updateData.prNumber = planResult.prNumber;
+        updateData.prUrl = planResult.url || undefined;
+      }
+
+      await conversationService.updateStatus(conversation.id, updateData);
 
       // Post feedback with plan link
       if (trigger.postFeedback) {
         const planUrl = planResult.url || planResult.planRef;
-        await trigger.postFeedback(
-          triggerEvent,
-          `📋 I've created an implementation plan for review.\n\n**Plan:** ${planUrl}\n\nPlease review and provide feedback. I'll iterate based on your comments.`
-        );
+
+        // If a PR was created, post redirect notice on the issue
+        if (planResult.prNumber) {
+          await trigger.postFeedback(
+            triggerEvent,
+            `📋 I've created a pull request with an implementation plan.\n\n**PR:** #${planResult.prNumber}\n\n` +
+            `Please review and provide feedback on the PR. Further conversation will continue there.`
+          );
+        } else {
+          await trigger.postFeedback(
+            triggerEvent,
+            `📋 I've created an implementation plan for review.\n\n**Plan:** ${planUrl}\n\nPlease review and provide feedback. I'll iterate based on your comments.`
+          );
+        }
       }
       break;
     }
 
     case 'update_plan': {
       // Update existing plan
-      const vcs = getVCSPlugin(project.vcs.type);
+      const vcs = await getVCSForProject(project.vcs.type, project.id);
       if (!vcs?.supportsPlanFiles || !vcs.updatePlanFile || !conversation.planRef) {
         throw new Error('Cannot update plan: VCS does not support plan files or no plan exists');
       }
@@ -526,6 +545,90 @@ async function handleConversationAction(
           triggerEvent,
           `🚀 Executing the approved plan: ${action.description}`
         );
+      }
+      break;
+    }
+
+    case 'create_pr': {
+      // Direct PR creation (for auto_execute mode or approved plans)
+      const { analysis, branchName } = action;
+
+      logger.info('Creating PR from conversation', {
+        conversationId: conversation.id,
+        branchName,
+        confidence: analysis.confidence,
+      });
+
+      // Get VCS plugin
+      const vcs = await getVCSForProject(project.vcs.type, project.id);
+      if (!vcs) {
+        throw new Error(`VCS plugin not found or not configured: ${project.vcs.type}`);
+      }
+
+      let prUrl: string;
+      let prNumber: number | undefined;
+
+      try {
+        // Create PR
+        const triggerLink = trigger.getLink(triggerEvent);
+        const prBody = formatPRBody(analysis, triggerLink);
+
+        const pr = await vcs.createPullRequest(
+          project.vcs.owner,
+          project.vcs.repo,
+          branchName,
+          project.branch,
+          `fix: ${analysis.summary}`,
+          prBody
+        );
+
+        prUrl = pr.htmlUrl;
+        prNumber = pr.number;
+
+        logger.info('PR created from conversation', {
+          conversationId: conversation.id,
+          prUrl,
+          prNumber,
+        });
+
+        // Add labels if configured (GitHub specific)
+        if (project.vcs.labels && project.vcs.labels.length > 0 && vcs instanceof GitHubVCS) {
+          await vcs.addLabels(project.vcs.owner, project.vcs.repo, pr.number, project.vcs.labels);
+        }
+
+        // Request reviewers if configured (GitHub specific)
+        if (project.vcs.reviewers && project.vcs.reviewers.length > 0 && vcs instanceof GitHubVCS) {
+          await vcs.requestReviewers(project.vcs.owner, project.vcs.repo, pr.number, project.vcs.reviewers);
+        }
+      } catch (error) {
+        logger.error('Failed to create PR from conversation', {
+          conversationId: conversation.id,
+          error: getErrorMessage(error),
+        });
+
+        // Fall back to compare URL
+        prUrl = vcs.getCompareUrl(
+          project.vcs.owner,
+          project.vcs.repo,
+          project.branch,
+          branchName
+        );
+      }
+
+      // Update conversation with PR info
+      await conversationService.updateStatus(conversation.id, {
+        status: 'complete',
+        prNumber,
+        prUrl,
+      });
+
+      // Post success message
+      if (trigger.postFeedback) {
+        const comment = prNumber
+          ? `✅ Fix submitted in #${prNumber}!\n\n**Summary:** ${analysis.summary}\n\n**Root Cause:** ${analysis.rootCause}\n\n**Files Modified:**\n${analysis.filesInvolved.map(f => `- \`${f}\``).join('\n')}\n\n**Pull Request:** ${prUrl}`
+          : `✅ Fix created!\n\n**Summary:** ${analysis.summary}\n\n**Compare:** ${prUrl}`;
+
+        await trigger.postFeedback(triggerEvent, comment);
       }
       break;
     }

@@ -55,7 +55,6 @@ export class ConversationService {
 
   constructor(config?: Partial<ConversationConfig>) {
     this.config = {
-      enabled: config?.enabled ?? true,
       autoExecuteThreshold: config?.autoExecuteThreshold ?? 0.85,
       planDirectory: config?.planDirectory ?? '.ai-bug-fixer/plans',
       maxIterations: config?.maxIterations ?? 20,
@@ -162,6 +161,8 @@ export class ConversationService {
       routeMode?: RouteMode;
       planRef?: string;
       planVersion?: number;
+      prNumber?: number;
+      prUrl?: string;
       confidence?: ConfidenceAssessment;
     }
   ): Promise<ConversationEntry | undefined> {

@@ -166,12 +166,27 @@ export interface PlanFile {
 }
 
 /**
+ * Analysis result for PR creation (matches one-shot flow)
+ */
+export interface ConversationAnalysisResult {
+  summary: string;
+  rootCause: string;
+  proposedFix: string;
+  filesInvolved: string[];
+  confidence: 'high' | 'medium' | 'low';
+  complexity: 'trivial' | 'simple' | 'moderate' | 'complex';
+  canAutoFix: boolean;
+  reason?: string;
+}
+
+/**
  * Runner action types for conversation results
  */
 export type RunnerAction =
   | { type: 'create_plan'; plan: PlanFile; branch?: string }
   | { type: 'update_plan'; content: string; planVersion: number }
   | { type: 'execute'; description: string }
+  | { type: 'create_pr'; analysis: ConversationAnalysisResult; branchName: string }
   | { type: 'comment'; body: string }
   | { type: 'request_info'; questions: string[] };
 
@@ -208,7 +223,6 @@ export interface ConversationMessage {
  * Configuration for conversation behavior
  */
 export interface ConversationConfig {
-  enabled: boolean;
   autoExecuteThreshold?: number;
   planDirectory?: string;
   maxIterations?: number;
@@ -231,8 +245,7 @@ export const DEFAULT_ROUTING_TAGS = {
 /**
  * Default conversation configuration
  */
-export const DEFAULT_CONVERSATION_CONFIG: Required<ConversationConfig> = {
-  enabled: false,
+export const DEFAULT_CONVERSATION_CONFIG: ConversationConfig = {
   autoExecuteThreshold: 0.85,
   planDirectory: '.ai-bug-fixer/plans',
   maxIterations: 20,

@@ -265,9 +265,18 @@ async function createTables(
   await db.execute(sql`
     ALTER TABLE conversations ADD COLUMN IF NOT EXISTS trigger_event JSONB
   `);
+  await db.execute(sql`
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS pr_number INTEGER
+  `);
+  await db.execute(sql`
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS pr_url VARCHAR(500)
+  `);
 
   await db.execute(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_target ON conversations(trigger_type, external_id)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_conversations_pr ON conversations(project_id, pr_number)
   `);
 
   await db.execute(sql`

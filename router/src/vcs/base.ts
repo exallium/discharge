@@ -154,14 +154,28 @@ export interface VCSPlugin {
 }
 
 /**
+ * Extract issue number from a GitHub issue URL
+ */
+function extractIssueNumber(url: string): number | null {
+  const match = url.match(/\/issues\/(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+/**
  * Helper to format PR body from analysis
  */
 export function formatPRBody(
   analysis: AnalysisResult,
   sourceLink: string
 ): string {
+  // Extract issue number for "Fixes #X" reference (enables auto-close and conversation linking)
+  const issueNumber = extractIssueNumber(sourceLink);
+  const fixesReference = issueNumber ? `Fixes #${issueNumber}` : '';
+
   return `
 ## Automated Fix
+
+${fixesReference}
 
 ${sourceLink}
 

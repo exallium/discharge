@@ -389,15 +389,6 @@ export const conversationSettingsSchema: PluginSettingsSchema = {
  */
 export const projectConversationSettingsSchema: SettingDefinition[] = [
   {
-    key: 'conversation_enabled',
-    label: 'Enable Conversation Mode',
-    type: 'boolean',
-    required: false,
-    description: 'Enable the conversational feedback loop for this project',
-    defaultValue: false,
-    group: 'Conversation',
-  },
-  {
     key: 'conversation_auto_execute_threshold',
     label: 'Auto-Execute Threshold',
     type: 'number',

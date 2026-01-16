@@ -59,10 +59,7 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
   const [sentry, setSentry] = useState(!!project?.triggers?.sentry?.enabled);
   const [circleci, setCircleci] = useState(!!project?.triggers?.circleci?.enabled);
 
-  // Conversation mode
-  const [conversationEnabled, setConversationEnabled] = useState(
-    project?.conversation?.enabled ?? false
-  );
+  // Conversation mode settings
   const [autoExecuteThreshold, setAutoExecuteThreshold] = useState(
     String(project?.conversation?.autoExecuteThreshold ?? 0.85)
   );
@@ -115,20 +112,16 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
         runner: { type: runnerType },
         triggers,
         enabled,
-        // Use null instead of undefined when disabled, so JSON.stringify includes the key
-        // This signals to the API that conversation mode should be disabled
-        conversation: conversationEnabled
-          ? {
-              enabled: true,
-              autoExecuteThreshold: parseFloat(autoExecuteThreshold),
-              maxIterations: parseInt(maxIterations),
-              routingTags: {
-                plan: routingTagPlan,
-                auto: routingTagAuto,
-                assist: routingTagAssist,
-              },
-            }
-          : null,
+        // Conversation mode settings (always included for triggers that support it)
+        conversation: {
+          autoExecuteThreshold: parseFloat(autoExecuteThreshold),
+          maxIterations: parseInt(maxIterations),
+          routingTags: {
+            plan: routingTagPlan,
+            auto: routingTagAuto,
+            assist: routingTagAssist,
+          },
+        },
       };
 
       const url = isNew ? '/api/projects' : `/api/projects/${project?.id}`;
@@ -348,55 +341,55 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
         </CardContent>
       </Card>
 
-      {/* Conversation Mode */}
+      {/* Conversation Mode Settings */}
       <Card>
         <CardHeader>
-          <CardTitle>Conversation Mode</CardTitle>
-          <CardDescription>Enable interactive conversation-based bug fixing</CardDescription>
+          <CardTitle>Conversation Settings</CardTitle>
+          <CardDescription>Configure how the AI interacts with issues and PRs</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="conversationEnabled"
-              checked={conversationEnabled}
-              onChange={(e) => setConversationEnabled(e.target.checked)}
-              className="h-4 w-4 rounded border-input"
+          <div className="space-y-2">
+            <Label htmlFor="conversationAutoExecuteThreshold">Auto-Execute Threshold</Label>
+            <Input
+              id="conversationAutoExecuteThreshold"
+              name="autoExecuteThreshold"
+              type="number"
+              step="0.01"
+              min="0"
+              max="1"
+              value={autoExecuteThreshold}
+              onChange={(e) => setAutoExecuteThreshold(e.target.value)}
             />
-            <Label htmlFor="conversationEnabled">Enable Conversation Mode</Label>
+            <p className="text-xs text-muted-foreground">
+              Confidence score (0-1) required to auto-execute without plan review. Default: 0.85
+            </p>
           </div>
 
-          <div id="conversationSettings" className={conversationEnabled ? '' : 'hidden'}>
-            <div className="space-y-4 pt-4 border-t">
-              <div className="space-y-2">
-                <Label htmlFor="conversationAutoExecuteThreshold">Auto-Execute Threshold</Label>
-                <Input
-                  id="conversationAutoExecuteThreshold"
-                  name="autoExecuteThreshold"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="1"
-                  value={autoExecuteThreshold}
-                  onChange={(e) => setAutoExecuteThreshold(e.target.value)}
-                />
-              </div>
+          <div className="space-y-2">
+            <Label htmlFor="conversationMaxIterations">Max Iterations</Label>
+            <Input
+              id="conversationMaxIterations"
+              name="maxIterations"
+              type="number"
+              min="1"
+              max="100"
+              value={maxIterations}
+              onChange={(e) => setMaxIterations(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Maximum conversation rounds before stopping. Default: 20
+            </p>
+          </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="conversationMaxIterations">Max Iterations</Label>
-                <Input
-                  id="conversationMaxIterations"
-                  name="maxIterations"
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={maxIterations}
-                  onChange={(e) => setMaxIterations(e.target.value)}
-                />
-              </div>
+          <div className="space-y-2 pt-4 border-t">
+            <h4 className="text-sm font-medium">Routing Tags</h4>
+            <p className="text-xs text-muted-foreground mb-4">
+              Labels that control how issues are processed
+            </p>
 
+            <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label htmlFor="routingTagPlan">Plan Review Tag</Label>
+                <Label htmlFor="routingTagPlan">Plan Review</Label>
                 <Input
                   id="routingTagPlan"
                   name="routingTagPlan"
@@ -407,7 +400,7 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="routingTagAuto">Auto Execute Tag</Label>
+                <Label htmlFor="routingTagAuto">Auto Execute</Label>
                 <Input
                   id="routingTagAuto"
                   name="routingTagAuto"
@@ -418,7 +411,7 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="routingTagAssist">Assist Tag</Label>
+                <Label htmlFor="routingTagAssist">Assist Only</Label>
                 <Input
                   id="routingTagAssist"
                   name="routingTagAssist"

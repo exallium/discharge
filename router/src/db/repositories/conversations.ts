@@ -39,6 +39,8 @@ export interface ConversationEntry {
   iteration: number;
   planRef: string | null;
   planVersion: number | null;
+  prNumber: number | null;
+  prUrl: string | null;
   confidence: ConfidenceAssessment | null;
   triggerEvent: Record<string, unknown> | null;
   createdAt: Date;
@@ -88,6 +90,8 @@ function toConversationEntry(row: Conversation): ConversationEntry {
     iteration: row.iteration,
     planRef: row.planRef,
     planVersion: row.planVersion,
+    prNumber: row.prNumber,
+    prUrl: row.prUrl,
     confidence: row.confidence as ConfidenceAssessment | null,
     triggerEvent: row.triggerEvent as Record<string, unknown> | null,
     createdAt: row.createdAt,
@@ -157,6 +161,29 @@ export async function findByTarget(
       and(
         eq(conversations.triggerType, triggerType),
         eq(conversations.externalId, externalId)
+      )
+    )
+    .limit(1);
+
+  return result[0] ? toConversationEntry(result[0]) : undefined;
+}
+
+/**
+ * Find a conversation by project and PR number
+ * Used to route PR events back to the original issue conversation
+ */
+export async function findByPrNumber(
+  projectId: string,
+  prNumber: number
+): Promise<ConversationEntry | undefined> {
+  const db = getDatabase();
+  const result = await db
+    .select()
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.projectId, projectId),
+        eq(conversations.prNumber, prNumber)
       )
     )
     .limit(1);
@@ -277,6 +304,8 @@ export async function update(
     iteration: number;
     planRef: string;
     planVersion: number;
+    prNumber: number;
+    prUrl: string;
     confidence: ConfidenceAssessment;
     triggerEvent: Record<string, unknown>;
   }>
@@ -511,6 +540,142 @@ export async function countPendingEvents(conversationId: string): Promise<number
     );
 
   return result.length;
+}
+
+// ==================== LISTING & MANAGEMENT ====================
+
+/**
+ * Find all conversations with optional filtering
+ */
+export async function findAll(options?: {
+  projectId?: string;
+  state?: ConversationState;
+  limit?: number;
+  offset?: number;
+}): Promise<{ conversations: ConversationEntry[]; total: number }> {
+  const db = getDatabase();
+  const { projectId, state, limit = 50, offset = 0 } = options ?? {};
+
+  const conditions = [];
+  if (projectId) {
+    conditions.push(eq(conversations.projectId, projectId));
+  }
+  if (state) {
+    conditions.push(eq(conversations.state, state));
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const [result, countResult] = await Promise.all([
+    db
+      .select()
+      .from(conversations)
+      .where(whereClause)
+      .orderBy(desc(conversations.lastActivityAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(conversations)
+      .where(whereClause),
+  ]);
+
+  return {
+    conversations: result.map(toConversationEntry),
+    total: Number(countResult[0]?.count ?? 0),
+  };
+}
+
+/**
+ * Reset a conversation to idle state
+ * Clears job ID, resets state, but preserves history
+ */
+export async function resetConversation(id: string): Promise<ConversationEntry | undefined> {
+  const db = getDatabase();
+
+  const result = await db
+    .update(conversations)
+    .set({
+      state: 'idle',
+      currentJobId: null,
+      status: 'pending',
+      updatedAt: new Date(),
+    })
+    .where(eq(conversations.id, id))
+    .returning();
+
+  if (result[0]) {
+    logger.info('Conversation reset', { conversationId: id });
+    return toConversationEntry(result[0]);
+  }
+
+  return undefined;
+}
+
+/**
+ * Delete a conversation and all associated data
+ */
+export async function deleteConversation(id: string): Promise<boolean> {
+  const db = getDatabase();
+
+  // Delete messages first (foreign key constraint)
+  await db
+    .delete(conversationMessages)
+    .where(eq(conversationMessages.conversationId, id));
+
+  // Delete pending events
+  await db
+    .delete(pendingEvents)
+    .where(eq(pendingEvents.conversationId, id));
+
+  // Delete conversation
+  const result = await db
+    .delete(conversations)
+    .where(eq(conversations.id, id))
+    .returning({ id: conversations.id });
+
+  if (result.length > 0) {
+    logger.info('Conversation deleted', { conversationId: id });
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Get conversation stats
+ */
+export async function getStats(projectId?: string): Promise<{
+  total: number;
+  idle: number;
+  running: number;
+  byStatus: Record<string, number>;
+}> {
+  const db = getDatabase();
+
+  const whereClause = projectId ? eq(conversations.projectId, projectId) : undefined;
+
+  const result = await db
+    .select()
+    .from(conversations)
+    .where(whereClause);
+
+  const stats = {
+    total: result.length,
+    idle: 0,
+    running: 0,
+    byStatus: {} as Record<string, number>,
+  };
+
+  for (const row of result) {
+    if (row.state === 'idle') stats.idle++;
+    if (row.state === 'running') stats.running++;
+
+    const status = row.status as string;
+    stats.byStatus[status] = (stats.byStatus[status] || 0) + 1;
+  }
+
+  return stats;
 }
 
 // ==================== CLEANUP OPERATIONS ====================

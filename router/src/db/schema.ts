@@ -312,6 +312,10 @@ export const conversations = pgTable(
     planRef: varchar('plan_ref', { length: 500 }),
     planVersion: integer('plan_version').default(1),
 
+    // PR tracking - once a PR is created, conversation shifts to PR
+    prNumber: integer('pr_number'),
+    prUrl: varchar('pr_url', { length: 500 }),
+
     // Analysis
     confidence: jsonb('confidence').$type<ConfidenceAssessment>(),
     triggerEvent: jsonb('trigger_event').$type<Record<string, unknown>>(),
@@ -326,6 +330,7 @@ export const conversations = pgTable(
     index('idx_conversations_state').on(table.state),
     index('idx_conversations_status').on(table.status),
     index('idx_conversations_project').on(table.projectId),
+    index('idx_conversations_pr').on(table.projectId, table.prNumber),
   ]
 );
 

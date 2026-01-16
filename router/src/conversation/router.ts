@@ -81,6 +81,21 @@ export class EventRouter {
       triggerEvent as unknown as Record<string, unknown>
     );
 
+    // If conversation has a PR, ignore issue events (conversation continues on PR)
+    const isPrEvent = event.type.startsWith('pr_') || event.type.includes('pull_request');
+    if (conversation.prNumber && !isPrEvent) {
+      logger.debug('Ignoring issue event - conversation has moved to PR', {
+        conversationId: conversation.id,
+        prNumber: conversation.prNumber,
+        eventType: event.type,
+      });
+      return {
+        action: 'ignored',
+        conversationId: conversation.id,
+        reason: `Conversation continues on PR #${conversation.prNumber}`,
+      };
+    }
+
     // Determine route mode from tags
     const tags = this.getRoutingTags(trigger, triggerEvent, event);
     const routeMode = this.conversationService.determineRouteMode(tags);
