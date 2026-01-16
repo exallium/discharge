@@ -191,6 +191,16 @@ export type RunnerAction =
   | { type: 'request_info'; questions: string[] };
 
 /**
+ * Error classification for runner failures
+ */
+export type RunnerErrorType =
+  | 'transient'        // Temporary failure, can retry
+  | 'auth_expired'     // OAuth/API token expired, admin needs to re-login
+  | 'rate_limited'     // API rate limit hit
+  | 'invalid_config'   // Configuration error
+  | 'unknown';         // Unknown error
+
+/**
  * Result from runner's conversation execution
  */
 export interface RunnerConversationResult {
@@ -205,6 +215,12 @@ export interface RunnerConversationResult {
 
   /** Whether the task is complete */
   complete?: boolean;
+
+  /** Error classification if execution failed */
+  errorType?: RunnerErrorType;
+
+  /** Whether this error requires admin intervention */
+  requiresAdminIntervention?: boolean;
 }
 
 /**

@@ -11,6 +11,7 @@ import type {
   RouteMode,
   PlanFile,
   RunnerConversationResult,
+  RunnerErrorType,
 } from '../types/conversation';
 
 // Re-export for convenience
@@ -41,6 +42,8 @@ export interface RunResult {
   branchName?: string;       // Fix branch name (if commit made)
   analysis?: AnalysisResult; // Parsed analysis (if exists)
   error?: string;            // Error message (if failed)
+  errorType?: RunnerErrorType;           // Error classification
+  requiresAdminIntervention?: boolean;   // Whether admin action is needed
 }
 
 /**

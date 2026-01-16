@@ -19,7 +19,7 @@ import {
   ConversationRunOptions,
 } from '../../base';
 import { Tool } from '../../../triggers/base';
-import type { RunnerConversationResult, RunnerAction, PlanFile } from '../../../types/conversation';
+import type { RunnerConversationResult, RunnerAction, PlanFile, RunnerErrorType } from '../../../types/conversation';
 import {
   buildConversationSystemPrompt,
   formatConversationHistory,
@@ -49,6 +49,95 @@ const execAsync = promisify(exec);
  * Enable with USE_GIT_WORKSPACES=true
  */
 const USE_GIT_WORKSPACES = process.env.USE_GIT_WORKSPACES === 'true';
+
+/**
+ * Error patterns for classification
+ */
+const ERROR_PATTERNS = {
+  authExpired: [
+    /OAuth token has expired/i,
+    /authentication_error/i,
+    /Please run \/login/i,
+    /401.*authentication/i,
+    /invalid.*token/i,
+    /token.*expired/i,
+  ],
+  rateLimited: [
+    /rate.?limit/i,
+    /too many requests/i,
+    /429/,
+  ],
+  invalidConfig: [
+    /configuration error/i,
+    /invalid config/i,
+    /missing required/i,
+  ],
+};
+
+/**
+ * Classify an error based on the error message
+ */
+function classifyError(errorMessage: string): { type: RunnerErrorType; requiresAdmin: boolean } {
+  // Check for auth/OAuth errors - these require admin intervention
+  for (const pattern of ERROR_PATTERNS.authExpired) {
+    if (pattern.test(errorMessage)) {
+      return { type: 'auth_expired', requiresAdmin: true };
+    }
+  }
+
+  // Check for rate limiting
+  for (const pattern of ERROR_PATTERNS.rateLimited) {
+    if (pattern.test(errorMessage)) {
+      return { type: 'rate_limited', requiresAdmin: false };
+    }
+  }
+
+  // Check for config errors
+  for (const pattern of ERROR_PATTERNS.invalidConfig) {
+    if (pattern.test(errorMessage)) {
+      return { type: 'invalid_config', requiresAdmin: true };
+    }
+  }
+
+  // Default to unknown
+  return { type: 'unknown', requiresAdmin: false };
+}
+
+/**
+ * Format an error message for display to users
+ */
+function formatUserFacingError(
+  errorMessage: string,
+  errorType: RunnerErrorType,
+  requiresAdmin: boolean
+): string {
+  const prefix = requiresAdmin
+    ? '⚠️ **Admin Intervention Required**\n\n'
+    : '❌ **Error**\n\n';
+
+  let explanation = '';
+  let action = '';
+
+  switch (errorType) {
+    case 'auth_expired':
+      explanation = 'The Claude API authentication token has expired.';
+      action = 'An administrator needs to re-authenticate by running `claude auth login` on the server.';
+      break;
+    case 'rate_limited':
+      explanation = 'The API rate limit has been reached.';
+      action = 'This job will be automatically retried. If the problem persists, please contact an administrator.';
+      break;
+    case 'invalid_config':
+      explanation = 'There is a configuration error.';
+      action = 'An administrator needs to check the system configuration.';
+      break;
+    default:
+      explanation = 'An unexpected error occurred while processing your request.';
+      action = 'If this problem persists, please contact an administrator.';
+  }
+
+  return `${prefix}${explanation}\n\n**What to do:** ${action}\n\n<details>\n<summary>Technical Details</summary>\n\n\`\`\`\n${errorMessage.slice(0, 1000)}\n\`\`\`\n</details>`;
+}
 
 /**
  * Get the path to Claude OAuth credentials directory.
@@ -650,7 +739,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       return result;
     } catch (error) {
       const errorMessage = getErrorMessage(error);
-      // Also capture stderr for exec errors
+      // Also capture stderr/stdout for exec errors
       let fullError = errorMessage;
       if (isExecError(error)) {
         if (error.stderr) {
@@ -662,10 +751,18 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       }
       console.error(`[ClaudeCode:${jobId}] Conversation execution failed:`, fullError);
 
+      // Classify the error
+      const { type: errorType, requiresAdmin } = classifyError(fullError);
+      const userMessage = formatUserFacingError(fullError, errorType, requiresAdmin);
+
+      console.log(`[ClaudeCode:${jobId}] Error classified as: ${errorType}, requiresAdmin: ${requiresAdmin}`);
+
       return {
         response: `Execution failed: ${errorMessage}`,
-        action: { type: 'comment', body: `I encountered an error: ${errorMessage}` },
+        action: { type: 'comment', body: userMessage },
         complete: false,
+        errorType,
+        requiresAdminIntervention: requiresAdmin,
       };
     } finally {
       // Only cleanup if we created the workspace (not pre-configured)

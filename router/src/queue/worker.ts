@@ -187,19 +187,34 @@ async function processConversationJob(
       );
     }
 
-    // Mark job as complete
+    // Check if result indicates an error that requires admin intervention
+    const hasRunnerError = result.errorType && result.errorType !== 'transient';
+    const jobStatus = hasRunnerError ? 'failed' : 'success';
+
+    // Log admin-required errors prominently
+    if (result.requiresAdminIntervention) {
+      logger.warn('Conversation job requires admin intervention', {
+        jobId: job.id,
+        conversationId,
+        errorType: result.errorType,
+        response: result.response.slice(0, 200),
+      });
+    }
+
+    // Mark job as complete (or failed if there was a runner error)
     try {
       await jobHistoryRepo.complete(job.id!, {
-        status: 'success',
+        status: jobStatus,
         fixed: result.complete || false,
         reason: result.response,
+        error: hasRunnerError ? result.response : undefined,
       });
     } catch (err) {
       console.error('Failed to mark conversation job as complete:', err);
     }
 
     return {
-      success: true,
+      success: !hasRunnerError,
       fixed: result.complete || false,
       reason: result.response,
       prUrl: undefined, // Plan PRs are handled via VCS plugin
