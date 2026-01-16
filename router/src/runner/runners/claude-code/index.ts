@@ -995,33 +995,13 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       // Use stdout as fallback content
       console.log('[ClaudeCode] Plan has empty sections, using stdout as fallback');
 
-      // Try to extract meaningful content from stdout
-      const outputLines = stdout.trim();
+      // Clean up the stdout - remove tool output noise, keep the analysis
+      const cleanedOutput = this.cleanStdoutForPlan(stdout);
 
-      // Look for structured content in the output
-      const contextMatch = outputLines.match(/(?:context|background|overview)[:\s]*([^\n]+(?:\n(?![A-Z#])[^\n]*)*)/i);
-      const approachMatch = outputLines.match(/(?:approach|solution|plan|strategy)[:\s]*([^\n]+(?:\n(?![A-Z#])[^\n]*)*)/i);
-
-      if (contextMatch) {
-        fallbackContext = contextMatch[1].trim();
-      }
-      if (approachMatch) {
-        fallbackApproach = approachMatch[1].trim();
-      }
-
-      // If we couldn't extract structured content, use the first portion as context
-      // and a summary as approach
-      if (!fallbackContext && !fallbackApproach) {
-        // Use first 1500 chars as context (truncated cleanly at sentence/paragraph)
-        const contextEnd = Math.min(1500, outputLines.length);
-        const contextCutoff = outputLines.lastIndexOf('\n', contextEnd);
-        fallbackContext = outputLines.slice(0, contextCutoff > 500 ? contextCutoff : contextEnd).trim();
-
-        // Use remaining content as approach (up to 2000 chars)
-        if (outputLines.length > contextEnd) {
-          const approachStart = contextCutoff > 500 ? contextCutoff : contextEnd;
-          fallbackApproach = outputLines.slice(approachStart, approachStart + 2000).trim();
-        }
+      if (cleanedOutput.length > 100) {
+        // Use the full cleaned output as context, with a note
+        fallbackContext = cleanedOutput;
+        fallbackApproach = '*(See context above for full analysis - plan sections were not properly structured)*';
       }
     }
 
@@ -1045,5 +1025,66 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       metadata: fixedMetadata,
       sections: fixedSections,
     };
+  }
+
+  /**
+   * Clean stdout to extract meaningful content for plan fallback.
+   * Removes tool output noise and keeps the analysis text.
+   */
+  private cleanStdoutForPlan(stdout: string): string {
+    // Split into lines for processing
+    const lines = stdout.split('\n');
+    const cleanedLines: string[] = [];
+    let inCodeBlock = false;
+    let skipNextLines = 0;
+
+    for (const line of lines) {
+      // Track code blocks
+      if (line.trim().startsWith('```')) {
+        inCodeBlock = !inCodeBlock;
+        // Skip small code blocks (likely tool output)
+        if (!inCodeBlock) {
+          skipNextLines = 0;
+        }
+        continue;
+      }
+
+      // Skip lines we marked to skip
+      if (skipNextLines > 0) {
+        skipNextLines--;
+        continue;
+      }
+
+      // Skip tool output patterns
+      if (inCodeBlock) continue;
+      if (line.startsWith('Reading file:')) continue;
+      if (line.startsWith('Searching for:')) continue;
+      if (line.startsWith('Running:')) continue;
+      if (line.match(/^\s*\d+[│|]/)) continue; // File line numbers
+      if (line.match(/^[─┬┴├┤┼═╔╗╚╝╠╣╦╩╬]+$/)) continue; // Box drawing
+
+      // Keep meaningful content
+      const trimmed = line.trim();
+      if (trimmed.length > 0) {
+        cleanedLines.push(line);
+      } else if (cleanedLines.length > 0 && cleanedLines[cleanedLines.length - 1].trim() !== '') {
+        // Preserve paragraph breaks
+        cleanedLines.push('');
+      }
+    }
+
+    // Join and truncate to reasonable length (max 4000 chars for plan context)
+    let result = cleanedLines.join('\n').trim();
+    if (result.length > 4000) {
+      // Truncate at a paragraph boundary if possible
+      const truncatePoint = result.lastIndexOf('\n\n', 4000);
+      if (truncatePoint > 2000) {
+        result = result.slice(0, truncatePoint) + '\n\n*(truncated)*';
+      } else {
+        result = result.slice(0, 4000) + '...\n\n*(truncated)*';
+      }
+    }
+
+    return result;
   }
 }
