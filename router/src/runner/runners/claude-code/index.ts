@@ -872,17 +872,23 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       const content = await readFile(resultPath, 'utf-8');
       const result = JSON.parse(content) as RunnerConversationResult;
 
+      console.log('[ClaudeCode] Found conversation-result.json, parsing...');
+
       // Validate required fields
       if (result.response && result.action) {
         // If action is create_plan, validate and fix the plan structure
         if (result.action.type === 'create_plan' && result.action.plan) {
-          result.action.plan = this.validateAndFixPlan(result.action.plan, options);
+          // Pass stdout as fallback content for empty sections
+          result.action.plan = this.validateAndFixPlan(result.action.plan, options, stdout);
         }
         return result;
       }
     } catch {
       console.log('[ClaudeCode] No conversation-result.json found, parsing from output');
     }
+
+    // Log stdout length for debugging
+    console.log(`[ClaudeCode] Parsing from stdout (${stdout.length} chars)`);
 
     // Fallback: Parse from stdout
     const result = this.parseResultFromOutput(stdout, options);
@@ -950,9 +956,14 @@ export class ClaudeCodeRunner implements RunnerPlugin {
   }
 
   /**
-   * Validate and fix a plan structure, filling in missing metadata
+   * Validate and fix a plan structure, filling in missing metadata.
+   * If sections are empty, uses stdout as fallback content.
    */
-  private validateAndFixPlan(plan: Partial<PlanFile>, options: ConversationRunOptions): PlanFile {
+  private validateAndFixPlan(
+    plan: Partial<PlanFile>,
+    options: ConversationRunOptions,
+    stdout?: string
+  ): PlanFile {
     const now = new Date().toISOString();
 
     // Ensure metadata exists and has required fields
@@ -969,13 +980,66 @@ export class ClaudeCodeRunner implements RunnerPlugin {
 
     // Ensure sections exist
     const sections = plan.sections || {} as Partial<PlanFile['sections']>;
+
+    // Check if sections are essentially empty (no real content)
+    const hasEmptySections =
+      !sections.context?.trim() &&
+      !sections.approach?.trim() &&
+      (!sections.steps || sections.steps.length === 0);
+
+    // If sections are empty and we have stdout, try to extract content from it
+    let fallbackContext = '';
+    let fallbackApproach = '';
+
+    if (hasEmptySections && stdout && stdout.trim()) {
+      // Use stdout as fallback content
+      console.log('[ClaudeCode] Plan has empty sections, using stdout as fallback');
+
+      // Try to extract meaningful content from stdout
+      const outputLines = stdout.trim();
+
+      // Look for structured content in the output
+      const contextMatch = outputLines.match(/(?:context|background|overview)[:\s]*([^\n]+(?:\n(?![A-Z#])[^\n]*)*)/i);
+      const approachMatch = outputLines.match(/(?:approach|solution|plan|strategy)[:\s]*([^\n]+(?:\n(?![A-Z#])[^\n]*)*)/i);
+
+      if (contextMatch) {
+        fallbackContext = contextMatch[1].trim();
+      }
+      if (approachMatch) {
+        fallbackApproach = approachMatch[1].trim();
+      }
+
+      // If we couldn't extract structured content, use the first portion as context
+      // and a summary as approach
+      if (!fallbackContext && !fallbackApproach) {
+        // Use first 1500 chars as context (truncated cleanly at sentence/paragraph)
+        const contextEnd = Math.min(1500, outputLines.length);
+        const contextCutoff = outputLines.lastIndexOf('\n', contextEnd);
+        fallbackContext = outputLines.slice(0, contextCutoff > 500 ? contextCutoff : contextEnd).trim();
+
+        // Use remaining content as approach (up to 2000 chars)
+        if (outputLines.length > contextEnd) {
+          const approachStart = contextCutoff > 500 ? contextCutoff : contextEnd;
+          fallbackApproach = outputLines.slice(approachStart, approachStart + 2000).trim();
+        }
+      }
+    }
+
     const fixedSections: PlanFile['sections'] = {
-      context: sections.context ?? '',
-      approach: sections.approach ?? '',
+      context: sections.context?.trim() || fallbackContext || 'Analysis pending',
+      approach: sections.approach?.trim() || fallbackApproach || 'Approach to be determined based on analysis',
       steps: sections.steps ?? [],
       risks: sections.risks ?? [],
       questions: sections.questions ?? [],
     };
+
+    // Log if we filled in fallback content
+    if (fallbackContext || fallbackApproach) {
+      console.log('[ClaudeCode] Filled plan with fallback content from stdout', {
+        contextLength: fixedSections.context.length,
+        approachLength: fixedSections.approach.length,
+      });
+    }
 
     return {
       metadata: fixedMetadata,
