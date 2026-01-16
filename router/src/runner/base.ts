@@ -50,6 +50,7 @@ export interface ConversationRunOptions extends RunOptions {
   conversationHistory: ConversationMessage[];  // Previous messages in conversation
   routeMode: RouteMode;                        // 'plan_review' | 'auto_execute' | 'assist_only'
   iteration: number;                           // Current iteration number
+  issueNumber?: number | string;               // Issue/ticket number for plan metadata
   existingPlan?: PlanFile;                     // Existing plan to iterate on
   workspacePath?: string;                      // Pre-prepared workspace (from RepoManager)
 }

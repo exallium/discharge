@@ -418,6 +418,7 @@ export async function orchestrateConversation(
       conversationHistory: messageHistory,
       routeMode,
       iteration,
+      issueNumber: triggerEvent.metadata.issueNumber as number | string | undefined,
       existingPlan,
     });
 

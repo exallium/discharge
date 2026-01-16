@@ -777,6 +777,10 @@ export class ClaudeCodeRunner implements RunnerPlugin {
 
       // Validate required fields
       if (result.response && result.action) {
+        // If action is create_plan, validate and fix the plan structure
+        if (result.action.type === 'create_plan' && result.action.plan) {
+          result.action.plan = this.validateAndFixPlan(result.action.plan, options);
+        }
         return result;
       }
     } catch {
@@ -830,7 +834,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
   private generateBasicPlan(output: string, options: ConversationRunOptions): PlanFile {
     return {
       metadata: {
-        issue: options.iteration,
+        issue: options.issueNumber ?? options.iteration,
         status: 'draft',
         iteration: 1,
         confidence: 0.5,
@@ -845,6 +849,40 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         risks: [],
         questions: [],
       },
+    };
+  }
+
+  /**
+   * Validate and fix a plan structure, filling in missing metadata
+   */
+  private validateAndFixPlan(plan: Partial<PlanFile>, options: ConversationRunOptions): PlanFile {
+    const now = new Date().toISOString();
+
+    // Ensure metadata exists and has required fields
+    const metadata = plan.metadata || {} as Partial<PlanFile['metadata']>;
+    const fixedMetadata: PlanFile['metadata'] = {
+      issue: metadata.issue ?? options.issueNumber ?? options.iteration,
+      status: metadata.status ?? 'draft',
+      iteration: metadata.iteration ?? 1,
+      confidence: metadata.confidence ?? 0.5,
+      created: metadata.created ?? now,
+      updated: metadata.updated ?? now,
+      author: metadata.author ?? 'claude',
+    };
+
+    // Ensure sections exist
+    const sections = plan.sections || {} as Partial<PlanFile['sections']>;
+    const fixedSections: PlanFile['sections'] = {
+      context: sections.context ?? '',
+      approach: sections.approach ?? '',
+      steps: sections.steps ?? [],
+      risks: sections.risks ?? [],
+      questions: sections.questions ?? [],
+    };
+
+    return {
+      metadata: fixedMetadata,
+      sections: fixedSections,
     };
   }
 }
