@@ -475,6 +475,8 @@ export class GitHubVCS implements VCSPlugin {
         label: 'GitHub Token',
         description: 'Personal access token for GitHub API (repo scope required for creating PRs)',
         required: true,
+        plugin: 'github',
+        key: 'token',
       },
     ];
   }

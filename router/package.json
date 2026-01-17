@@ -26,9 +26,7 @@
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio",
-    "claude:auth": "bash scripts/claude-auth.sh",
-    "claude:auth:check": "bash scripts/claude-auth.sh --check"
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@octokit/rest": "^20.0.2",

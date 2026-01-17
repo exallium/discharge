@@ -56,12 +56,16 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
         label: 'GitHub Token',
         description: 'Personal access token for GitHub API (repo scope required)',
         required: true,
+        plugin: 'github',
+        key: 'token',
       },
       {
         id: 'github_webhook_secret',
         label: 'GitHub Webhook Secret',
         description: 'Secret for validating webhook signatures',
         required: true,
+        plugin: 'github',
+        key: 'webhook_secret',
       },
     ];
   }

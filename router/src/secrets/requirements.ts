@@ -21,17 +21,35 @@ export interface AggregatedSecretRequirement extends SecretRequirement {
 /**
  * Get runner secret requirements
  * Fetches requirements from the runner plugin based on project config
+ * If no runner type is specified, returns secrets from all registered runners
  */
 function getRunnerSecretRequirements(project: ProjectConfig): SecretRequirement[] {
   const runnerId = project.runner?.type;
-  if (!runnerId) {
+
+  if (runnerId) {
+    // Specific runner configured - get its secrets
+    const runner = getRunner(runnerId);
+    if (runner) {
+      return runner.getRequiredSecrets();
+    }
     return [];
   }
-  const runner = getRunner(runnerId);
-  if (runner) {
-    return runner.getRequiredSecrets();
+
+  // No specific runner - return secrets from all registered runners
+  const allRunners = getAllRunners();
+  const secrets: SecretRequirement[] = [];
+  const seenIds = new Set<string>();
+
+  for (const runner of allRunners) {
+    for (const secret of runner.getRequiredSecrets()) {
+      if (!seenIds.has(secret.id)) {
+        secrets.push(secret);
+        seenIds.add(secret.id);
+      }
+    }
   }
-  return [];
+
+  return secrets;
 }
 
 /**
@@ -47,6 +65,8 @@ function getVCSSecretRequirements(vcsType: string): SecretRequirement[] {
           label: 'GitHub Token',
           description: 'Personal access token for GitHub API (repo scope required for creating PRs)',
           required: true,
+          plugin: 'github',
+          key: 'token',
         },
       ];
     case 'gitlab':
@@ -56,6 +76,8 @@ function getVCSSecretRequirements(vcsType: string): SecretRequirement[] {
           label: 'GitLab Token',
           description: 'Personal access token for GitLab API',
           required: true,
+          plugin: 'gitlab',
+          key: 'token',
         },
       ];
     case 'bitbucket':
@@ -65,6 +87,8 @@ function getVCSSecretRequirements(vcsType: string): SecretRequirement[] {
           label: 'Bitbucket Token',
           description: 'App password for Bitbucket API',
           required: true,
+          plugin: 'bitbucket',
+          key: 'token',
         },
       ];
     default:

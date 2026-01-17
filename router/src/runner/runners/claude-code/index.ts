@@ -200,6 +200,8 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         label: 'Claude OAuth Token',
         description: 'OAuth token for Claude Code CLI. Run `claude setup-token` locally to generate.',
         required: true,
+        plugin: 'claude',
+        key: 'oauth_token',
       },
     ];
   }

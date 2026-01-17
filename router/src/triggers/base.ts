@@ -101,7 +101,7 @@ export interface WebhookConfig {
  * Allows multiple plugins to share the same secret
  */
 export interface SecretRequirement {
-  /** Shared secret identifier (e.g., 'github_token') - used as storage key */
+  /** Shared secret identifier (e.g., 'github_token') - used for display/deduplication */
   id: string;
   /** Display label for UI (e.g., 'GitHub Token') */
   label: string;
@@ -109,6 +109,10 @@ export interface SecretRequirement {
   description: string;
   /** Whether this secret is required for the plugin to function */
   required: boolean;
+  /** Plugin namespace for storage (e.g., 'github', 'claude') */
+  plugin: string;
+  /** Key within plugin namespace (e.g., 'token', 'oauth_token') */
+  key: string;
 }
 
 /**

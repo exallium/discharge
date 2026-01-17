@@ -431,12 +431,16 @@ EOF
         label: 'Sentry Auth Token',
         description: 'Authentication token for Sentry API (used to fetch issue details and post comments)',
         required: true,
+        plugin: 'sentry',
+        key: 'auth_token',
       },
       {
         id: 'sentry_webhook_secret',
         label: 'Sentry Webhook Secret',
         description: 'Secret for validating Sentry webhook signatures (optional but recommended)',
         required: false,
+        plugin: 'sentry',
+        key: 'webhook_secret',
       },
     ];
   }

@@ -7,24 +7,9 @@ import { projectsRepo, settingsRepo } from '@/src/db/repositories';
 import { setSecret, deleteSecret } from '@/src/secrets';
 import { getProjectSecretRequirements, formatUsedBy } from '@/src/secrets/requirements';
 import type { ProjectConfig } from '@/src/config/projects';
-
-/**
- * Map new secret IDs to storage format
- * New format: github_token, sentry_token
- * Storage format: github:token, sentry:auth_token
- *
- * This mapping allows backward compatibility until migration completes
- */
-const SECRET_ID_TO_STORAGE: Record<string, { plugin: string; key: string }> = {
-  github_token: { plugin: 'github', key: 'token' },
-  github_webhook_secret: { plugin: 'github', key: 'webhook_secret' },
-  sentry_token: { plugin: 'sentry', key: 'auth_token' },
-  sentry_webhook_secret: { plugin: 'sentry', key: 'webhook_secret' },
-  circleci_token: { plugin: 'circleci', key: 'token' },
-  circleci_webhook_secret: { plugin: 'circleci', key: 'webhook_secret' },
-  gitlab_token: { plugin: 'gitlab', key: 'token' },
-  bitbucket_token: { plugin: 'bitbucket', key: 'token' },
-};
+// Ensure runner plugins are registered before fetching secret requirements
+import { initializeRunners } from '@/src/runner/runners';
+initializeRunners();
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -87,14 +72,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const secrets: SecretStatus[] = [];
 
     for (const req of requirements) {
-      // Map new secret ID to storage format
-      const storage = SECRET_ID_TO_STORAGE[req.id];
-      if (!storage) {
-        console.warn(`Unknown secret ID: ${req.id}, skipping`);
-        continue;
-      }
-
-      const { plugin, key: secretKey } = storage;
+      // Use plugin and key directly from requirement
+      const { plugin, key: secretKey } = req;
 
       // Check each level to determine source
       const projectKey = `projects:${id}:${plugin}:${secretKey}`;

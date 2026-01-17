@@ -443,12 +443,16 @@ curl -s "https://circleci.com/api/v2/pipeline/${event.metadata.pipelineId || eve
         label: 'CircleCI Token',
         description: 'API token for CircleCI (used to fetch job details and test results)',
         required: true,
+        plugin: 'circleci',
+        key: 'token',
       },
       {
         id: 'circleci_webhook_secret',
         label: 'CircleCI Webhook Secret',
         description: 'Secret for validating CircleCI webhook signatures (optional but recommended)',
         required: false,
+        plugin: 'circleci',
+        key: 'webhook_secret',
       },
     ];
   }
