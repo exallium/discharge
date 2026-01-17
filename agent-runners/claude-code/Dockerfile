@@ -89,14 +89,23 @@ RUN if [ "$INSTALL_GO" = "true" ]; then \
     fi
 
 # ─────────────────────────────────────────────
+# Supabase CLI (via .deb package from GitHub releases)
+# ─────────────────────────────────────────────
+RUN SUPABASE_VERSION="2.72.7" && \
+    ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL "https://github.com/supabase/cli/releases/download/v${SUPABASE_VERSION}/supabase_${SUPABASE_VERSION}_linux_${ARCH}.deb" -o /tmp/supabase.deb && \
+    dpkg -i /tmp/supabase.deb && \
+    rm /tmp/supabase.deb
+
+# ─────────────────────────────────────────────
 # Node.js Tools (npm global packages)
 # ─────────────────────────────────────────────
+# Enable corepack for yarn/pnpm (already included in node image)
+RUN corepack enable
+
 RUN npm install -g \
     # Claude Code CLI
     @anthropic-ai/claude-code \
-    # Package managers
-    pnpm \
-    yarn \
     # TypeScript
     typescript \
     ts-node \
@@ -107,7 +116,6 @@ RUN npm install -g \
     eslint \
     prettier \
     # Database/Backend
-    supabase \
     prisma \
     drizzle-kit \
     # Utilities
