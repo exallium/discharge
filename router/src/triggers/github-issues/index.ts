@@ -137,6 +137,16 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       return this.parseCommentEvent(typedPayload as GitHubIssueCommentEventPayload);
     }
 
+    // Handle PR review events (for conversation mode)
+    if (isPullRequestReviewEvent(typedPayload) && action === 'submitted') {
+      return this.parsePRReviewEvent(typedPayload as GitHubPullRequestReviewEventPayload);
+    }
+
+    // Handle PR review comment events (for conversation mode)
+    if (isPullRequestReviewCommentEvent(typedPayload) && action === 'created') {
+      return this.parsePRReviewCommentEvent(typedPayload as GitHubPullRequestReviewCommentEventPayload);
+    }
+
     console.log(`[GitHubIssuesTrigger] Ignoring action: ${action}`);
     return null;
   }
@@ -298,6 +308,101 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       },
       links: {
         web: issue.html_url,
+      },
+      raw: payload,
+    };
+  }
+
+  /**
+   * Parse PR review event into TriggerEvent
+   * Used to provide context for conversation mode routing
+   */
+  private async parsePRReviewEvent(payload: GitHubPullRequestReviewEventPayload): Promise<TriggerEvent | null> {
+    const { pull_request, review, repository } = payload;
+
+    if (!pull_request || !repository) {
+      console.error('[GitHubIssuesTrigger] Missing pull_request or repository data');
+      return null;
+    }
+
+    // Find project configuration
+    const repoFullName = repository.full_name;
+    const project = await findProjectByRepo(repoFullName);
+
+    if (!project) {
+      console.log(`[GitHubIssuesTrigger] No project configured for repo: ${repoFullName}`);
+      return null;
+    }
+
+    const prLabels = (pull_request.labels || []).map((l: GitHubLabel) => l.name);
+
+    return {
+      triggerType: 'github-issues',
+      triggerId: `${repository.full_name}#${pull_request.number}-review-${review.id}`,
+      projectId: project.id,
+      title: `PR Review on #${pull_request.number}: ${pull_request.title}`,
+      description: review.body || 'No review body',
+      metadata: {
+        severity: this.determineSeverity(prLabels),
+        prNumber: pull_request.number,
+        prUrl: pull_request.html_url,
+        reviewId: review.id,
+        reviewState: review.state,
+        reviewer: review.user?.login,
+        labels: prLabels,
+        createdAt: review.submitted_at,
+        state: pull_request.state,
+      },
+      links: {
+        web: review.html_url,
+      },
+      raw: payload,
+    };
+  }
+
+  /**
+   * Parse PR review comment event into TriggerEvent
+   * Used to provide context for conversation mode routing
+   */
+  private async parsePRReviewCommentEvent(payload: GitHubPullRequestReviewCommentEventPayload): Promise<TriggerEvent | null> {
+    const { pull_request, comment, repository } = payload;
+
+    if (!pull_request || !repository) {
+      console.error('[GitHubIssuesTrigger] Missing pull_request or repository data');
+      return null;
+    }
+
+    // Find project configuration
+    const repoFullName = repository.full_name;
+    const project = await findProjectByRepo(repoFullName);
+
+    if (!project) {
+      console.log(`[GitHubIssuesTrigger] No project configured for repo: ${repoFullName}`);
+      return null;
+    }
+
+    const prLabels = (pull_request.labels || []).map((l: GitHubLabel) => l.name);
+
+    return {
+      triggerType: 'github-issues',
+      triggerId: `${repository.full_name}#${pull_request.number}-comment-${comment.id}`,
+      projectId: project.id,
+      title: `PR Comment on #${pull_request.number}: ${pull_request.title}`,
+      description: comment.body || 'No comment body',
+      metadata: {
+        severity: this.determineSeverity(prLabels),
+        prNumber: pull_request.number,
+        prUrl: pull_request.html_url,
+        commentId: comment.id,
+        commentPath: comment.path,
+        commentLine: comment.line,
+        commenter: comment.user?.login,
+        labels: prLabels,
+        createdAt: comment.created_at,
+        state: pull_request.state,
+      },
+      links: {
+        web: comment.html_url,
       },
       raw: payload,
     };
