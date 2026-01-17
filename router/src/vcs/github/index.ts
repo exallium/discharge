@@ -459,6 +459,148 @@ export class GitHubVCS implements VCSPlugin {
   }
 
   /**
+   * Remove the plan file from the branch (without closing PR or deleting branch)
+   * Used after plan execution to clean up the plan file
+   */
+  async removePlanFileOnly(
+    project: VCSProjectConfig,
+    planRef: string
+  ): Promise<void> {
+    const { owner, repo: repoName } = this.parseRepoIdentifier(project.repoFullName);
+    const [branchName, filePath] = planRef.split(':');
+
+    if (!branchName || !filePath) {
+      throw new Error(`Invalid planRef format: ${planRef}`);
+    }
+
+    try {
+      // Get current file SHA
+      const { data: currentFile } = await this.octokit.repos.getContent({
+        owner,
+        repo: repoName,
+        path: filePath,
+        ref: branchName,
+      });
+
+      if (Array.isArray(currentFile) || currentFile.type !== 'file') {
+        throw new Error(`Plan path is not a file: ${filePath}`);
+      }
+
+      // Delete the file
+      await this.octokit.repos.deleteFile({
+        owner,
+        repo: repoName,
+        path: filePath,
+        message: 'Remove plan file after implementation complete',
+        sha: currentFile.sha,
+        branch: branchName,
+      });
+
+      logger.info('Removed plan file from branch', {
+        owner,
+        repo: repoName,
+        branch: branchName,
+        filePath,
+      });
+    } catch (error: unknown) {
+      // 404 means file doesn't exist - that's fine
+      if (error && typeof error === 'object' && 'status' in error && error.status === 404) {
+        logger.debug('Plan file already removed', {
+          owner,
+          repo: repoName,
+          planRef,
+        });
+        return;
+      }
+
+      logger.warn('Failed to remove plan file', {
+        owner,
+        repo: repoName,
+        planRef,
+        error: getErrorMessage(error),
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Find a plan file on a branch
+   * Searches for PLAN-*.md files in the .ai-bug-fixer/plans/ directory
+   */
+  async findPlanFile(
+    project: VCSProjectConfig,
+    branchName: string
+  ): Promise<string | null> {
+    const { owner, repo: repoName } = this.parseRepoIdentifier(project.repoFullName);
+    const planDirectory = '.ai-bug-fixer/plans';
+
+    try {
+      // List contents of the plans directory on the branch
+      const { data } = await this.octokit.repos.getContent({
+        owner,
+        repo: repoName,
+        path: planDirectory,
+        ref: branchName,
+      });
+
+      // Check if it's a directory listing
+      if (!Array.isArray(data)) {
+        logger.debug('Plan directory is not a directory', {
+          owner,
+          repo: repoName,
+          branch: branchName,
+          path: planDirectory,
+        });
+        return null;
+      }
+
+      // Find a PLAN-*.md file
+      const planFile = data.find(
+        (item) => item.type === 'file' && item.name.startsWith('PLAN-') && item.name.endsWith('.md')
+      );
+
+      if (planFile) {
+        const planRef = `${branchName}:${planFile.path}`;
+        logger.info('Found existing plan file', {
+          owner,
+          repo: repoName,
+          branch: branchName,
+          planRef,
+        });
+        return planRef;
+      }
+
+      logger.debug('No plan file found in directory', {
+        owner,
+        repo: repoName,
+        branch: branchName,
+        path: planDirectory,
+        files: data.map((f) => f.name),
+      });
+      return null;
+    } catch (error: unknown) {
+      // 404 means the directory doesn't exist - that's fine
+      if (error && typeof error === 'object' && 'status' in error && error.status === 404) {
+        logger.debug('Plan directory does not exist', {
+          owner,
+          repo: repoName,
+          branch: branchName,
+          path: planDirectory,
+        });
+        return null;
+      }
+
+      logger.warn('Failed to find plan file', {
+        owner,
+        repo: repoName,
+        branch: branchName,
+        error: getErrorMessage(error),
+      });
+      return null;
+    }
+  }
+
+  /**
    * Get pull request info (branch, base, etc.)
    */
   async getPullRequestInfo(

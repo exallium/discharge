@@ -7,12 +7,14 @@ import { getAppCredentials } from '../../github/app-service';
 import {
   GitHubIssueEventPayload,
   GitHubIssueCommentEventPayload,
+  GitHubPullRequestEventPayload,
   GitHubPullRequestReviewEventPayload,
   GitHubPullRequestReviewCommentEventPayload,
   GitHubLabel,
   GitHubWebhookPayload,
   isIssueEvent,
   isIssueCommentEvent,
+  isPullRequestEvent,
   isPullRequestReviewEvent,
   isPullRequestReviewCommentEvent,
 } from '../../types/webhooks/github';
@@ -40,9 +42,12 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
   type = 'github-issues';
 
   webhookConfig: WebhookConfig = {
-    events: ['issues', 'issue_comment', 'pull_request_review', 'pull_request_review_comment'],
+    events: ['issues', 'issue_comment', 'pull_request', 'pull_request_review', 'pull_request_review_comment'],
     docsUrl: 'https://docs.github.com/en/webhooks/using-webhooks/creating-webhooks',
   };
+
+  // Label that triggers plan approval and execution
+  static readonly PLAN_APPROVED_LABEL = 'plan-approved';
 
   // Conversation support
   supportsConversation = true;
@@ -182,6 +187,11 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     // Handle PR review comment events (for conversation mode)
     if (isPullRequestReviewCommentEvent(typedPayload) && action === 'created') {
       return this.parsePRReviewCommentEvent(typedPayload as GitHubPullRequestReviewCommentEventPayload);
+    }
+
+    // Handle PR labeled events (for plan approval)
+    if (isPullRequestEvent(typedPayload) && action === 'labeled') {
+      return this.parsePRLabeledEvent(typedPayload as GitHubPullRequestEventPayload);
     }
 
     console.log(`[GitHubIssuesTrigger] Ignoring action: ${action}`);
@@ -470,6 +480,65 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       },
       links: {
         web: comment.html_url,
+      },
+      raw: payload,
+    };
+  }
+
+  /**
+   * Parse PR labeled event
+   * Used for plan approval - when 'plan-approved' label is added
+   */
+  private async parsePRLabeledEvent(payload: GitHubPullRequestEventPayload): Promise<TriggerEvent | null> {
+    const { pull_request, repository, label } = payload;
+
+    if (!pull_request || !repository) {
+      console.error('[GitHubIssuesTrigger] Missing pull_request or repository data');
+      return null;
+    }
+
+    // Only process if the 'plan-approved' label was added
+    if (label?.name !== GitHubIssuesTrigger.PLAN_APPROVED_LABEL) {
+      console.log(`[GitHubIssuesTrigger] Ignoring label: ${label?.name}, not plan-approved`);
+      return null;
+    }
+
+    console.log(`[GitHubIssuesTrigger] Plan approved via label on PR #${pull_request.number}`);
+
+    // Find project configuration
+    const repoFullName = repository.full_name;
+    const project = await findProjectByRepo(repoFullName);
+
+    if (!project) {
+      console.log(`[GitHubIssuesTrigger] No project configured for repo: ${repoFullName}`);
+      return null;
+    }
+
+    const prLabels = (pull_request.labels || []).map((l: GitHubLabel) => l.name);
+
+    // Extract linked issue number from PR body (e.g., "Fixes #123")
+    const linkedIssueNumber = this.extractLinkedIssueNumber(pull_request.body);
+
+    return {
+      triggerType: 'github-issues',
+      triggerId: `${repository.full_name}#${pull_request.number}-plan-approved`,
+      projectId: project.id,
+      title: `Plan Approved: PR #${pull_request.number}`,
+      description: `The implementation plan for PR #${pull_request.number} has been approved.`,
+      metadata: {
+        severity: this.determineSeverity(prLabels),
+        issueNumber: linkedIssueNumber || undefined,
+        prNumber: pull_request.number,
+        prUrl: pull_request.html_url,
+        prBranch: pull_request.head?.ref,
+        labels: prLabels,
+        state: pull_request.state,
+        planApproved: true,
+        owner: repository.owner?.login,
+        repo: repository.name,
+      },
+      links: {
+        web: pull_request.html_url,
       },
       raw: payload,
     };
@@ -793,6 +862,14 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
       return this.parsePRReviewCommentConversationEvent(typedPayload);
     }
 
+    // Handle PR labeled (plan approval)
+    if (isPullRequestEvent(typedPayload) && typedPayload.action === 'labeled') {
+      // Only handle plan-approved label
+      if (typedPayload.label?.name === GitHubIssuesTrigger.PLAN_APPROVED_LABEL) {
+        return this.parsePlanApprovedConversationEvent(typedPayload);
+      }
+    }
+
     return null;
   }
 
@@ -1008,13 +1085,58 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
             id: String(comment.id),
             path: comment.path,
             line: comment.line || undefined,
+            startLine: comment.start_line || undefined,
+            originalLine: comment.original_line || undefined,
+            side: comment.side,
             body: comment.body,
             author: comment.user?.login || 'unknown',
             diffHunk: comment.diff_hunk,
+            inReplyToId: comment.in_reply_to_id ? String(comment.in_reply_to_id) : undefined,
           },
         ],
       },
       timestamp: new Date(comment.created_at).toISOString(),
+    };
+  }
+
+  /**
+   * Parse plan approved event (PR labeled with plan-approved)
+   */
+  private parsePlanApprovedConversationEvent(
+    payload: GitHubPullRequestEventPayload
+  ): ConversationEvent {
+    const { pull_request, repository, label } = payload;
+    const prLabels = (pull_request.labels || []).map((l: GitHubLabel) => l.name);
+
+    // Try to link back to the originating issue
+    const linkedIssueNumber = this.extractLinkedIssueNumber(pull_request.body);
+    const externalId = linkedIssueNumber
+      ? `${repository.full_name}#${linkedIssueNumber}`  // Route to issue conversation
+      : `${repository.full_name}#${pull_request.number}`; // Fallback to PR
+
+    return {
+      type: 'plan_approved',
+      source: {
+        platform: 'github',
+        externalId,
+        url: pull_request.html_url,
+      },
+      target: {
+        type: 'pull_request',
+        number: pull_request.number,
+        title: pull_request.title,
+        body: pull_request.body || '',
+        labels: prLabels,
+        url: pull_request.html_url,
+      },
+      payload: {
+        action: 'labeled',
+        label: {
+          name: label?.name || GitHubIssuesTrigger.PLAN_APPROVED_LABEL,
+        },
+        prBranch: pull_request.head?.ref,
+      },
+      timestamp: new Date().toISOString(),
     };
   }
 

@@ -12,6 +12,7 @@ import type {
   ConversationEvent,
   RouteMode,
   RunnerConversationResult,
+  PlanFile,
 } from '../types/conversation';
 import { getConversationService } from '../conversation';
 import { getPlanManager } from '../conversation/plan-manager';
@@ -416,6 +417,63 @@ export async function orchestrateConversation(
       }
     }
 
+    // Check for plan approval event - triggers execution
+    const planApprovedEvent = events.find(e => e.type === 'plan_approved');
+    if (planApprovedEvent && existingPlan) {
+      logger.info('Plan approved - triggering execution', {
+        conversationId,
+        planRef: conversation.planRef,
+        prNumber: existingPrNumber,
+      });
+
+      // Update plan status to approved
+      existingPlan.metadata.status = 'approved';
+
+      // Post acknowledgment
+      if (trigger.postFeedback) {
+        await trigger.postFeedback(
+          triggerEvent,
+          `🚀 Plan approved! Starting implementation...\n\nI'll execute the approved plan and push the changes to this PR.`
+        );
+      }
+    }
+
+    // Check if PR review events have meaningful content
+    // If we only have PR review events with no body/comments, ask for details
+    // Skip this check for plan_approved events
+    const hasMeaningfulContent = planApprovedEvent || checkEventsHaveContent(events);
+    if (!hasMeaningfulContent) {
+      logger.info('PR review events have no meaningful content, asking for details', {
+        conversationId,
+        eventCount: events.length,
+        eventTypes: events.map(e => e.type),
+      });
+
+      // Post feedback asking for details
+      if (trigger.postFeedback) {
+        // Determine the review state to give appropriate response
+        const reviewEvent = events.find(e => e.type === 'pr_review');
+        const reviewState = reviewEvent?.payload?.review?.state?.toLowerCase();
+
+        let message: string;
+        if (reviewState === 'approved') {
+          message = `Thanks for the approval! If you have any specific feedback or changes you'd like me to make, please add a comment.`;
+        } else if (reviewState === 'changes_requested') {
+          message = `I see you've requested changes. Could you add some comments explaining what you'd like me to change? I'll update the plan once I understand your feedback.`;
+        } else {
+          message = `I received your review but couldn't find specific feedback. Could you add a comment with details about what you'd like me to change?`;
+        }
+
+        await trigger.postFeedback(triggerEvent, message);
+      }
+
+      return {
+        response: 'Waiting for user feedback',
+        action: { type: 'comment', body: 'Waiting for detailed feedback' },
+        complete: false,
+      };
+    }
+
     // Build user message from events
     const userMessage = buildUserMessage(events, existingPlan);
 
@@ -466,6 +524,7 @@ export async function orchestrateConversation(
       project,
       { ...conversation, prNumber: existingPrNumber, prBranch: existingPrBranch },
       result,
+      existingPlan,
       conversationService,
       planManager
     );
@@ -509,6 +568,7 @@ async function handleConversationAction(
   project: NonNullable<Awaited<ReturnType<typeof findProjectById>>>,
   conversation: { id: string; planRef?: string | null; prNumber?: number; prBranch?: string },
   result: RunnerConversationResult,
+  existingPlan: PlanFile | undefined,
   conversationService: ReturnType<typeof getConversationService>,
   planManager: ReturnType<typeof getPlanManager>
 ): Promise<void> {
@@ -521,19 +581,82 @@ async function handleConversationAction(
         throw new Error(`VCS ${project.vcs.type} does not support plan files or is not configured`);
       }
 
+      // Validate action.plan before rendering
+      if (!action.plan) {
+        logger.warn('create_plan action has no plan content', {
+          conversationId: conversation.id,
+          prNumber: conversation.prNumber,
+        });
+        // Post feedback explaining the issue
+        if (trigger.postFeedback) {
+          await trigger.postFeedback(
+            triggerEvent,
+            `I received your feedback but couldn't generate an updated plan. Could you provide more details about what you'd like me to change?`
+          );
+        }
+        break;
+      }
+
+      // Set the issue number on the plan before rendering
+      // The runner may not know the issue number, so we set it from the trigger event
+      const issueNumber = (triggerEvent.metadata.issueNumber as number | string | undefined)
+        || (triggerEvent.metadata.prNumber as number | string | undefined)
+        || conversation.id;
+      action.plan.metadata.issue = issueNumber;
+
       const planPath = planManager.getPlanPath(conversation.id);
       const planContent = planManager.renderPlanToMarkdown(action.plan);
 
+      // Validate rendered plan content
+      if (!planContent) {
+        logger.warn('create_plan rendered to empty content', {
+          conversationId: conversation.id,
+          prNumber: conversation.prNumber,
+        });
+        if (trigger.postFeedback) {
+          await trigger.postFeedback(
+            triggerEvent,
+            `I received your feedback but couldn't generate an updated plan. Could you provide more details about what you'd like me to change?`
+          );
+        }
+        break;
+      }
+
       // Check if we're updating an existing PR (respond to PR review with new plan)
       // In this case, update the existing plan file instead of creating a new PR
-      if (conversation.prNumber && conversation.planRef && vcs.updatePlanFile) {
+      // We need either: stored planRef, or existing PR branch to find the plan file
+      let effectivePlanRef = conversation.planRef;
+
+      // If we have an existing PR branch but no planRef, try to find the plan file
+      if (conversation.prNumber && conversation.prBranch && !effectivePlanRef && vcs.findPlanFile) {
+        logger.info('Looking for existing plan file on PR branch', {
+          conversationId: conversation.id,
+          prNumber: conversation.prNumber,
+          prBranch: conversation.prBranch,
+        });
+
+        const foundPlanRef = await vcs.findPlanFile(project, conversation.prBranch);
+        if (foundPlanRef) {
+          effectivePlanRef = foundPlanRef;
+          logger.info('Found existing plan file', { planRef: foundPlanRef });
+        }
+      }
+
+      if (conversation.prNumber && effectivePlanRef && vcs.updatePlanFile) {
         logger.info('Updating existing plan on PR branch', {
           conversationId: conversation.id,
           prNumber: conversation.prNumber,
-          planRef: conversation.planRef,
+          planRef: effectivePlanRef,
         });
 
-        await vcs.updatePlanFile(project, conversation.planRef, planContent);
+        await vcs.updatePlanFile(project, effectivePlanRef, planContent);
+
+        // Update conversation with the plan ref if we found it
+        if (!conversation.planRef && effectivePlanRef) {
+          await conversationService.updateStatus(conversation.id, {
+            planRef: effectivePlanRef,
+          });
+        }
 
         // Post feedback about the update
         if (trigger.postFeedback) {
@@ -581,12 +704,15 @@ async function handleConversationAction(
           await trigger.postFeedback(
             triggerEvent,
             `📋 I've created a pull request with an implementation plan.\n\n**PR:** #${planResult.prNumber}\n\n` +
-            `Please review and provide feedback on the PR. Further conversation will continue there.`
+            `Please review the plan and provide feedback. I'll iterate based on your comments.\n\n` +
+            `**To approve the plan and start implementation**, add the \`plan-approved\` label to the PR.`
           );
         } else {
           await trigger.postFeedback(
             triggerEvent,
-            `📋 I've created an implementation plan for review.\n\n**Plan:** ${planUrl}\n\nPlease review and provide feedback. I'll iterate based on your comments.`
+            `📋 I've created an implementation plan for review.\n\n**Plan:** ${planUrl}\n\n` +
+            `Please review and provide feedback. I'll iterate based on your comments.\n\n` +
+            `**To approve the plan and start implementation**, add the \`plan-approved\` label.`
           );
         }
       }
@@ -602,13 +728,18 @@ async function handleConversationAction(
 
       // Validate action content before updating
       if (!action.content) {
-        logger.error('Failed to update plan file', {
-          owner: project.vcs.owner,
-          repo: project.vcs.repo,
+        logger.warn('update_plan action has no content', {
+          conversationId: conversation.id,
           planRef: conversation.planRef,
-          error: 'Plan content is undefined or empty',
         });
-        throw new Error('Cannot update plan: plan content is undefined');
+        // Post feedback explaining the issue instead of throwing
+        if (trigger.postFeedback) {
+          await trigger.postFeedback(
+            triggerEvent,
+            `I received your feedback but couldn't generate an updated plan. Could you provide more details about what you'd like me to change?`
+          );
+        }
+        break;
       }
 
       await vcs.updatePlanFile(project, conversation.planRef, action.content);
@@ -658,13 +789,48 @@ async function handleConversationAction(
           branchName,
         });
 
-        // Post update message
-        if (trigger.postFeedback) {
-          const comment = `✅ I've pushed updates to address your feedback.\n\n**Summary:** ${analysis.summary}\n\n**Files Modified:**\n${analysis.filesInvolved.map(f => `- \`${f}\``).join('\n')}`;
-          await trigger.postFeedback(triggerEvent, comment);
+        // Check if this was a plan execution (plan was approved)
+        const wasApprovedPlanExecution = existingPlan?.metadata?.status === 'approved';
+
+        if (wasApprovedPlanExecution) {
+          // Clean up the plan file after successful execution
+          const vcs = await getVCSForProject(project.vcs.type, project.id);
+          if (conversation.planRef && vcs instanceof GitHubVCS) {
+            try {
+              // Delete just the plan file, not the branch (the PR is still open)
+              await vcs.removePlanFileOnly(project, conversation.planRef);
+              logger.info('Cleaned up plan file after execution', {
+                conversationId: conversation.id,
+                planRef: conversation.planRef,
+              });
+            } catch (cleanupError) {
+              logger.warn('Failed to clean up plan file', {
+                conversationId: conversation.id,
+                planRef: conversation.planRef,
+                error: getErrorMessage(cleanupError),
+              });
+            }
+          }
+
+          // Post completion message
+          if (trigger.postFeedback) {
+            const comment = `✅ Implementation complete!\n\n**Summary:** ${analysis.summary}\n\n**Files Modified:**\n${analysis.filesInvolved.map(f => `- \`${f}\``).join('\n')}\n\nThe plan has been executed and the code changes are ready for review. Please review the changes and merge when ready.`;
+            await trigger.postFeedback(triggerEvent, comment);
+          }
+
+          // Mark conversation as complete
+          await conversationService.updateStatus(conversation.id, {
+            status: 'complete',
+          });
+        } else {
+          // Regular update - not plan execution
+          if (trigger.postFeedback) {
+            const comment = `✅ I've pushed updates to address your feedback.\n\n**Summary:** ${analysis.summary}\n\n**Files Modified:**\n${analysis.filesInvolved.map(f => `- \`${f}\``).join('\n')}`;
+            await trigger.postFeedback(triggerEvent, comment);
+          }
         }
 
-        // Don't mark as complete - conversation continues on PR
+        // Don't mark as complete for regular updates - conversation continues on PR
         break;
       }
 
@@ -759,4 +925,73 @@ async function handleConversationAction(
       status: 'complete',
     });
   }
+}
+
+/**
+ * Check if events have meaningful content worth processing
+ *
+ * For PR review events, checks if there's actually feedback to process.
+ * Empty approvals or change requests without comments should not trigger
+ * expensive runner operations.
+ */
+function checkEventsHaveContent(events: ConversationEvent[]): boolean {
+  // If there are no events, nothing to process
+  if (events.length === 0) {
+    return false;
+  }
+
+  // Check if any event has meaningful content
+  for (const event of events) {
+    switch (event.type) {
+      case 'issue_opened':
+        // Issue always has content (title + body)
+        return true;
+
+      case 'issue_comment':
+      case 'pr_comment':
+        // Comments have content if body is non-empty
+        if (event.payload.comment?.body?.trim()) {
+          return true;
+        }
+        break;
+
+      case 'pr_review':
+        // Review has content if:
+        // 1. Review body is non-empty, OR
+        // 2. There are inline comments
+        if (event.payload.review?.body?.trim()) {
+          return true;
+        }
+        if (event.payload.reviewComments && event.payload.reviewComments.length > 0) {
+          return true;
+        }
+        break;
+
+      case 'pr_review_comment':
+        // Review comment has content if body is non-empty
+        if (event.payload.comment?.body?.trim()) {
+          return true;
+        }
+        if (event.payload.reviewComments && event.payload.reviewComments.length > 0) {
+          // Check if any review comment has content
+          for (const comment of event.payload.reviewComments) {
+            if (comment.body?.trim()) {
+              return true;
+            }
+          }
+        }
+        break;
+
+      case 'issue_labeled':
+        // Labels are meaningful signals
+        return true;
+
+      default:
+        // Unknown event types - assume they have content
+        return true;
+    }
+  }
+
+  // None of the events had meaningful content
+  return false;
 }

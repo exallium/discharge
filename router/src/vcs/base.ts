@@ -152,6 +152,19 @@ export interface VCSPlugin {
     planRef: string
   ): Promise<void>;
 
+  /**
+   * Find a plan file on a branch
+   * Used when responding to PR reviews to find the existing plan
+   *
+   * @param project - Project configuration
+   * @param branchName - Branch to search on
+   * @returns Plan reference (branchName:filePath) or null if not found
+   */
+  findPlanFile?(
+    project: VCSProjectConfig,
+    branchName: string
+  ): Promise<string | null>;
+
   // ========================================
   // Secret Requirements
   // ========================================

@@ -891,8 +891,56 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       parts.push('- `approach`: Must describe your solution strategy in 2-4 sentences minimum');
       parts.push('- `steps`: Must have at least one step with title, description, tasks, and files');
       parts.push('- `estimatedComplexity`: Must be one of "trivial", "low", "medium", "high"');
+    } else if (options.existingPlan && options.existingPlan.metadata.status !== 'approved') {
+      // Plan iteration mode - show update_plan structure
+      parts.push('Since you are updating an existing plan based on feedback, use this structure:');
+      parts.push('```json');
+      parts.push(JSON.stringify({
+        response: "Brief summary of changes made to the plan",
+        action: {
+          type: "update_plan",
+          content: "The FULL updated plan in markdown format (see structure below)",
+          planVersion: (options.existingPlan.metadata.iteration || 1) + 1
+        },
+        complete: false
+      }, null, 2));
+      parts.push('```');
+      parts.push('');
+      parts.push('**The `content` field must contain the full updated plan in this markdown format:**');
+      parts.push('```markdown');
+      parts.push('## Context');
+      parts.push('[Updated understanding of the problem]');
+      parts.push('');
+      parts.push('## Approach');
+      parts.push('[Updated solution strategy]');
+      parts.push('');
+      parts.push('## Steps');
+      parts.push('### Step 1: [Title]');
+      parts.push('**Complexity:** low|medium|high');
+      parts.push('**Files:** `file1.ts`, `file2.ts`');
+      parts.push('[Description]');
+      parts.push('- [ ] Task 1');
+      parts.push('- [ ] Task 2');
+      parts.push('');
+      parts.push('## Risks');
+      parts.push('- [Risk 1]');
+      parts.push('');
+      parts.push('## Questions');
+      parts.push('1. [Any remaining questions]');
+      parts.push('```');
+      parts.push('');
+      parts.push('**Important:** Include ALL sections in the content, even if unchanged. The content replaces the entire plan file.');
+      parts.push('');
+      parts.push('If you only need to acknowledge feedback or ask a question (no plan changes), use:');
+      parts.push('```json');
+      parts.push('{');
+      parts.push('  "response": "Your message",');
+      parts.push('  "action": { "type": "comment", "body": "Your message" },');
+      parts.push('  "complete": false');
+      parts.push('}');
+      parts.push('```');
     } else {
-      // Other modes - show general structure
+      // Other modes (execution, auto_execute) - show general structure
       parts.push('Use this structure for your result:');
       parts.push('```json');
       parts.push('{');

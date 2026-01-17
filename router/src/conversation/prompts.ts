@@ -151,13 +151,19 @@ export function formatEvent(event: ConversationEvent): string {
         parts.push('**Inline Comments:**');
         parts.push('');
         for (const comment of event.payload.reviewComments) {
-          parts.push(`- **${comment.path}${comment.line ? `:${comment.line}` : ''}** (@${comment.author})`);
-          if (comment.diffHunk) {
-            parts.push('  ```diff');
-            parts.push(`  ${comment.diffHunk.split('\n').join('\n  ')}`);
-            parts.push('  ```');
+          const location = formatCommentLocation(comment);
+          parts.push(`### ${location}`);
+          parts.push(`_by @${comment.author}_`);
+          if (comment.inReplyToId) {
+            parts.push('_(reply in thread)_');
           }
-          parts.push(`  > ${comment.body}`);
+          parts.push('');
+          if (comment.diffHunk) {
+            parts.push('```diff');
+            parts.push(comment.diffHunk);
+            parts.push('```');
+          }
+          parts.push(`> ${comment.body}`);
           parts.push('');
         }
       }
@@ -169,10 +175,16 @@ export function formatEvent(event: ConversationEvent): string {
       parts.push('');
       if (event.payload.reviewComments && event.payload.reviewComments.length > 0) {
         const comment = event.payload.reviewComments[0];
-        parts.push(`**File:** ${comment.path}${comment.line ? `:${comment.line}` : ''}`);
+        // Format location with full context
+        const location = formatCommentLocation(comment);
+        parts.push(`**Location:** ${location}`);
         parts.push('');
+        if (comment.inReplyToId) {
+          parts.push(`_This is a reply to a previous comment (thread)_`);
+          parts.push('');
+        }
         if (comment.diffHunk) {
-          parts.push('**Context:**');
+          parts.push('**Code Context:**');
           parts.push('```diff');
           parts.push(comment.diffHunk);
           parts.push('```');
@@ -198,6 +210,42 @@ export function formatEvent(event: ConversationEvent): string {
   }
 
   return parts.join('\n');
+}
+
+/**
+ * Format comment location with file, line range, and side info
+ */
+function formatCommentLocation(comment: {
+  path: string;
+  line?: number;
+  startLine?: number;
+  originalLine?: number;
+  side?: 'LEFT' | 'RIGHT';
+}): string {
+  const parts: string[] = [];
+
+  // File path
+  parts.push(`\`${comment.path}\``);
+
+  // Line information
+  if (comment.startLine && comment.line && comment.startLine !== comment.line) {
+    // Multi-line comment
+    parts.push(`lines ${comment.startLine}-${comment.line}`);
+  } else if (comment.line) {
+    parts.push(`line ${comment.line}`);
+  } else if (comment.originalLine) {
+    // Comment on deleted/changed line
+    parts.push(`original line ${comment.originalLine} (line may have moved)`);
+  }
+
+  // Side of diff (helps understand if comment is about old or new code)
+  if (comment.side === 'LEFT') {
+    parts.push('(removed code)');
+  } else if (comment.side === 'RIGHT') {
+    parts.push('(added/current code)');
+  }
+
+  return parts.join(' ');
 }
 
 /**
@@ -278,22 +326,89 @@ export function buildPlanIterationPrompt(
   currentPlan: PlanFile,
   feedback: string
 ): string {
-  return `The current plan has received feedback. Please update the plan based on this feedback.
+  // Format the full plan content so the AI can see what it's updating
+  const planContent = formatPlanContent(currentPlan);
+
+  return `The current plan has received feedback. Please review the plan below and update it based on the feedback.
 
 ## Current Plan
-- Status: ${currentPlan.metadata.status}
-- Iteration: ${currentPlan.metadata.iteration}
-- Confidence: ${(currentPlan.metadata.confidence * 100).toFixed(0)}%
 
-## Feedback
+${planContent}
+
+---
+
+## Feedback Received
+
 ${feedback}
 
+---
+
 ## Instructions
-1. Address each piece of feedback
-2. Update the relevant sections of the plan
-3. Add any new steps or modify existing ones as needed
-4. Update risks and questions if applicable
-5. Explain what changes you made in response to the feedback`;
+
+1. **Read the plan above carefully** - understand what has been proposed
+2. **Review the feedback** - understand what changes are being requested
+3. **Update the plan** - modify the relevant sections to address the feedback
+4. **Be specific** - when the feedback references specific lines or sections, address those directly
+5. **Explain your changes** - briefly note what you changed and why
+
+When outputting your updated plan, include all sections (Context, Approach, Steps, Risks, Questions) even if some didn't change.`;
+}
+
+/**
+ * Format plan content for display in prompts
+ */
+function formatPlanContent(plan: PlanFile): string {
+  const parts: string[] = [];
+
+  parts.push(`**Status:** ${plan.metadata.status}`);
+  parts.push(`**Iteration:** ${plan.metadata.iteration}`);
+  parts.push(`**Confidence:** ${(plan.metadata.confidence * 100).toFixed(0)}%`);
+  parts.push('');
+
+  // Context
+  parts.push('### Context');
+  parts.push(plan.sections.context);
+  parts.push('');
+
+  // Approach
+  parts.push('### Approach');
+  parts.push(plan.sections.approach);
+  parts.push('');
+
+  // Steps
+  parts.push('### Steps');
+  for (let i = 0; i < plan.sections.steps.length; i++) {
+    const step = plan.sections.steps[i];
+    parts.push(`**Step ${i + 1}: ${step.title}** (${step.estimatedComplexity})`);
+    if (step.files.length > 0) {
+      parts.push(`Files: ${step.files.map(f => `\`${f}\``).join(', ')}`);
+    }
+    parts.push(step.description);
+    for (const task of step.tasks) {
+      parts.push(`- [ ] ${task}`);
+    }
+    parts.push('');
+  }
+
+  // Risks
+  if (plan.sections.risks.length > 0) {
+    parts.push('### Risks');
+    for (const risk of plan.sections.risks) {
+      parts.push(`- ${risk}`);
+    }
+    parts.push('');
+  }
+
+  // Questions
+  if (plan.sections.questions.length > 0) {
+    parts.push('### Questions');
+    for (let i = 0; i < plan.sections.questions.length; i++) {
+      parts.push(`${i + 1}. ${plan.sections.questions[i]}`);
+    }
+    parts.push('');
+  }
+
+  return parts.join('\n');
 }
 
 /**

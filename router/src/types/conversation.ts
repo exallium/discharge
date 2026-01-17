@@ -41,6 +41,8 @@ export type ConversationEventType =
   | 'pr_comment'
   | 'pr_review'
   | 'pr_review_comment'
+  | 'pr_labeled'
+  | 'plan_approved'
   | 'approval'
   | 'manual_trigger';
 
@@ -88,14 +90,19 @@ export interface ConversationEvent {
       id?: string | number;
       path: string;
       line?: number;
+      startLine?: number;        // For multi-line comments
+      originalLine?: number;     // Line in original version (for outdated comments)
+      side?: 'LEFT' | 'RIGHT';   // Which side of the diff
       diffHunk?: string;
       body: string;
       author: string;
+      inReplyToId?: string | number;  // If this is a reply to another comment
     }>;
     label?: {
       name: string;
       color?: string;
     };
+    prBranch?: string;  // For PR events, the branch name
   };
 
   /** ISO 8601 timestamp */
