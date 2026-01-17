@@ -96,6 +96,7 @@ services:
       - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-2}
       - USE_GIT_WORKSPACES=${USE_GIT_WORKSPACES:-false}
       - STALE_WORKTREE_TTL_HOURS=${STALE_WORKTREE_TTL_HOURS:-24}
+      - ENABLE_DOCKER_IN_AGENT=${ENABLE_DOCKER_IN_AGENT:-false}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspaces:/workspaces

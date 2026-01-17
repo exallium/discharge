@@ -50,6 +50,18 @@ const execAsync = promisify(exec);
 const USE_GIT_WORKSPACES = process.env.USE_GIT_WORKSPACES === 'true';
 
 /**
+ * Whether to mount Docker socket into agent containers
+ * Enables tools like Supabase CLI that need to run containers
+ * Enable with ENABLE_DOCKER_IN_AGENT=true
+ */
+const ENABLE_DOCKER_IN_AGENT = process.env.ENABLE_DOCKER_IN_AGENT === 'true';
+
+/**
+ * Docker socket path (defaults to standard location)
+ */
+const DOCKER_SOCKET_PATH = process.env.DOCKER_SOCKET_PATH || '/var/run/docker.sock';
+
+/**
  * Error patterns for classification
  */
 const ERROR_PATTERNS = {
@@ -373,6 +385,11 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       // Prepare writable .claude config directory
       const claudeConfigPath = await prepareClaudeConfig(workspacePath);
 
+      // Docker socket mount for running containers inside agent (e.g., Supabase)
+      const dockerMount = ENABLE_DOCKER_IN_AGENT
+        ? `-v ${DOCKER_SOCKET_PATH}:/var/run/docker.sock`
+        : '';
+
       // Run Claude Code (read prompt from file inside container via cat pipe)
       console.log(`[ClaudeCode:${jobId}] Running Claude Code CLI...`);
       const { stdout } = await execAsync(
@@ -382,6 +399,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
           --network ${process.env.DOCKER_NETWORK || 'ai-bug-fixer_internal'} \
           -v ${workspacePath}:/workspace \
           -v ${claudeConfigPath}:/home/agent/.claude \
+          ${dockerMount} \
           ${envFlags} \
           ${pathEnv} \
           --cpus="2" \
@@ -699,6 +717,11 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       // Prepare writable .claude config directory
       const claudeConfigPath = await prepareClaudeConfig(workspacePath);
 
+      // Docker socket mount for running containers inside agent (e.g., Supabase)
+      const dockerMount = ENABLE_DOCKER_IN_AGENT
+        ? `-v ${DOCKER_SOCKET_PATH}:/var/run/docker.sock`
+        : '';
+
       // Run Claude Code (read prompt from file inside container via cat pipe)
       console.log(`[ClaudeCode:${jobId}] Running Claude Code CLI in conversation mode...`);
       const { stdout } = await execAsync(
@@ -708,6 +731,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
           --network ${process.env.DOCKER_NETWORK || 'ai-bug-fixer_internal'} \
           -v ${workspacePath}:/workspace \
           -v ${claudeConfigPath}:/home/agent/.claude \
+          ${dockerMount} \
           ${envFlags} \
           ${pathEnv} \
           --cpus="2" \
