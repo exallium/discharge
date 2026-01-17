@@ -459,6 +459,41 @@ export class GitHubVCS implements VCSPlugin {
   }
 
   /**
+   * Get pull request info (branch, base, etc.)
+   */
+  async getPullRequestInfo(
+    owner: string,
+    repo: string,
+    prNumber: number
+  ): Promise<{ head: { ref: string; sha: string }; base: { ref: string } } | null> {
+    try {
+      const { data: pr } = await this.octokit.pulls.get({
+        owner,
+        repo,
+        pull_number: prNumber,
+      });
+
+      return {
+        head: {
+          ref: pr.head.ref,
+          sha: pr.head.sha,
+        },
+        base: {
+          ref: pr.base.ref,
+        },
+      };
+    } catch (error) {
+      logger.warn('Failed to get PR info', {
+        owner,
+        repo,
+        prNumber,
+        error: getErrorMessage(error),
+      });
+      return null;
+    }
+  }
+
+  /**
    * Parse repository identifier into owner and repo
    */
   private parseRepoIdentifier(repository: string): { owner: string; repo: string } {

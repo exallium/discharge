@@ -126,13 +126,66 @@ export class EventRouter {
     );
 
     if (lockAcquired) {
-      // Start a new job
+      // For PR review events, add a short delay to allow subsequent comment events to queue
+      // GitHub sends review + comments in rapid succession, and we want them all in one batch
+      const isPRReviewEvent = event.type === 'pr_review' || event.type === 'pr_review_comment';
+      let allEvents = [event];
+
+      if (isPRReviewEvent) {
+        const debounceMs = 3000; // 3 second delay for PR reviews
+        logger.debug('Debouncing PR review event', {
+          conversationId: conversation.id,
+          eventType: event.type,
+          debounceMs,
+        });
+
+        // Wait for more events to queue
+        await new Promise(resolve => setTimeout(resolve, debounceMs));
+
+        // Drain any events that arrived during the delay
+        const queuedEvents = await this.conversationService.releaseLockAndDrain(
+          conversation.id,
+          jobId
+        );
+
+        // If events were queued, include them with the original event
+        if (queuedEvents.pendingEvents.length > 0) {
+          logger.info('Merging debounced PR review events', {
+            conversationId: conversation.id,
+            originalEvent: event.type,
+            queuedCount: queuedEvents.pendingEvents.length,
+          });
+
+          // Add queued events (they're already debounced by the service)
+          allEvents = [event, ...queuedEvents.pendingEvents.map(pe => pe.eventPayload)];
+
+          // Re-acquire the lock (it was released during drain)
+          const reacquired = await this.conversationService.acquireLock(
+            conversation.id,
+            jobId
+          );
+
+          if (!reacquired) {
+            // Someone else grabbed the lock - our events will be queued
+            logger.warn('Failed to reacquire lock after debounce', {
+              conversationId: conversation.id,
+            });
+            return {
+              action: 'queued_event',
+              conversationId: conversation.id,
+              reason: 'Lock lost during debounce',
+            };
+          }
+        }
+      }
+
+      // Start the job with all collected events
       await this.startConversationJob(
         jobId,
         conversation.id,
         triggerEvent,
         trigger.type,
-        [event],
+        allEvents,
         routeMode,
         conversation.iteration
       );
@@ -142,6 +195,7 @@ export class EventRouter {
         conversationId: conversation.id,
         triggerType: trigger.type,
         routeMode,
+        eventCount: allEvents.length,
       });
 
       return {

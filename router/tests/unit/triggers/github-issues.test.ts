@@ -10,6 +10,14 @@ jest.mock('../../../src/vcs', () => ({
   getGitHubWebhookSecret: (...args: unknown[]) => mockGetGitHubWebhookSecret(...args),
 }));
 
+// Mock the GitHub App service
+jest.mock('../../../src/github/app-service', () => ({
+  getAppCredentials: jest.fn().mockResolvedValue({
+    appSlug: 'test-ai-bug-fixer',
+    appName: 'Test AI Bug Fixer',
+  }),
+}));
+
 // Mock the projects config
 jest.mock('../../../src/config/projects', () => ({
   findProjectByRepo: jest.fn((repoFullName: string) => {

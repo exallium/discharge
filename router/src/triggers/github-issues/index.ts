@@ -3,6 +3,7 @@ import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest, WebhookCo
 import { findProjectByRepo } from '../../config/projects';
 import type { ProjectConfig } from '../../db/repositories/projects';
 import { getGitHubToken, getGitHubWebhookSecret } from '../../vcs';
+import { getAppCredentials } from '../../github/app-service';
 import {
   GitHubIssueEventPayload,
   GitHubIssueCommentEventPayload,
@@ -45,6 +46,44 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
 
   // Conversation support
   supportsConversation = true;
+
+  // Cached bot username (computed once from app credentials)
+  private cachedBotUsername: string | null = null;
+
+  /**
+   * Get the bot username from GitHub App credentials
+   * The bot username is {appSlug}[bot]
+   */
+  private async getBotUsername(): Promise<string | null> {
+    if (this.cachedBotUsername) {
+      return this.cachedBotUsername;
+    }
+
+    const credentials = await getAppCredentials();
+    if (!credentials?.appSlug) {
+      return null;
+    }
+
+    this.cachedBotUsername = `${credentials.appSlug}[bot]`;
+    return this.cachedBotUsername;
+  }
+
+  /**
+   * Check if the sender is the bot itself
+   * Used to prevent the bot from triggering on its own actions
+   */
+  private async isBotSender(senderLogin: string | undefined): Promise<boolean> {
+    if (!senderLogin) {
+      return false;
+    }
+
+    const botUsername = await this.getBotUsername();
+    if (!botUsername) {
+      return false;
+    }
+
+    return senderLogin.toLowerCase() === botUsername.toLowerCase();
+  }
 
   /**
    * Get the secrets required by this trigger
@@ -117,6 +156,13 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
   async parseWebhook(payload: unknown): Promise<TriggerEvent | null> {
     const typedPayload = payload as GitHubWebhookPayload;
     const action = typedPayload.action;
+
+    // Check if this event was triggered by the bot itself - ignore to prevent loops
+    const sender = (typedPayload as { sender?: { login: string } }).sender;
+    if (await this.isBotSender(sender?.login)) {
+      console.log(`[GitHubIssuesTrigger] Ignoring event from bot: ${sender?.login}`);
+      return null;
+    }
 
     // Handle issue events (opened, labeled)
     if (isIssueEvent(typedPayload) && ['opened', 'labeled', 'reopened'].includes(action)) {

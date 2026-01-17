@@ -389,6 +389,33 @@ export async function orchestrateConversation(
       }
     }
 
+    // Determine existing PR info (from conversation or from event target)
+    // This is used to push updates to an existing PR instead of creating a new one
+    let existingPrNumber = conversation.prNumber ?? undefined;
+    let existingPrBranch: string | undefined;
+
+    // If we don't have PR info in conversation, check if we're responding to a PR event
+    if (!existingPrNumber && events[0]?.target.type === 'pull_request') {
+      const targetNumber = events[0].target.number;
+      existingPrNumber = typeof targetNumber === 'string' ? parseInt(targetNumber, 10) : targetNumber;
+    }
+
+    // If we have a PR, try to get the branch name
+    if (existingPrNumber && !existingPrBranch) {
+      // Try to get branch from VCS
+      const vcs = await getVCSForProject(project.vcs.type, project.repoFullName);
+      if (vcs instanceof GitHubVCS) {
+        const prInfo = await vcs.getPullRequestInfo(
+          project.vcs.owner,
+          project.vcs.repo,
+          existingPrNumber
+        );
+        if (prInfo) {
+          existingPrBranch = prInfo.head.ref;
+        }
+      }
+    }
+
     // Build user message from events
     const userMessage = buildUserMessage(events, existingPlan);
 
@@ -410,7 +437,7 @@ export async function orchestrateConversation(
     // Run conversation
     const result = await runner.runConversation({
       repoUrl: project.repo,
-      branch: project.branch,
+      branch: existingPrBranch || project.branch, // Use PR branch if updating existing PR
       prompt: userMessage,
       tools,
       timeoutMs: project.runner?.timeout || 600000,
@@ -421,6 +448,8 @@ export async function orchestrateConversation(
       iteration,
       issueNumber: triggerEvent.metadata.issueNumber as number | string | undefined,
       existingPlan,
+      existingPrNumber,
+      existingPrBranch,
     });
 
     // Store assistant response
@@ -435,7 +464,7 @@ export async function orchestrateConversation(
       trigger,
       triggerEvent,
       project,
-      conversation,
+      { ...conversation, prNumber: existingPrNumber, prBranch: existingPrBranch },
       result,
       conversationService,
       planManager
@@ -478,7 +507,7 @@ async function handleConversationAction(
   trigger: TriggerPlugin,
   triggerEvent: TriggerEvent,
   project: NonNullable<Awaited<ReturnType<typeof findProjectById>>>,
-  conversation: { id: string; planRef?: string | null },
+  conversation: { id: string; planRef?: string | null; prNumber?: number; prBranch?: string },
   result: RunnerConversationResult,
   conversationService: ReturnType<typeof getConversationService>,
   planManager: ReturnType<typeof getPlanManager>
@@ -546,6 +575,17 @@ async function handleConversationAction(
         throw new Error('Cannot update plan: VCS does not support plan files or no plan exists');
       }
 
+      // Validate action content before updating
+      if (!action.content) {
+        logger.error('Failed to update plan file', {
+          owner: project.vcs.owner,
+          repo: project.vcs.repo,
+          planRef: conversation.planRef,
+          error: 'Plan content is undefined or empty',
+        });
+        throw new Error('Cannot update plan: plan content is undefined');
+      }
+
       await vcs.updatePlanFile(project, conversation.planRef, action.content);
 
       // Update plan version
@@ -581,8 +621,29 @@ async function handleConversationAction(
 
     case 'create_pr': {
       // Direct PR creation (for auto_execute mode or approved plans)
+      // OR: Updates to existing PR (when responding to PR review)
       const { analysis, branchName } = action;
 
+      // Check if we're updating an existing PR rather than creating a new one
+      if (conversation.prNumber) {
+        // Just pushed updates to existing PR branch - no need to create new PR
+        logger.info('Updates pushed to existing PR branch', {
+          conversationId: conversation.id,
+          prNumber: conversation.prNumber,
+          branchName,
+        });
+
+        // Post update message
+        if (trigger.postFeedback) {
+          const comment = `✅ I've pushed updates to address your feedback.\n\n**Summary:** ${analysis.summary}\n\n**Files Modified:**\n${analysis.filesInvolved.map(f => `- \`${f}\``).join('\n')}`;
+          await trigger.postFeedback(triggerEvent, comment);
+        }
+
+        // Don't mark as complete - conversation continues on PR
+        break;
+      }
+
+      // Creating a new PR
       logger.info('Creating PR from conversation', {
         conversationId: conversation.id,
         branchName,

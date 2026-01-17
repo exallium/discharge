@@ -56,6 +56,8 @@ export interface ConversationRunOptions extends RunOptions {
   issueNumber?: number | string;               // Issue/ticket number for plan metadata
   existingPlan?: PlanFile;                     // Existing plan to iterate on
   workspacePath?: string;                      // Pre-prepared workspace (from RepoManager)
+  existingPrNumber?: number;                   // Existing PR number (for PR review responses)
+  existingPrBranch?: string;                   // Existing PR branch name (for pushing updates)
 }
 
 /**
