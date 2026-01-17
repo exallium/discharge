@@ -516,14 +516,39 @@ async function handleConversationAction(
 
   switch (action.type) {
     case 'create_plan': {
-      // Create plan file via VCS
       const vcs = await getVCSForProject(project.vcs.type, project.id);
-      if (!vcs?.supportsPlanFiles || !vcs.createPlanFile) {
+      if (!vcs?.supportsPlanFiles) {
         throw new Error(`VCS ${project.vcs.type} does not support plan files or is not configured`);
       }
 
       const planPath = planManager.getPlanPath(conversation.id);
       const planContent = planManager.renderPlanToMarkdown(action.plan);
+
+      // Check if we're updating an existing PR (respond to PR review with new plan)
+      // In this case, update the existing plan file instead of creating a new PR
+      if (conversation.prNumber && conversation.planRef && vcs.updatePlanFile) {
+        logger.info('Updating existing plan on PR branch', {
+          conversationId: conversation.id,
+          prNumber: conversation.prNumber,
+          planRef: conversation.planRef,
+        });
+
+        await vcs.updatePlanFile(project, conversation.planRef, planContent);
+
+        // Post feedback about the update
+        if (trigger.postFeedback) {
+          await trigger.postFeedback(
+            triggerEvent,
+            `📝 I've updated the plan based on your feedback. Please review the changes.`
+          );
+        }
+        break;
+      }
+
+      // Creating a new plan/PR
+      if (!vcs.createPlanFile) {
+        throw new Error(`VCS ${project.vcs.type} does not support creating plan files`);
+      }
 
       const planResult = await vcs.createPlanFile(
         project,
