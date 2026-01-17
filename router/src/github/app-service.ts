@@ -29,7 +29,7 @@ import { logger } from '../logger';
 
 // Storage keys
 const APP_CREDENTIALS_KEY = 'github:app:credentials';
-const INSTALLATION_KEY_PREFIX = 'github:app:installation:';
+const INSTALLATION_KEY_PREFIX = 'github:app:installation:account:';
 
 /**
  * GitHub App credentials returned from manifest flow
@@ -70,6 +70,31 @@ const tokenCache = new Map<number, TokenCache>();
 // Token refresh buffer (refresh 5 min before expiry)
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
+// Word lists for generating unique app names
+const ADJECTIVES = [
+  'swift', 'clever', 'bright', 'quick', 'sharp',
+  'keen', 'nimble', 'agile', 'smart', 'rapid',
+  'stellar', 'cosmic', 'cyber', 'quantum', 'turbo',
+  'hyper', 'mega', 'ultra', 'super', 'prime',
+];
+
+const NOUNS = [
+  'falcon', 'phoenix', 'tiger', 'dragon', 'hawk',
+  'wolf', 'panther', 'eagle', 'fox', 'lynx',
+  'bolt', 'spark', 'pulse', 'wave', 'beam',
+  'core', 'node', 'link', 'sync', 'flux',
+];
+
+/**
+ * Generate a unique app name using combinatorial words
+ */
+function generateAppName(): string {
+  const adjective = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
+  const suffix = Math.floor(Math.random() * 1000);
+  return `AI Bug Fixer ${adjective}-${noun}-${suffix}`;
+}
+
 /**
  * Get the base URL for this application
  * Used for OAuth callbacks
@@ -84,10 +109,10 @@ export function getBaseUrl(): string {
  */
 export function generateAppManifest(baseUrl: string): object {
   return {
-    name: process.env.GITHUB_APP_NAME || 'AI Bug Fixer',
+    name: process.env.GITHUB_APP_NAME || generateAppName(),
     url: baseUrl,
     hook_attributes: {
-      url: `${baseUrl}/api/webhooks/github-app`,
+      url: `${baseUrl}/api/webhooks/github-issues`,
       active: true,
     },
     redirect_url: `${baseUrl}/api/github/app/callback`,
@@ -134,6 +159,7 @@ export async function storeAppCredentials(credentials: GitHubAppCredentials): Pr
  */
 export async function getAppCredentials(): Promise<GitHubAppCredentials | null> {
   const stored = await settingsRepo.getDecrypted(APP_CREDENTIALS_KEY);
+  logger.debug('getAppCredentials lookup', { key: APP_CREDENTIALS_KEY, found: !!stored });
   if (!stored) return null;
 
   try {
@@ -153,69 +179,123 @@ export async function isAppConfigured(): Promise<boolean> {
 }
 
 /**
- * Delete GitHub App credentials
+ * Delete GitHub App credentials and all installations
  */
 export async function deleteAppCredentials(): Promise<void> {
+  // First delete all installations (they're tied to this app)
+  const installations = await getAllInstallations();
+  for (const installation of installations) {
+    await deleteInstallationByAccount(installation.accountLogin);
+  }
+
+  // Then delete the app credentials
   await settingsRepo.remove(APP_CREDENTIALS_KEY);
   tokenCache.clear();
-  logger.info('Deleted GitHub App credentials');
+  logger.info('Deleted GitHub App credentials and all installations');
 }
 
 /**
- * Store installation for a project
+ * Store installation by account (not project)
+ * This allows multiple projects to share the same installation
  */
 export async function storeInstallation(
-  projectId: string,
+  accountLogin: string,
   installation: GitHubInstallation
 ): Promise<void> {
-  const key = `${INSTALLATION_KEY_PREFIX}${projectId}`;
+  const key = `${INSTALLATION_KEY_PREFIX}${accountLogin.toLowerCase()}`;
   await settingsRepo.set(key, JSON.stringify(installation), {
     encrypted: true,
-    description: `GitHub installation for project ${projectId}`,
+    description: `GitHub installation for ${installation.accountType.toLowerCase()} ${accountLogin}`,
     category: 'github',
   });
-  logger.info('Stored GitHub installation for project', {
-    projectId,
+  logger.info('Stored GitHub installation', {
     installationId: installation.installationId,
     account: installation.accountLogin,
+    accountType: installation.accountType,
   });
 }
 
 /**
- * Get installation for a project
+ * Get installation by account login
  */
-export async function getInstallation(projectId: string): Promise<GitHubInstallation | null> {
-  const key = `${INSTALLATION_KEY_PREFIX}${projectId}`;
+export async function getInstallationByAccount(accountLogin: string): Promise<GitHubInstallation | null> {
+  const key = `${INSTALLATION_KEY_PREFIX}${accountLogin.toLowerCase()}`;
   const stored = await settingsRepo.getDecrypted(key);
   if (!stored) return null;
 
   try {
     return JSON.parse(stored) as GitHubInstallation;
   } catch {
-    logger.error('Failed to parse stored GitHub installation', { projectId });
+    logger.error('Failed to parse stored GitHub installation', { accountLogin });
     return null;
   }
 }
 
 /**
- * Delete installation for a project
+ * Get all stored installations
  */
-export async function deleteInstallation(projectId: string): Promise<void> {
-  const key = `${INSTALLATION_KEY_PREFIX}${projectId}`;
-  const installation = await getInstallation(projectId);
-  if (installation) {
-    tokenCache.delete(installation.installationId);
+export async function getAllInstallations(): Promise<GitHubInstallation[]> {
+  // getByCategory returns masked values for encrypted settings,
+  // so we just use it to get the keys, then decrypt each one
+  const allSettings = await settingsRepo.getByCategory('github');
+  const installations: GitHubInstallation[] = [];
+
+  for (const setting of allSettings) {
+    if (setting.key.startsWith(INSTALLATION_KEY_PREFIX)) {
+      try {
+        // Must use getDecrypted to get the actual value
+        const decrypted = await settingsRepo.getDecrypted(setting.key);
+        if (decrypted) {
+          installations.push(JSON.parse(decrypted) as GitHubInstallation);
+        }
+      } catch (err) {
+        logger.error('Failed to parse installation', { key: setting.key, error: err });
+      }
+    }
   }
-  await settingsRepo.remove(key);
-  logger.info('Deleted GitHub installation for project', { projectId });
+
+  return installations;
 }
 
 /**
- * Check if a project has a GitHub installation
+ * Delete installation by account
  */
-export async function hasInstallation(projectId: string): Promise<boolean> {
-  const installation = await getInstallation(projectId);
-  return installation !== null;
+export async function deleteInstallationByAccount(accountLogin: string): Promise<void> {
+  const installation = await getInstallationByAccount(accountLogin);
+  if (installation) {
+    tokenCache.delete(installation.installationId);
+  }
+  const key = `${INSTALLATION_KEY_PREFIX}${accountLogin.toLowerCase()}`;
+  await settingsRepo.remove(key);
+  logger.info('Deleted GitHub installation', { accountLogin });
+}
+
+/**
+ * Check if we have any GitHub installations
+ */
+export async function hasAnyInstallation(): Promise<boolean> {
+  const installations = await getAllInstallations();
+  return installations.length > 0;
+}
+
+/**
+ * Get installation for a repository (finds the right account)
+ */
+export async function getInstallationForRepo(repoFullName: string): Promise<GitHubInstallation | null> {
+  const [owner] = repoFullName.split('/');
+  // First try the owner directly
+  const installation = await getInstallationByAccount(owner);
+  if (installation) return installation;
+
+  // If not found, we might need to check all installations
+  // (in case a user has access to an org repo through their personal installation)
+  const allInstallations = await getAllInstallations();
+  for (const inst of allInstallations) {
+    // For now, return the first installation - could be improved to check repo access
+    if (inst) return inst;
+  }
+
+  return null;
 }
 
 /**
@@ -259,25 +339,46 @@ async function getInstallationToken(
 }
 
 /**
- * Get an Octokit instance authenticated as the app installation for a project
- * This is the main entry point for plugins to get GitHub access
+ * Get an Octokit instance authenticated for a specific repository
+ * Finds the appropriate installation based on repo owner
  */
-export async function getOctokit(projectId: string): Promise<Octokit | null> {
+export async function getOctokitForRepo(repoFullName: string): Promise<Octokit | null> {
   const credentials = await getAppCredentials();
   if (!credentials) {
-    logger.debug('GitHub App not configured, cannot get Octokit', { projectId });
+    logger.debug('GitHub App not configured');
     return null;
   }
 
-  const installation = await getInstallation(projectId);
+  const installation = await getInstallationForRepo(repoFullName);
   if (!installation) {
-    logger.debug('No GitHub installation for project', { projectId });
+    logger.debug('No GitHub installation found for repo', { repoFullName });
     return null;
   }
 
   const token = await getInstallationToken(credentials, installation.installationId);
-
   return new Octokit({ auth: token });
+}
+
+/**
+ * Get an Octokit instance for a specific installation
+ */
+export async function getOctokitForInstallation(installationId: number): Promise<Octokit | null> {
+  const credentials = await getAppCredentials();
+  if (!credentials) {
+    logger.debug('GitHub App not configured');
+    return null;
+  }
+
+  const token = await getInstallationToken(credentials, installationId);
+  return new Octokit({ auth: token });
+}
+
+/**
+ * Legacy: Get Octokit for a project (uses repo lookup internally)
+ * @deprecated Use getOctokitForRepo instead
+ */
+export async function getOctokit(repoFullName: string): Promise<Octokit | null> {
+  return getOctokitForRepo(repoFullName);
 }
 
 /**
@@ -346,20 +447,17 @@ export async function exchangeManifestCode(code: string): Promise<GitHubAppCrede
 }
 
 /**
- * Get the OAuth authorization URL for installing the app on a repo/org
+ * Get the URL for installing the GitHub App on an account/org
+ * No longer requires projectId - installations are account-level
  */
-export async function getInstallUrl(projectId: string, repoFullName?: string): Promise<string | null> {
+export async function getInstallUrl(): Promise<string | null> {
   const credentials = await getAppCredentials();
   if (!credentials) {
     return null;
   }
 
-  // State parameter to pass projectId through OAuth flow
-  const state = Buffer.from(JSON.stringify({ projectId, repoFullName })).toString('base64url');
-
   // Direct user to install the app
-  // Using the app's installation URL which handles both new installs and authorizations
-  return `https://github.com/apps/${credentials.appSlug}/installations/new?state=${state}`;
+  return `https://github.com/apps/${credentials.appSlug}/installations/new`;
 }
 
 /**
@@ -370,30 +468,144 @@ export async function getAppStatus(): Promise<{
   appName?: string;
   appSlug?: string;
   htmlUrl?: string;
+  installations?: Array<{
+    accountLogin: string;
+    accountType: string;
+    installedAt: string;
+  }>;
 }> {
   const credentials = await getAppCredentials();
   if (!credentials) {
     return { configured: false };
   }
 
+  const installations = await getAllInstallations();
+
   return {
     configured: true,
     appName: credentials.appName,
     appSlug: credentials.appSlug,
     htmlUrl: credentials.htmlUrl,
+    installations: installations.map(i => ({
+      accountLogin: i.accountLogin,
+      accountType: i.accountType,
+      installedAt: i.installedAt,
+    })),
   };
 }
 
 /**
- * Get status of GitHub installation for a project
+ * Repository info returned from listing
  */
-export async function getInstallationStatus(projectId: string): Promise<{
+export interface GitHubRepository {
+  id: number;
+  name: string;
+  fullName: string;
+  private: boolean;
+  defaultBranch: string;
+  description: string | null;
+  htmlUrl: string;
+  cloneUrl: string;
+  owner: {
+    login: string;
+    type: string;
+  };
+}
+
+/**
+ * List all repositories accessible via our GitHub App installations
+ */
+export async function listRepositories(): Promise<GitHubRepository[]> {
+  const installations = await getAllInstallations();
+  if (installations.length === 0) {
+    return [];
+  }
+
+  const allRepos: GitHubRepository[] = [];
+
+  for (const installation of installations) {
+    try {
+      const octokit = await getOctokitForInstallation(installation.installationId);
+      if (!octokit) continue;
+
+      // List repos for this installation
+      const { data } = await octokit.rest.apps.listReposAccessibleToInstallation({
+        per_page: 100,
+      });
+
+      for (const repo of data.repositories) {
+        allRepos.push({
+          id: repo.id,
+          name: repo.name,
+          fullName: repo.full_name,
+          private: repo.private,
+          defaultBranch: repo.default_branch,
+          description: repo.description,
+          htmlUrl: repo.html_url,
+          cloneUrl: repo.clone_url,
+          owner: {
+            login: repo.owner.login,
+            type: repo.owner.type,
+          },
+        });
+      }
+    } catch (error: unknown) {
+      const httpError = error as { status?: number };
+      // If installation not found (404), it's stale - remove it
+      if (httpError.status === 404) {
+        logger.warn('Stale installation found, removing', {
+          installationId: installation.installationId,
+          account: installation.accountLogin,
+        });
+        await deleteInstallationByAccount(installation.accountLogin);
+      } else {
+        logger.error('Failed to list repos for installation', {
+          installationId: installation.installationId,
+          error,
+        });
+      }
+    }
+  }
+
+  // Sort by full name
+  allRepos.sort((a, b) => a.fullName.localeCompare(b.fullName));
+
+  return allRepos;
+}
+
+/**
+ * Get status of GitHub installations (account-level, not project-level)
+ */
+export async function getInstallationsStatus(): Promise<{
+  hasInstallations: boolean;
+  installations: Array<{
+    accountLogin: string;
+    accountType: string;
+    installedAt: string;
+  }>;
+}> {
+  const installations = await getAllInstallations();
+
+  return {
+    hasInstallations: installations.length > 0,
+    installations: installations.map(i => ({
+      accountLogin: i.accountLogin,
+      accountType: i.accountType,
+      installedAt: i.installedAt,
+    })),
+  };
+}
+
+/**
+ * @deprecated Use getInstallationsStatus instead
+ */
+export async function getInstallationStatus(accountLogin: string): Promise<{
   installed: boolean;
   accountLogin?: string;
   accountType?: string;
   installedAt?: string;
 }> {
-  const installation = await getInstallation(projectId);
+  const installation = await getInstallationByAccount(accountLogin);
   if (!installation) {
     return { installed: false };
   }

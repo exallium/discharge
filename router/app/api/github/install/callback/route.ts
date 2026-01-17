@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import {
   storeInstallation,
-  getBaseUrl,
   GitHubInstallation,
 } from '@/src/github/app-service';
 
@@ -15,35 +15,21 @@ export const dynamic = 'force-dynamic';
  * Query params from GitHub:
  * - installation_id: The installation ID
  * - setup_action: 'install' | 'update' | 'request'
- * - state: Our state parameter with projectId
+ * - state: Optional state parameter (for future use)
  */
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const installationId = searchParams.get('installation_id');
-  const state = searchParams.get('state');
-  const baseUrl = getBaseUrl();
 
-  // Parse state to get projectId
-  let projectId: string | null = null;
-  if (state) {
-    try {
-      const decoded = JSON.parse(Buffer.from(state, 'base64url').toString());
-      projectId = decoded.projectId;
-    } catch {
-      console.error('Failed to parse state parameter');
-    }
-  }
+  // Get base URL from request headers
+  const headersList = await headers();
+  const host = headersList.get('x-forwarded-host') || headersList.get('host') || 'localhost:3000';
+  const protocol = headersList.get('x-forwarded-proto') || 'http';
+  const baseUrl = `${protocol}://${host}`;
 
   if (!installationId) {
-    const redirectUrl = projectId
-      ? `${baseUrl}/projects/${projectId}?github_error=missing_installation_id`
-      : `${baseUrl}/settings?github_error=missing_installation_id`;
-    return NextResponse.redirect(redirectUrl);
-  }
-
-  if (!projectId) {
     return NextResponse.redirect(
-      `${baseUrl}/settings?github_error=missing_project_id`
+      `${baseUrl}/projects/new?github_error=missing_installation_id`
     );
   }
 
@@ -51,7 +37,7 @@ export async function GET(request: NextRequest) {
     // Fetch installation details from GitHub API
     const installationDetails = await fetchInstallationDetails(parseInt(installationId, 10));
 
-    // Store the installation
+    // Store the installation by account (not by project)
     const installation: GitHubInstallation = {
       installationId: parseInt(installationId, 10),
       accountLogin: installationDetails.account.login,
@@ -60,16 +46,17 @@ export async function GET(request: NextRequest) {
       installedAt: new Date().toISOString(),
     };
 
-    await storeInstallation(projectId, installation);
+    await storeInstallation(installationDetails.account.login, installation);
 
-    // Redirect back to project page with success
+    // Redirect to project creation page with success message
+    // User can now select repositories from this installation
     return NextResponse.redirect(
-      `${baseUrl}/projects/${projectId}?github_connected=true&account=${encodeURIComponent(installationDetails.account.login)}`
+      `${baseUrl}/projects/new?github_connected=true&account=${encodeURIComponent(installationDetails.account.login)}`
     );
   } catch (error) {
     console.error('Failed to process installation callback:', error);
     return NextResponse.redirect(
-      `${baseUrl}/projects/${projectId}?github_error=installation_failed`
+      `${baseUrl}/projects/new?github_error=installation_failed`
     );
   }
 }

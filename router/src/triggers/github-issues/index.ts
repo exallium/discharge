@@ -48,26 +48,13 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
 
   /**
    * Get the secrets required by this trigger
+   * Note: GitHub token is no longer required - we use the GitHub App installation token
    */
   getRequiredSecrets(): SecretRequirement[] {
-    return [
-      {
-        id: 'github_token',
-        label: 'GitHub Token',
-        description: 'Personal access token for GitHub API (repo scope required)',
-        required: true,
-        plugin: 'github',
-        key: 'token',
-      },
-      {
-        id: 'github_webhook_secret',
-        label: 'GitHub Webhook Secret',
-        description: 'Secret for validating webhook signatures',
-        required: true,
-        plugin: 'github',
-        key: 'webhook_secret',
-      },
-    ];
+    // No secrets required when using GitHub App
+    // The webhook secret is stored in the app credentials
+    // The API token is generated from the app installation
+    return [];
   }
 
   /**
@@ -233,7 +220,8 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
   }
 
   /**
-   * Parse issue comment event (manual trigger)
+   * Parse issue comment event (manual trigger or PR conversation)
+   * Note: GitHub sends issue_comment events for both issues AND PRs (PRs are issues)
    */
   private async parseCommentEvent(payload: GitHubIssueCommentEventPayload): Promise<TriggerEvent | null> {
     const { comment, issue, repository } = payload;
@@ -252,56 +240,74 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       return null;
     }
 
+    // Check if this is a PR comment (PRs have pull_request URL in the issue object)
+    const isPRComment = !!(issue as { pull_request?: { url: string } }).pull_request;
+
+    // For actual issues, require github-issues trigger to be enabled
+    // For PR comments, we always process (GitHub App handles PR conversations)
     const githubConfig = project.triggers.github;
-    if (!githubConfig?.issues) {
+    if (!isPRComment && !githubConfig?.issues) {
       console.log(`[GitHubIssuesTrigger] GitHub issues trigger not enabled for: ${repoFullName}`);
       return null;
     }
 
-    // Check if comment trigger is configured
-    if (!githubConfig.commentTrigger) {
-      console.log(`[GitHubIssuesTrigger] Comment trigger not configured for: ${repoFullName}`);
-      return null;
-    }
-
-    // Check if comment contains trigger phrase
     const commentBody = comment.body || '';
-    if (!commentBody.includes(githubConfig.commentTrigger)) {
-      console.log(
-        `[GitHubIssuesTrigger] Comment doesn't contain trigger phrase: "${githubConfig.commentTrigger}"`
-      );
-      return null;
-    }
-
-    // Check if user is allowed to trigger
     const commenter = comment.user?.login;
-    if (githubConfig.allowedUsers && githubConfig.allowedUsers.length > 0) {
-      if (!commenter || !githubConfig.allowedUsers.includes(commenter)) {
-        console.warn(
-          `[GitHubIssuesTrigger] User ${commenter} not in allowedUsers list. ` +
-          `Allowed: ${githubConfig.allowedUsers.join(', ')}`
+
+    // For issue comments (not PR), require trigger phrase and user allowlist
+    if (!isPRComment) {
+      // Check if comment trigger is configured
+      if (!githubConfig?.commentTrigger) {
+        console.log(`[GitHubIssuesTrigger] Comment trigger not configured for: ${repoFullName}`);
+        return null;
+      }
+
+      // Check if comment contains trigger phrase
+      if (!commentBody.includes(githubConfig.commentTrigger)) {
+        console.log(
+          `[GitHubIssuesTrigger] Comment doesn't contain trigger phrase: "${githubConfig.commentTrigger}"`
         );
         return null;
       }
+
+      // Check if user is allowed to trigger
+      if (githubConfig.allowedUsers && githubConfig.allowedUsers.length > 0) {
+        if (!commenter || !githubConfig.allowedUsers.includes(commenter)) {
+          console.warn(
+            `[GitHubIssuesTrigger] User ${commenter} not in allowedUsers list. ` +
+            `Allowed: ${githubConfig.allowedUsers.join(', ')}`
+          );
+          return null;
+        }
+      }
+
+      console.log(
+        `[GitHubIssuesTrigger] Manual trigger from ${commenter} on issue #${issue.number}`
+      );
+    } else {
+      // PR comment - process for conversation mode
+      console.log(
+        `[GitHubIssuesTrigger] PR comment from ${commenter} on PR #${issue.number}`
+      );
     }
 
-    console.log(
-      `[GitHubIssuesTrigger] Manual trigger from ${commenter} on issue #${issue.number}`
-    );
-
-    // Build trigger event (similar to issue event)
+    // Build trigger event
     const issueLabels = (issue.labels || []).map((l: GitHubLabel) => l.name);
 
     return {
       triggerType: 'github-issues',
       triggerId: `${repository.full_name}#${issue.number}-comment-${comment.id}`,
       projectId: project.id,
-      title: `GitHub Issue #${issue.number}: ${issue.title}`,
+      title: isPRComment
+        ? `PR Comment on #${issue.number}: ${issue.title}`
+        : `GitHub Issue #${issue.number}: ${issue.title}`,
       description: issue.body || 'No description provided',
       metadata: {
         severity: this.determineSeverity(issueLabels),
-        issueNumber: issue.number,
-        issueUrl: issue.html_url,
+        // For PRs, use prNumber; for issues, use issueNumber
+        ...(isPRComment
+          ? { prNumber: issue.number, prUrl: issue.html_url }
+          : { issueNumber: issue.number, issueUrl: issue.html_url }),
         labels: issueLabels,
         author: issue.user?.login,
         triggeredBy: commenter,
@@ -309,6 +315,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
         triggerCommentUrl: comment.html_url,
         createdAt: issue.created_at,
         state: issue.state,
+        isPRComment,
       },
       links: {
         web: issue.html_url,
@@ -503,6 +510,8 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
 
   /**
    * Generate investigation tools for GitHub issues
+   * Note: These tools use $GITHUB_TOKEN which is injected by the runner
+   * from the GitHub App installation token
    */
   async getTools(event: TriggerEvent): Promise<Tool[]> {
     const { issueNumber } = event.metadata;
@@ -579,9 +588,10 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
     const repoFullName = event.triggerId.split('#')[0];
     const [owner, repo] = repoFullName.split('/');
 
-    const token = await getGitHubToken(event.projectId);
+    // Get token from GitHub App installation (using repo name, not project ID)
+    const token = await getGitHubToken(repoFullName);
     if (!token) {
-      console.error('[GitHubIssuesTrigger] GITHUB_TOKEN not configured for project:', event.projectId);
+      console.error('[GitHubIssuesTrigger] No GitHub App installation for repo:', repoFullName);
       return;
     }
 
@@ -653,11 +663,13 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
     // Get owner/repo from metadata (conversation mode) or triggerId (standard mode)
     let owner: string;
     let repo: string;
+    let repoFullName: string;
     if (event.metadata.owner && event.metadata.repo) {
       owner = event.metadata.owner as string;
       repo = event.metadata.repo as string;
+      repoFullName = `${owner}/${repo}`;
     } else {
-      const repoFullName = event.triggerId.split('#')[0];
+      repoFullName = event.triggerId.split('#')[0];
       [owner, repo] = repoFullName.split('/');
     }
 
@@ -666,9 +678,10 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
       return;
     }
 
-    const token = await getGitHubToken(event.projectId);
+    // Get token from GitHub App installation (using repo name, not project ID)
+    const token = await getGitHubToken(repoFullName);
     if (!token) {
-      console.error('[GitHubIssuesTrigger] GITHUB_TOKEN not configured for project:', event.projectId);
+      console.error('[GitHubIssuesTrigger] No GitHub App installation for repo:', repoFullName);
       return;
     }
 

@@ -6,18 +6,26 @@ import * as githubApp from '../github/app-service';
 
 /**
  * Get GitHub webhook secret for a project (or global default)
+ * Note: When using GitHub App, the webhook secret is stored in app credentials
  */
 export async function getGitHubWebhookSecret(projectId?: string): Promise<string | null> {
+  // First check if we have app credentials with a webhook secret
+  const appCredentials = await githubApp.getAppCredentials();
+  if (appCredentials?.webhookSecret) {
+    return appCredentials.webhookSecret;
+  }
+
+  // Fall back to project-specific or global secret
   return getSecret('github', 'webhook_secret', projectId);
 }
 
 /**
- * Get a GitHub VCS instance for a project
+ * Get a GitHub VCS instance for a repository
  * Uses GitHub App authentication (requires app to be configured and installed)
  */
-export async function getGitHubVCS(projectId: string): Promise<GitHubVCS | null> {
+export async function getGitHubVCS(repoFullName: string): Promise<GitHubVCS | null> {
   // Use GitHub App authentication
-  const octokit = await githubApp.getOctokit(projectId);
+  const octokit = await githubApp.getOctokitForRepo(repoFullName);
   if (!octokit) {
     return null;
   }
@@ -25,14 +33,14 @@ export async function getGitHubVCS(projectId: string): Promise<GitHubVCS | null>
 }
 
 /**
- * Check if GitHub is available for a project
+ * Check if GitHub is available for a repository
  */
-export async function isGitHubAvailable(projectId: string): Promise<boolean> {
+export async function isGitHubAvailable(repoFullName: string): Promise<boolean> {
   const appConfigured = await githubApp.isAppConfigured();
   if (!appConfigured) return false;
 
-  const hasInstall = await githubApp.hasInstallation(projectId);
-  return hasInstall;
+  const installation = await githubApp.getInstallationForRepo(repoFullName);
+  return installation !== null;
 }
 
 /**
@@ -43,6 +51,11 @@ export async function initializeVCS(): Promise<void> {
   const appStatus = await githubApp.getAppStatus();
   if (appStatus.configured) {
     console.log(`✓ GitHub App configured: ${appStatus.appName}`);
+    if (appStatus.installations && appStatus.installations.length > 0) {
+      console.log(`  Connected accounts: ${appStatus.installations.map(i => i.accountLogin).join(', ')}`);
+    } else {
+      console.log('  ⚠ No GitHub accounts connected');
+    }
   } else {
     console.log('⚠ GitHub App not configured - set up via /settings');
   }
@@ -55,18 +68,18 @@ export async function initializeVCS(): Promise<void> {
 }
 
 /**
- * Get a GitHub token for a project (for git clone operations)
+ * Get a GitHub token for a repository (for git clone operations and API calls)
  * Returns an installation access token from the GitHub App
  */
-export async function getGitHubToken(projectId: string): Promise<string | null> {
+export async function getGitHubToken(repoFullName: string): Promise<string | null> {
   const credentials = await githubApp.getAppCredentials();
   if (!credentials) return null;
 
-  const installation = await githubApp.getInstallation(projectId);
+  const installation = await githubApp.getInstallationForRepo(repoFullName);
   if (!installation) return null;
 
   // Get Octokit which will have a valid token
-  const octokit = await githubApp.getOctokit(projectId);
+  const octokit = await githubApp.getOctokitForInstallation(installation.installationId);
   if (!octokit) return null;
 
   // Extract the token from Octokit's auth
@@ -81,11 +94,11 @@ export async function getGitHubToken(projectId: string): Promise<string | null> 
  */
 export async function getVCSForProject(
   vcsType: 'github' | 'gitlab' | 'bitbucket' | 'self-hosted',
-  projectId: string
+  repoFullName: string
 ): Promise<VCSPlugin | null> {
   switch (vcsType) {
     case 'github':
-      return getGitHubVCS(projectId);
+      return getGitHubVCS(repoFullName);
     // Future: case 'gitlab': return getGitLabVCS(projectId);
     default:
       return null;
@@ -97,4 +110,4 @@ export async function getVCSForProject(
  */
 export { isAppConfigured as isGitHubAppConfigured } from '../github/app-service';
 export { getAppStatus as getGitHubAppStatus } from '../github/app-service';
-export { getInstallationStatus as getGitHubInstallationStatus } from '../github/app-service';
+export { getInstallationsStatus as getGitHubInstallationsStatus } from '../github/app-service';

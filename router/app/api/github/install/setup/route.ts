@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBaseUrl } from '@/src/github/app-service';
+import { headers } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +10,12 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const baseUrl = getBaseUrl();
+
+  // Get base URL from request headers
+  const headersList = await headers();
+  const host = headersList.get('x-forwarded-host') || headersList.get('host') || 'localhost:3000';
+  const protocol = headersList.get('x-forwarded-proto') || 'http';
+  const baseUrl = `${protocol}://${host}`;
 
   // Forward all params to the callback
   const callbackUrl = new URL(`${baseUrl}/api/github/install/callback`);

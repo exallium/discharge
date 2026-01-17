@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import {
   exchangeManifestCode,
   storeAppCredentials,
-  getBaseUrl,
 } from '@/src/github/app-service';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +15,12 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const code = searchParams.get('code');
-  const baseUrl = getBaseUrl();
+
+  // Get base URL from request headers
+  const headersList = await headers();
+  const host = headersList.get('x-forwarded-host') || headersList.get('host') || 'localhost:3000';
+  const protocol = headersList.get('x-forwarded-proto') || 'http';
+  const baseUrl = `${protocol}://${host}`;
 
   if (!code) {
     // Redirect to settings with error

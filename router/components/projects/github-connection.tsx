@@ -19,9 +19,12 @@ interface GitHubInstallationStatus {
 
 interface GitHubConnectionProps {
   projectId: string;
+  isNewProject?: boolean;
+  canConnect?: boolean;
+  onSaveProject?: () => Promise<boolean>;
 }
 
-export function GitHubConnection({ projectId }: GitHubConnectionProps) {
+export function GitHubConnection({ projectId, isNewProject = false, canConnect = true, onSaveProject }: GitHubConnectionProps) {
   const [appStatus, setAppStatus] = useState<GitHubAppStatus | null>(null);
   const [installStatus, setInstallStatus] = useState<GitHubInstallationStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -31,22 +34,31 @@ export function GitHubConnection({ projectId }: GitHubConnectionProps) {
 
   useEffect(() => {
     fetchStatus();
-  }, [projectId]);
+  }, [projectId, isNewProject]);
 
   async function fetchStatus() {
     setIsLoading(true);
     try {
-      // Fetch both app status and installation status in parallel
-      const [appRes, installRes] = await Promise.all([
-        fetch('/api/github/app'),
-        fetch(`/api/github/install?projectId=${projectId}`),
-      ]);
+      // For new projects, only fetch app status (no installation yet)
+      if (isNewProject) {
+        const appRes = await fetch('/api/github/app');
+        if (appRes.ok) {
+          setAppStatus(await appRes.json());
+        }
+        setInstallStatus({ installed: false });
+      } else {
+        // Fetch both app status and installation status in parallel
+        const [appRes, installRes] = await Promise.all([
+          fetch('/api/github/app'),
+          fetch(`/api/github/install?projectId=${projectId}`),
+        ]);
 
-      if (appRes.ok) {
-        setAppStatus(await appRes.json());
-      }
-      if (installRes.ok) {
-        setInstallStatus(await installRes.json());
+        if (appRes.ok) {
+          setAppStatus(await appRes.json());
+        }
+        if (installRes.ok) {
+          setInstallStatus(await installRes.json());
+        }
       }
     } catch (err) {
       console.error('Failed to fetch GitHub status:', err);
@@ -61,6 +73,14 @@ export function GitHubConnection({ projectId }: GitHubConnectionProps) {
     setError(null);
 
     try {
+      // For new projects, save the project first
+      if (isNewProject && onSaveProject) {
+        const saved = await onSaveProject();
+        if (!saved) {
+          throw new Error('Failed to save project');
+        }
+      }
+
       // Get the install URL and redirect
       const response = await fetch(`/api/github/install?projectId=${projectId}`);
       const data = await response.json();
@@ -223,11 +243,20 @@ export function GitHubConnection({ projectId }: GitHubConnectionProps) {
             <p className="text-sm text-muted-foreground">
               Connect to GitHub to allow automatic pull request creation for this project&apos;s repository.
             </p>
-            <Button onClick={handleConnect} disabled={isConnecting}>
+            {isNewProject && !canConnect ? (
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                Fill in the Project ID, Repository, and Clone URL above to enable GitHub connection.
+              </p>
+            ) : isNewProject ? (
+              <p className="text-sm text-muted-foreground">
+                The project will be saved automatically when you connect to GitHub.
+              </p>
+            ) : null}
+            <Button onClick={handleConnect} disabled={isConnecting || !canConnect}>
               {isConnecting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Redirecting to GitHub...
+                  {isNewProject ? 'Saving & redirecting...' : 'Redirecting to GitHub...'}
                 </>
               ) : (
                 <>

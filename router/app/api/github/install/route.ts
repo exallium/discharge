@@ -1,41 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getInstallUrl,
-  getInstallationStatus,
-  deleteInstallation,
+  getInstallationsStatus,
+  deleteInstallationByAccount,
   isAppConfigured,
 } from '@/src/github/app-service';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * GET /api/github/install?projectId=xxx
- * Get installation status for a project, or redirect to install
+ * GET /api/github/install
+ * Get installation status and install URL
+ *
+ * No longer requires projectId - installations are account-level
  */
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const projectId = searchParams.get('projectId');
   const redirect = searchParams.get('redirect') === 'true';
-
-  if (!projectId) {
-    return NextResponse.json(
-      { error: 'Missing projectId parameter' },
-      { status: 400 }
-    );
-  }
 
   // Check if app is configured first
   const appConfigured = await isAppConfigured();
   if (!appConfigured) {
-    return NextResponse.json(
-      { error: 'GitHub App not configured. Please set up the GitHub App first.' },
-      { status: 400 }
-    );
+    return NextResponse.json({
+      appConfigured: false,
+      error: 'GitHub App not configured. Please set up the GitHub App in Settings first.',
+    });
   }
 
   // If redirect requested, send user to GitHub
   if (redirect) {
-    const installUrl = await getInstallUrl(projectId);
+    const installUrl = await getInstallUrl();
     if (!installUrl) {
       return NextResponse.json(
         { error: 'Failed to generate install URL' },
@@ -45,17 +39,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(installUrl);
   }
 
-  // Otherwise return status with install URL if not yet installed
+  // Return status with install URL
   try {
-    const status = await getInstallationStatus(projectId);
+    const status = await getInstallationsStatus();
+    const installUrl = await getInstallUrl();
 
-    // If not installed, include the install URL so frontend can redirect
-    if (!status.installed) {
-      const installUrl = await getInstallUrl(projectId);
-      return NextResponse.json({ ...status, installUrl });
-    }
-
-    return NextResponse.json(status);
+    return NextResponse.json({
+      appConfigured: true,
+      ...status,
+      installUrl,
+    });
   } catch (error) {
     console.error('Failed to get installation status:', error);
     return NextResponse.json(
@@ -66,22 +59,22 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * DELETE /api/github/install?projectId=xxx
- * Remove GitHub installation for a project
+ * DELETE /api/github/install?account=xxx
+ * Remove GitHub installation for an account
  */
 export async function DELETE(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const projectId = searchParams.get('projectId');
+  const account = searchParams.get('account');
 
-  if (!projectId) {
+  if (!account) {
     return NextResponse.json(
-      { error: 'Missing projectId parameter' },
+      { error: 'Missing account parameter' },
       { status: 400 }
     );
   }
 
   try {
-    await deleteInstallation(projectId);
+    await deleteInstallationByAccount(account);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Failed to delete installation:', error);

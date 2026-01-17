@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,21 +17,30 @@ import {
 import { toast } from 'sonner';
 import { ProjectSecrets } from '@/components/projects/project-secrets';
 import { WebhookInfo } from '@/components/projects/webhook-info';
-import { GitHubConnection } from '@/components/projects/github-connection';
+import { RepositoryPicker } from '@/components/projects/repository-picker';
 import type { ProjectConfig } from '@/src/db/repositories/projects';
-
-// Available VCS options (only show implemented ones)
-const VCS_OPTIONS = [
-  { value: 'github', label: 'GitHub' },
-] as const;
 
 // Available Runner options (only show implemented ones)
 const RUNNER_OPTIONS = [
   { value: 'claude-code', label: 'Claude Code' },
 ] as const;
 
-type VCSType = (typeof VCS_OPTIONS)[number]['value'];
 type RunnerType = (typeof RUNNER_OPTIONS)[number]['value'];
+
+interface Repository {
+  id: number;
+  name: string;
+  fullName: string;
+  private: boolean;
+  defaultBranch: string;
+  description: string | null;
+  htmlUrl: string;
+  cloneUrl: string;
+  owner: {
+    login: string;
+    type: string;
+  };
+}
 
 interface ProjectFormProps {
   project?: ProjectConfig;
@@ -44,9 +53,6 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
 
   // Form state
   const [id, setId] = useState(project?.id || '');
-  const [vcsType, setVcsType] = useState<VCSType>(
-    (project?.vcs?.type as VCSType) || 'github'
-  );
   const [runnerType, setRunnerType] = useState<RunnerType>(
     (project?.runner?.type as RunnerType) || 'claude-code'
   );
@@ -77,12 +83,16 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
     project?.conversation?.routingTags?.assist ?? 'ai:assist'
   );
 
-  // Auto-fill clone URL from repo full name
-  useEffect(() => {
-    if (repoFullName && !repo) {
-      setRepo(`https://github.com/${repoFullName}.git`);
+  // Handle repository selection from picker
+  const handleRepoSelect = (selectedRepo: Repository) => {
+    setRepoFullName(selectedRepo.fullName);
+    setRepo(selectedRepo.cloneUrl);
+    setBranch(selectedRepo.defaultBranch);
+    // Auto-generate project ID from repo name if not set
+    if (!id) {
+      setId(selectedRepo.name.toLowerCase().replace(/[^a-z0-9-]/g, '-'));
     }
-  }, [repoFullName, repo]);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,7 +119,7 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
         repoFullName,
         repo,
         branch,
-        vcs: { type: vcsType, owner: vcsOwner, repo: vcsRepo },
+        vcs: { type: 'github', owner: vcsOwner, repo: vcsRepo },
         runner: { type: runnerType },
         triggers,
         enabled,
@@ -173,11 +183,21 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Repository Selection - First for new projects */}
+      {isNew && (
+        <RepositoryPicker
+          onSelect={handleRepoSelect}
+          selectedRepo={repoFullName}
+        />
+      )}
+
       {/* Basic Info */}
       <Card>
         <CardHeader>
-          <CardTitle>Basic Information</CardTitle>
-          <CardDescription>Configure project identity and status</CardDescription>
+          <CardTitle>Project Configuration</CardTitle>
+          <CardDescription>
+            {isNew ? 'Configure your project settings' : 'Update project settings'}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -196,38 +216,6 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
             </p>
           </div>
 
-          {!isNew && (
-            <div className="flex items-center space-x-2">
-              <Switch id="enabled" name="enabled" checked={enabled} onCheckedChange={setEnabled} />
-              <Label htmlFor="enabled">Enabled</Label>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* VCS Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Version Control</CardTitle>
-          <CardDescription>Configure the repository source</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="vcsType">VCS Provider</Label>
-            <Select value={vcsType} onValueChange={(v) => setVcsType(v as VCSType)}>
-              <SelectTrigger id="vcsType">
-                <SelectValue placeholder="Select VCS provider" />
-              </SelectTrigger>
-              <SelectContent>
-                {VCS_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           <div className="space-y-2">
             <Label htmlFor="repoFullName">Repository (owner/repo)</Label>
             <Input
@@ -237,7 +225,13 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
               onChange={(e) => setRepoFullName(e.target.value)}
               placeholder="owner/repository"
               required
+              disabled={isNew} // Disabled for new - use picker
             />
+            {!isNew && (
+              <p className="text-xs text-muted-foreground">
+                Repository cannot be changed. Create a new project for a different repository.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -250,9 +244,6 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
               placeholder="https://github.com/owner/repo.git"
               required
             />
-            <p className="text-xs text-muted-foreground">
-              Auto-filled from repository name. Modify for SSH or custom URLs.
-            </p>
           </div>
 
           <div className="space-y-2">
@@ -266,13 +257,15 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
               required
             />
           </div>
+
+          {!isNew && (
+            <div className="flex items-center space-x-2">
+              <Switch id="enabled" name="enabled" checked={enabled} onCheckedChange={setEnabled} />
+              <Label htmlFor="enabled">Enabled</Label>
+            </div>
+          )}
         </CardContent>
       </Card>
-
-      {/* GitHub Connection - only show for existing projects with GitHub VCS */}
-      {!isNew && project?.id && vcsType === 'github' && (
-        <GitHubConnection projectId={project.id} />
-      )}
 
       {/* Runner Configuration */}
       <Card>
@@ -472,7 +465,7 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
           <Button type="button" variant="outline" onClick={() => router.back()}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isSubmitting}>
+          <Button type="submit" disabled={isSubmitting || (isNew && !repoFullName)}>
             {isSubmitting ? 'Saving...' : isNew ? 'Create Project' : 'Save Changes'}
           </Button>
         </div>

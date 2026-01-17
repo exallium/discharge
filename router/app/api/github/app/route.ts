@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import {
   getAppStatus,
   deleteAppCredentials,
   generateAppManifest,
-  getBaseUrl,
 } from '@/src/github/app-service';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +32,10 @@ export async function GET() {
  */
 export async function POST() {
   try {
-    const baseUrl = getBaseUrl();
+    const headersList = await headers();
+    const host = headersList.get('x-forwarded-host') || headersList.get('host') || 'localhost:3000';
+    const protocol = headersList.get('x-forwarded-proto') || 'http';
+    const baseUrl = `${protocol}://${host}`;
     const manifest = generateAppManifest(baseUrl);
 
     // Return the URL and manifest for the client to redirect
