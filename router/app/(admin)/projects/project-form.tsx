@@ -380,47 +380,50 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
             </p>
           </div>
 
-          <div className="space-y-2 pt-4 border-t">
-            <h4 className="text-sm font-medium">Routing Tags</h4>
-            <p className="text-xs text-muted-foreground mb-4">
-              Labels that control how issues are processed
-            </p>
+          {/* Routing Tags - only shown when GitHub Issues trigger is enabled */}
+          {githubIssues && (
+            <div className="space-y-2 pt-4 border-t">
+              <h4 className="text-sm font-medium">Routing Tags (GitHub Labels)</h4>
+              <p className="text-xs text-muted-foreground mb-4">
+                GitHub labels that control how issues are processed. Add these labels to issues to override confidence-based routing.
+              </p>
 
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="space-y-2">
-                <Label htmlFor="routingTagPlan">Plan Review</Label>
-                <Input
-                  id="routingTagPlan"
-                  name="routingTagPlan"
-                  value={routingTagPlan}
-                  onChange={(e) => setRoutingTagPlan(e.target.value)}
-                  placeholder="ai:plan"
-                />
-              </div>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="routingTagPlan">Plan Review</Label>
+                  <Input
+                    id="routingTagPlan"
+                    name="routingTagPlan"
+                    value={routingTagPlan}
+                    onChange={(e) => setRoutingTagPlan(e.target.value)}
+                    placeholder="ai:plan"
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="routingTagAuto">Auto Execute</Label>
-                <Input
-                  id="routingTagAuto"
-                  name="routingTagAuto"
-                  value={routingTagAuto}
-                  onChange={(e) => setRoutingTagAuto(e.target.value)}
-                  placeholder="ai:auto"
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="routingTagAuto">Auto Execute</Label>
+                  <Input
+                    id="routingTagAuto"
+                    name="routingTagAuto"
+                    value={routingTagAuto}
+                    onChange={(e) => setRoutingTagAuto(e.target.value)}
+                    placeholder="ai:auto"
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="routingTagAssist">Assist Only</Label>
-                <Input
-                  id="routingTagAssist"
-                  name="routingTagAssist"
-                  value={routingTagAssist}
-                  onChange={(e) => setRoutingTagAssist(e.target.value)}
-                  placeholder="ai:assist"
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="routingTagAssist">Assist Only</Label>
+                  <Input
+                    id="routingTagAssist"
+                    name="routingTagAssist"
+                    value={routingTagAssist}
+                    onChange={(e) => setRoutingTagAssist(e.target.value)}
+                    placeholder="ai:assist"
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
