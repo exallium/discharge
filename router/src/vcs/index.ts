@@ -2,18 +2,7 @@ import { VCSPlugin } from './base';
 import { GitHubVCS } from './github';
 import { getSecret } from '../secrets';
 import { registerPRProvider, getGitHubPRProvider } from '../pr';
-
-/**
- * Registry of VCS plugins
- */
-const vcsPlugins = new Map<string, VCSPlugin>();
-
-/**
- * Get GitHub token for a project (or global default)
- */
-export async function getGitHubToken(projectId?: string): Promise<string | null> {
-  return getSecret('github', 'token', projectId);
-}
+import * as githubApp from '../github/app-service';
 
 /**
  * Get GitHub webhook secret for a project (or global default)
@@ -23,30 +12,42 @@ export async function getGitHubWebhookSecret(projectId?: string): Promise<string
 }
 
 /**
- * Get or create a GitHub VCS instance for a project
- * Uses project-specific token if available, otherwise global
+ * Get a GitHub VCS instance for a project
+ * Uses GitHub App authentication (requires app to be configured and installed)
  */
-export async function getGitHubVCS(projectId?: string): Promise<GitHubVCS | null> {
-  const token = await getGitHubToken(projectId);
-  if (!token) {
+export async function getGitHubVCS(projectId: string): Promise<GitHubVCS | null> {
+  // Use GitHub App authentication
+  const octokit = await githubApp.getOctokit(projectId);
+  if (!octokit) {
     return null;
   }
-  return new GitHubVCS(token);
+  return new GitHubVCS(octokit);
 }
 
 /**
- * Initialize global VCS plugins (for backwards compatibility)
+ * Check if GitHub is available for a project
+ */
+export async function isGitHubAvailable(projectId: string): Promise<boolean> {
+  const appConfigured = await githubApp.isAppConfigured();
+  if (!appConfigured) return false;
+
+  const hasInstall = await githubApp.hasInstallation(projectId);
+  return hasInstall;
+}
+
+/**
+ * Initialize VCS plugins
  */
 export async function initializeVCS(): Promise<void> {
-  // GitHub VCS (global instance)
-  const githubToken = await getGitHubToken();
-  if (githubToken) {
-    const github = new GitHubVCS(githubToken);
-    vcsPlugins.set('github', github);
-    console.log('✓ GitHub VCS initialized');
+  // Check if GitHub App is configured
+  const appStatus = await githubApp.getAppStatus();
+  if (appStatus.configured) {
+    console.log(`✓ GitHub App configured: ${appStatus.appName}`);
+  } else {
+    console.log('⚠ GitHub App not configured - set up via /settings');
   }
 
-  // Register GitHub PR provider (always available, checks token at runtime)
+  // Register GitHub PR provider (checks installation at runtime)
   registerPRProvider(getGitHubPRProvider());
   console.log('✓ GitHub PR provider registered');
 
@@ -54,11 +55,24 @@ export async function initializeVCS(): Promise<void> {
 }
 
 /**
- * Get a VCS plugin by ID (global instance)
- * @deprecated Use getVCSForProject for project-specific tokens
+ * Get a GitHub token for a project (for git clone operations)
+ * Returns an installation access token from the GitHub App
  */
-export function getVCSPlugin(id: string): VCSPlugin | undefined {
-  return vcsPlugins.get(id);
+export async function getGitHubToken(projectId: string): Promise<string | null> {
+  const credentials = await githubApp.getAppCredentials();
+  if (!credentials) return null;
+
+  const installation = await githubApp.getInstallation(projectId);
+  if (!installation) return null;
+
+  // Get Octokit which will have a valid token
+  const octokit = await githubApp.getOctokit(projectId);
+  if (!octokit) return null;
+
+  // Extract the token from Octokit's auth
+  // The token is cached by the app service
+  const auth = await octokit.auth() as { token: string };
+  return auth.token;
 }
 
 /**
@@ -67,7 +81,7 @@ export function getVCSPlugin(id: string): VCSPlugin | undefined {
  */
 export async function getVCSForProject(
   vcsType: 'github' | 'gitlab' | 'bitbucket' | 'self-hosted',
-  projectId?: string
+  projectId: string
 ): Promise<VCSPlugin | null> {
   switch (vcsType) {
     case 'github':
@@ -79,35 +93,8 @@ export async function getVCSForProject(
 }
 
 /**
- * List all available VCS plugins
+ * Re-export GitHub App service functions for convenience
  */
-export function listVCSPlugins(): string[] {
-  return Array.from(vcsPlugins.keys());
-}
-
-/**
- * Get all VCS plugins
- */
-export function getAllVCSPlugins(): VCSPlugin[] {
-  return Array.from(vcsPlugins.values());
-}
-
-/**
- * Check if a VCS plugin is available
- */
-export function hasVCSPlugin(id: string): boolean {
-  return vcsPlugins.has(id);
-}
-
-/**
- * Validate all VCS plugins
- */
-export async function validateAllVCS(): Promise<Record<string, { valid: boolean; error?: string }>> {
-  const results: Record<string, { valid: boolean; error?: string }> = {};
-
-  for (const [id, plugin] of vcsPlugins.entries()) {
-    results[id] = await plugin.validate();
-  }
-
-  return results;
-}
+export { isAppConfigured as isGitHubAppConfigured } from '../github/app-service';
+export { getAppStatus as getGitHubAppStatus } from '../github/app-service';
+export { getInstallationStatus as getGitHubInstallationStatus } from '../github/app-service';

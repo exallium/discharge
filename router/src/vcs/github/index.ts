@@ -6,7 +6,7 @@ import { logger } from '../../logger';
 
 /**
  * GitHub VCS plugin using Octokit
- * Supports Personal Access Tokens and GitHub Apps
+ * Supports GitHub App authentication (primary) or direct Octokit instance
  */
 export class GitHubVCS implements VCSPlugin {
   id = 'github';
@@ -17,8 +17,12 @@ export class GitHubVCS implements VCSPlugin {
 
   private octokit: Octokit;
 
-  constructor(token: string) {
-    this.octokit = new Octokit({ auth: token });
+  /**
+   * Create a GitHubVCS instance with a pre-configured Octokit
+   * Use the factory function getGitHubVCS() to create instances with proper auth
+   */
+  constructor(octokit: Octokit) {
+    this.octokit = octokit;
   }
 
   async createPullRequest(

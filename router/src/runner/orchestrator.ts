@@ -249,6 +249,7 @@ async function createPullRequest(
 
   // Use the provider to create the PR
   const result = await provider.createPullRequest({
+    projectId: project.id,
     owner: project.vcs.owner,
     repo: project.vcs.repo,
     head: branchName,

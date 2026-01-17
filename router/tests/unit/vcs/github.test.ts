@@ -1,29 +1,29 @@
 import { GitHubVCS } from '../../../src/vcs/github';
+import { Octokit } from '@octokit/rest';
 
-// Mock Octokit
+// Mock Octokit methods
 const mockCreate = jest.fn();
 const mockRequestReviewers = jest.fn();
 const mockCreateComment = jest.fn();
 const mockAddLabels = jest.fn();
 const mockGetAuthenticated = jest.fn();
 
-jest.mock('@octokit/rest', () => {
+// Create a mock Octokit instance
+function createMockOctokit(): Octokit {
   return {
-    Octokit: jest.fn().mockImplementation(() => ({
-      pulls: {
-        create: mockCreate,
-        requestReviewers: mockRequestReviewers,
-      },
-      issues: {
-        createComment: mockCreateComment,
-        addLabels: mockAddLabels,
-      },
-      users: {
-        getAuthenticated: mockGetAuthenticated,
-      },
-    })),
-  };
-});
+    pulls: {
+      create: mockCreate,
+      requestReviewers: mockRequestReviewers,
+    },
+    issues: {
+      createComment: mockCreateComment,
+      addLabels: mockAddLabels,
+    },
+    users: {
+      getAuthenticated: mockGetAuthenticated,
+    },
+  } as unknown as Octokit;
+}
 
 describe('GitHubVCS', () => {
   let github: GitHubVCS;
@@ -32,8 +32,8 @@ describe('GitHubVCS', () => {
     // Clear all mocks
     jest.clearAllMocks();
 
-    // Create GitHub VCS instance
-    github = new GitHubVCS('test-token');
+    // Create GitHub VCS instance with mock Octokit
+    github = new GitHubVCS(createMockOctokit());
   });
 
   describe('constructor', () => {

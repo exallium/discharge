@@ -64,6 +64,11 @@ async function getAuthenticatedRepoUrl(repoUrl: string, projectId?: string): Pro
     return repoUrl;
   }
 
+  // Need project ID to get installation token
+  if (!projectId) {
+    return repoUrl;
+  }
+
   const token = await getGitHubToken(projectId);
   if (!token) {
     return repoUrl;

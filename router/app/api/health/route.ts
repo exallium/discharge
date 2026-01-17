@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import { getConnection, getQueueStats } from '@/src/queue';
 import { triggers } from '@/src/triggers';
-import { getAllVCSPlugins } from '@/src/vcs';
+import { getAppStatus } from '@/src/github/app-service';
 import { getAllRunners } from '@/src/runner';
 import { getErrorMessage } from '@/src/types/errors';
 import { checkDatabaseHealth, isDatabaseInitialized } from '@/src/db';
@@ -118,22 +118,32 @@ function checkTriggers(): CheckResult {
 }
 
 /**
- * Check VCS plugins
+ * Check VCS / GitHub App status
  */
-function checkVCS(): CheckResult {
-  const plugins = getAllVCSPlugins();
-  const registeredCount = plugins.length;
-  const vcsTypes = plugins.map(v => v.type);
+async function checkVCS(): Promise<CheckResult> {
+  try {
+    const appStatus = await getAppStatus();
 
-  return {
-    status: registeredCount > 0 ? 'pass' : 'warn',
-    message:
-      registeredCount > 0
-        ? `${registeredCount} VCS plugin(s) registered`
-        : 'No VCS plugins registered',
-    count: registeredCount,
-    vcs: vcsTypes,
-  };
+    if (appStatus.configured) {
+      return {
+        status: 'pass',
+        message: `GitHub App configured: ${appStatus.appName}`,
+        appName: appStatus.appName,
+        appSlug: appStatus.appSlug,
+      };
+    } else {
+      return {
+        status: 'warn',
+        message: 'GitHub App not configured - set up via /settings',
+      };
+    }
+  } catch (error) {
+    return {
+      status: 'fail',
+      message: 'Failed to check GitHub App status',
+      error: getErrorMessage(error),
+    };
+  }
 }
 
 /**
@@ -194,7 +204,7 @@ export async function GET() {
       checkRedis(),
       checkQueue(),
       Promise.resolve(checkTriggers()),
-      Promise.resolve(checkVCS()),
+      checkVCS(),
       Promise.resolve(checkRunners()),
     ]);
 

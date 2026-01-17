@@ -11,6 +11,8 @@ import type { ProjectConfig } from '../config/projects';
  * Options for creating a pull request
  */
 export interface CreatePROptions {
+  /** Project ID for credential lookup */
+  projectId: string;
   /** Repository owner/organization */
   owner: string;
   /** Repository name */
