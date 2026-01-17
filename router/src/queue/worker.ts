@@ -10,9 +10,11 @@ import {
   getEventRouter,
 } from '../conversation/router';
 import { getConversationService } from '../conversation';
+import { findProjectById } from '../config/projects';
 import { logger } from '../logger';
 import * as jobHistoryRepo from '../db/repositories/job-history';
 import { cleanupStaleWorktrees } from '../runner/workspace';
+import type { TriggerEvent } from '../triggers/base';
 
 /**
  * Whether git workspaces feature is enabled
@@ -149,6 +151,50 @@ async function processConversationJob(
 
     // Get conversation service
     const conversationService = getConversationService();
+
+    // Post "starting analysis" comment for initial jobs (not continuations)
+    if (isInitial && trigger.postFeedback) {
+      const project = await findProjectById(projectId);
+      if (project) {
+        // Build minimal trigger event for posting feedback
+        const firstEvent = events[0];
+        const triggerEvent: TriggerEvent = {
+          triggerType,
+          triggerId,
+          projectId,
+          title: firstEvent?.target.title || 'Issue',
+          description: firstEvent?.target.body || '',
+          metadata: {
+            issueNumber: firstEvent?.target.type === 'issue' ? firstEvent.target.number : undefined,
+            prNumber: firstEvent?.target.type === 'pull_request' ? firstEvent.target.number : undefined,
+            owner: project.vcs.owner,
+            repo: project.vcs.repo,
+          },
+          raw: events,
+        };
+
+        // Determine what we're working on
+        const targetType = firstEvent?.target.type === 'pull_request' ? 'PR' : 'issue';
+        const eventType = firstEvent?.type || 'request';
+
+        let startingMessage = '🔍 Starting analysis...';
+        if (eventType === 'pr_review' || eventType === 'pr_review_comment') {
+          startingMessage = '🔍 Reviewing your feedback...';
+        } else if (eventType === 'issue_comment') {
+          startingMessage = '🔍 Processing your request...';
+        } else if (targetType === 'issue') {
+          startingMessage = '🔍 Analyzing this issue...';
+        }
+
+        await trigger.postFeedback(triggerEvent, startingMessage).catch((err) => {
+          // Don't fail the job if we can't post the starting comment
+          logger.warn('Failed to post starting comment', {
+            conversationId,
+            error: getErrorMessage(err),
+          });
+        });
+      }
+    }
 
     // Run conversation orchestration
     const result = await orchestrateConversation(
