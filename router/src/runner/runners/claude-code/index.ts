@@ -586,12 +586,17 @@ export class ClaudeCodeRunner implements RunnerPlugin {
     let workspacePath = '';
     let fixBranch = '';
 
+    // Check if we're updating an existing PR (should use existing branch)
+    const isUpdatingExistingPR = !!options.existingPrBranch;
+
     console.log(`[ClaudeCode:${jobId}] Starting conversation mode execution`, {
       repo: options.repoUrl,
       branch: options.branch,
       routeMode: options.routeMode,
       iteration: options.iteration,
       hasExistingPlan: !!options.existingPlan,
+      existingPrNumber: options.existingPrNumber,
+      existingPrBranch: options.existingPrBranch,
       useWorktrees,
     });
 
@@ -599,37 +604,45 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       if (isPreConfiguredWorkspace) {
         // Use provided workspace
         workspacePath = options.workspacePath!;
-        fixBranch = `fix/conversation-${jobId.slice(0, 8)}`;
+        fixBranch = options.existingPrBranch || `fix/conversation-${jobId.slice(0, 8)}`;
       } else if (useWorktrees) {
         // Use workspace manager for efficient worktree-based execution
         console.log(`[ClaudeCode:${jobId}] Creating worktree...`);
         workspacePath = await createWorktree(
           options.projectId!,
           jobId,
-          options.branch,
+          options.existingPrBranch || options.branch, // Use PR branch if updating existing PR
           options.repoUrl
         );
-        fixBranch = `fix/auto-${jobId.slice(0, 8)}`;
+        fixBranch = options.existingPrBranch || `fix/auto-${jobId.slice(0, 8)}`;
         console.log(`[ClaudeCode:${jobId}] Worktree created at ${workspacePath}`);
       } else {
         // Traditional clone approach
         const worktreeDir = process.env.WORKTREE_DIR || '/workspaces';
         workspacePath = `${worktreeDir}/${jobId}`;
 
-        console.log(`[ClaudeCode:${jobId}] Cloning repository...`);
+        // Clone the appropriate branch
+        const cloneBranch = options.existingPrBranch || options.branch;
+        console.log(`[ClaudeCode:${jobId}] Cloning repository (branch: ${cloneBranch})...`);
         const authUrl = await getAuthenticatedRepoUrl(options.repoUrl);
         await execAsync(
-          `git clone --depth 1 -b ${options.branch} ${authUrl} ${workspacePath}`,
+          `git clone --depth 1 -b ${cloneBranch} ${authUrl} ${workspacePath}`,
           { timeout: 60000 }
         );
 
-        // Create fix branch
-        fixBranch = `fix/conversation-${jobId.slice(0, 8)}`;
-        console.log(`[ClaudeCode:${jobId}] Creating branch ${fixBranch}`);
-        await execAsync(`git checkout -b ${fixBranch}`, { cwd: workspacePath }).catch(() => {
-          // Branch might already exist
-          console.log(`[ClaudeCode:${jobId}] Branch already exists, continuing...`);
-        });
+        if (isUpdatingExistingPR) {
+          // Use existing PR branch - no need to create a new one
+          fixBranch = options.existingPrBranch!;
+          console.log(`[ClaudeCode:${jobId}] Using existing PR branch: ${fixBranch}`);
+        } else {
+          // Create new fix branch
+          fixBranch = `fix/conversation-${jobId.slice(0, 8)}`;
+          console.log(`[ClaudeCode:${jobId}] Creating branch ${fixBranch}`);
+          await execAsync(`git checkout -b ${fixBranch}`, { cwd: workspacePath }).catch(() => {
+            // Branch might already exist
+            console.log(`[ClaudeCode:${jobId}] Branch already exists, continuing...`);
+          });
+        }
       }
 
       // Build the conversation prompt
