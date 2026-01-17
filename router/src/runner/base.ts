@@ -5,7 +5,7 @@
  * and fix bugs. Each runner implements a standard interface for execution.
  */
 
-import { Tool, AnalysisResult } from '../triggers/base';
+import { Tool, AnalysisResult, SecretRequirement } from '../triggers/base';
 import type {
   ConversationMessage,
   RouteMode,
@@ -72,6 +72,13 @@ export interface RunnerPlugin {
   id: string;                // Unique identifier (e.g., 'claude-code')
   type: string;              // Runner type (e.g., 'claude-code', 'openai')
   name: string;              // Display name (e.g., 'Claude Code')
+
+  /**
+   * Get the secrets required by this runner
+   *
+   * @returns Array of secret requirements
+   */
+  getRequiredSecrets(): SecretRequirement[];
 
   /**
    * Execute the AI agent

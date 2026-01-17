@@ -336,6 +336,9 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
 
     const prLabels = (pull_request.labels || []).map((l: GitHubLabel) => l.name);
 
+    // Extract linked issue number from PR body (e.g., "Fixes #123")
+    const linkedIssueNumber = this.extractLinkedIssueNumber(pull_request.body);
+
     return {
       triggerType: 'github-issues',
       triggerId: `${repository.full_name}#${pull_request.number}-review-${review.id}`,
@@ -344,6 +347,8 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       description: review.body || 'No review body',
       metadata: {
         severity: this.determineSeverity(prLabels),
+        // Use linked issue number if found, so conversation routes to the original issue
+        issueNumber: linkedIssueNumber || undefined,
         prNumber: pull_request.number,
         prUrl: pull_request.html_url,
         reviewId: review.id,
@@ -383,6 +388,9 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
 
     const prLabels = (pull_request.labels || []).map((l: GitHubLabel) => l.name);
 
+    // Extract linked issue number from PR body (e.g., "Fixes #123")
+    const linkedIssueNumber = this.extractLinkedIssueNumber(pull_request.body);
+
     return {
       triggerType: 'github-issues',
       triggerId: `${repository.full_name}#${pull_request.number}-comment-${comment.id}`,
@@ -391,6 +399,8 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       description: comment.body || 'No comment body',
       metadata: {
         severity: this.determineSeverity(prLabels),
+        // Use linked issue number if found, so conversation routes to the original issue
+        issueNumber: linkedIssueNumber || undefined,
         prNumber: pull_request.number,
         prUrl: pull_request.html_url,
         commentId: comment.id,
@@ -948,11 +958,28 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
   /**
    * Get unique conversation identifier from trigger event
    * Format: owner/repo#number
+   *
+   * For PR events, uses the linked issue number if available,
+   * otherwise falls back to the PR number.
    */
   getConversationId(event: TriggerEvent): string {
-    const issueNumber = event.metadata.issueNumber as number;
     const repoFullName = event.triggerId.split('#')[0];
-    return `${repoFullName}#${issueNumber}`;
+
+    // Prefer issue number (set for issue events and PR events linked to issues)
+    const issueNumber = event.metadata.issueNumber as number | undefined;
+    if (issueNumber) {
+      return `${repoFullName}#${issueNumber}`;
+    }
+
+    // Fall back to PR number for PR events without linked issue
+    const prNumber = event.metadata.prNumber as number | undefined;
+    if (prNumber) {
+      return `${repoFullName}#${prNumber}`;
+    }
+
+    // Last resort: extract from triggerId
+    const match = event.triggerId.match(/#(\d+)/);
+    return match ? `${repoFullName}#${match[1]}` : event.triggerId;
   }
 
   /**
