@@ -343,7 +343,30 @@ async function handlePost(request: NextRequest, { params }: RouteParams) {
           { status: 202 }
         );
       }
-      // If parseConversationEvent returns null, fall through to legacy flow
+
+      // Conversation-enabled trigger returned null - filter the event (don't fall through to legacy)
+      setLoggingContext(request, {
+        outcome: 'filtered',
+        outcomeReason: 'Event not recognized by conversation trigger',
+        details: {
+          responseBody: {
+            queued: false,
+            reason: 'Event type not supported',
+          },
+        },
+      });
+
+      return NextResponse.json(
+        {
+          queued: false,
+          reason: 'Event type not supported',
+          triggerType: event.triggerType,
+          triggerId: event.triggerId,
+          projectId: event.projectId,
+          requestId,
+        },
+        { status: 200 }
+      );
     }
 
     // Legacy flow for triggers that don't support conversation mode

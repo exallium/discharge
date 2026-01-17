@@ -42,6 +42,124 @@ export interface LockResult {
 }
 
 /**
+ * Debounce PR review events by merging pr_review and pr_review_comment events
+ * that target the same PR into a single event.
+ *
+ * When a GitHub review is submitted with inline comments, GitHub sends:
+ * - 1 pull_request_review event (the review submission)
+ * - N pull_request_review_comment events (one per inline comment)
+ *
+ * This function merges them so the AI sees all feedback at once.
+ */
+function debouncePRReviewEvents(events: PendingEventEntry[]): PendingEventEntry[] {
+  // Separate PR review events from other events
+  const prReviewEvents: PendingEventEntry[] = [];
+  const prReviewCommentEvents: PendingEventEntry[] = [];
+  const otherEvents: PendingEventEntry[] = [];
+
+  for (const event of events) {
+    if (event.eventType === 'pr_review') {
+      prReviewEvents.push(event);
+    } else if (event.eventType === 'pr_review_comment') {
+      prReviewCommentEvents.push(event);
+    } else {
+      otherEvents.push(event);
+    }
+  }
+
+  // If no PR review events to merge, return original list
+  if (prReviewEvents.length === 0 && prReviewCommentEvents.length === 0) {
+    return events;
+  }
+
+  // Group review comments by target PR number
+  const commentsByPR = new Map<string | number, PendingEventEntry[]>();
+  for (const event of prReviewCommentEvents) {
+    const prNumber = event.eventPayload.target.number;
+    const existing = commentsByPR.get(prNumber) || [];
+    existing.push(event);
+    commentsByPR.set(prNumber, existing);
+  }
+
+  // Merge comments into their corresponding pr_review events
+  const mergedReviews: PendingEventEntry[] = [];
+  const processedPRs = new Set<string | number>();
+
+  for (const reviewEvent of prReviewEvents) {
+    const prNumber = reviewEvent.eventPayload.target.number;
+    processedPRs.add(prNumber);
+
+    const relatedComments = commentsByPR.get(prNumber) || [];
+
+    if (relatedComments.length === 0) {
+      // No comments to merge, keep as-is
+      mergedReviews.push(reviewEvent);
+    } else {
+      // Merge comments into the review event
+      const mergedPayload: ConversationEvent = {
+        ...reviewEvent.eventPayload,
+        payload: {
+          ...reviewEvent.eventPayload.payload,
+          reviewComments: relatedComments.flatMap(
+            (c) => c.eventPayload.payload.reviewComments || []
+          ),
+        },
+      };
+
+      mergedReviews.push({
+        ...reviewEvent,
+        eventPayload: mergedPayload,
+      });
+
+      logger.info('Merged PR review comments into review event', {
+        prNumber,
+        commentCount: relatedComments.length,
+      });
+    }
+  }
+
+  // Handle orphaned comments (no corresponding pr_review event)
+  // Merge them into a single pr_review_comment event per PR
+  for (const [prNumber, comments] of commentsByPR) {
+    if (processedPRs.has(prNumber)) {
+      continue; // Already merged into a review
+    }
+
+    if (comments.length === 1) {
+      // Single comment, keep as-is
+      mergedReviews.push(comments[0]);
+    } else {
+      // Multiple comments without a review - merge into first comment
+      const baseEvent = comments[0];
+      const allComments = comments.flatMap(
+        (c) => c.eventPayload.payload.reviewComments || []
+      );
+
+      const mergedPayload: ConversationEvent = {
+        ...baseEvent.eventPayload,
+        payload: {
+          ...baseEvent.eventPayload.payload,
+          reviewComments: allComments,
+        },
+      };
+
+      mergedReviews.push({
+        ...baseEvent,
+        eventPayload: mergedPayload,
+      });
+
+      logger.info('Merged orphaned PR review comments', {
+        prNumber,
+        commentCount: comments.length,
+      });
+    }
+  }
+
+  // Return merged events + other events, preserving original order for other events
+  return [...otherEvents, ...mergedReviews];
+}
+
+/**
  * Conversation Service
  *
  * Manages:
@@ -117,15 +235,19 @@ export class ConversationService {
     pendingEvents: PendingEventEntry[];
   }> {
     // First drain events (atomically)
-    const pendingEvents = await conversationsRepo.drainEvents(conversationId);
+    const rawEvents = await conversationsRepo.drainEvents(conversationId);
+
+    // Debounce PR review events (merge review + comments into single events)
+    const pendingEvents = debouncePRReviewEvents(rawEvents);
 
     // Then release lock
     const released = await conversationsRepo.releaseLock(conversationId, jobId);
 
-    if (pendingEvents.length > 0) {
+    if (rawEvents.length > 0) {
       logger.info('Drained pending events', {
         conversationId,
-        count: pendingEvents.length,
+        rawCount: rawEvents.length,
+        debouncedCount: pendingEvents.length,
       });
     }
 
