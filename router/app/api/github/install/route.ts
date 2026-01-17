@@ -45,9 +45,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(installUrl);
   }
 
-  // Otherwise return status
+  // Otherwise return status with install URL if not yet installed
   try {
     const status = await getInstallationStatus(projectId);
+
+    // If not installed, include the install URL so frontend can redirect
+    if (!status.installed) {
+      const installUrl = await getInstallUrl(projectId);
+      return NextResponse.json({ ...status, installUrl });
+    }
+
     return NextResponse.json(status);
   } catch (error) {
     console.error('Failed to get installation status:', error);

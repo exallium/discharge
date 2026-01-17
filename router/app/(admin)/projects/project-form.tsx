@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner';
 import { ProjectSecrets } from '@/components/projects/project-secrets';
 import { WebhookInfo } from '@/components/projects/webhook-info';
+import { GitHubConnection } from '@/components/projects/github-connection';
 import type { ProjectConfig } from '@/src/db/repositories/projects';
 
 // Available VCS options (only show implemented ones)
@@ -267,6 +268,11 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* GitHub Connection - only show for existing projects with GitHub VCS */}
+      {!isNew && project?.id && vcsType === 'github' && (
+        <GitHubConnection projectId={project.id} />
+      )}
 
       {/* Runner Configuration */}
       <Card>

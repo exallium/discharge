@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 import { PageHeader } from '@/components/layout/page-header';
 import { settingsRepo } from '@/src/db/repositories';
 import { SecuritySection } from './security-section';
+import { GitHubAppSection } from './github-app-section';
 
 export default async function SettingsPage() {
   // Fetch TOTP status server-side for initial render
@@ -17,6 +18,7 @@ export default async function SettingsPage() {
       />
 
       <div className="grid gap-6">
+        <GitHubAppSection />
         <SecuritySection initialTotpEnabled={totpEnabled} />
       </div>
     </div>
