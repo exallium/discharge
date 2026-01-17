@@ -164,18 +164,20 @@ async function prepareClaudeConfig(workspacePath: string): Promise<string> {
 /**
  * Inject authentication token into git URL for cloning
  */
-async function getAuthenticatedRepoUrl(repoUrl: string, projectId?: string): Promise<string> {
+async function getAuthenticatedRepoUrl(repoUrl: string): Promise<string> {
   // Only modify HTTPS GitHub URLs
   if (!repoUrl.startsWith('https://github.com/')) {
     return repoUrl;
   }
 
-  // Need project ID to get installation token
-  if (!projectId) {
+  // Extract owner/repo from URL (e.g., https://github.com/owner/repo.git -> owner/repo)
+  const match = repoUrl.match(/github\.com\/([^/]+\/[^/.]+)/);
+  if (!match) {
     return repoUrl;
   }
+  const repoFullName = match[1];
 
-  const token = await getGitHubToken(projectId);
+  const token = await getGitHubToken(repoFullName);
   if (!token) {
     return repoUrl;
   }
@@ -251,7 +253,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         workspacePath = `${worktreeDir}/${jobId}`;
 
         console.log(`[ClaudeCode:${jobId}] Cloning repository...`);
-        const authUrl = await getAuthenticatedRepoUrl(options.repoUrl, options.projectId);
+        const authUrl = await getAuthenticatedRepoUrl(options.repoUrl);
         await execAsync(
           `git clone --depth 1 -b ${options.branch} ${authUrl} ${workspacePath}`,
           { timeout: 60000 }
@@ -615,7 +617,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         workspacePath = `${worktreeDir}/${jobId}`;
 
         console.log(`[ClaudeCode:${jobId}] Cloning repository...`);
-        const authUrl = await getAuthenticatedRepoUrl(options.repoUrl, options.projectId);
+        const authUrl = await getAuthenticatedRepoUrl(options.repoUrl);
         await execAsync(
           `git clone --depth 1 -b ${options.branch} ${authUrl} ${workspacePath}`,
           { timeout: 60000 }

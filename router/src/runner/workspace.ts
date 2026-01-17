@@ -58,18 +58,20 @@ interface ProjectRepo {
 /**
  * Inject authentication token into git URL for cloning
  */
-async function getAuthenticatedRepoUrl(repoUrl: string, projectId?: string): Promise<string> {
+async function getAuthenticatedRepoUrl(repoUrl: string): Promise<string> {
   // Only modify HTTPS GitHub URLs
   if (!repoUrl.startsWith('https://github.com/')) {
     return repoUrl;
   }
 
-  // Need project ID to get installation token
-  if (!projectId) {
+  // Extract owner/repo from URL (e.g., https://github.com/owner/repo.git -> owner/repo)
+  const match = repoUrl.match(/github\.com\/([^/]+\/[^/.]+)/);
+  if (!match) {
     return repoUrl;
   }
+  const repoFullName = match[1];
 
-  const token = await getGitHubToken(projectId);
+  const token = await getGitHubToken(repoFullName);
   if (!token) {
     return repoUrl;
   }
@@ -117,14 +119,14 @@ export async function getOrCreateRepo(
   if (await hasProjectRepo(projectId)) {
     // Repository exists - fetch latest
     logger.debug('Fetching updates for existing repo', { projectId });
-    await syncRepo(repoPath, projectId);
+    await syncRepo(repoPath);
     return repoPath;
   }
 
   // Clone new bare repository
   logger.info('Cloning bare repository', { projectId, repoUrl });
 
-  const authUrl = await getAuthenticatedRepoUrl(repoUrl, projectId);
+  const authUrl = await getAuthenticatedRepoUrl(repoUrl);
 
   try {
     await execAsync(
@@ -152,7 +154,7 @@ export async function getOrCreateRepo(
 /**
  * Fetch all updates for a repository
  */
-export async function syncRepo(repoPath: string, projectId?: string): Promise<void> {
+export async function syncRepo(repoPath: string): Promise<void> {
   try {
     // Update the remote URL with fresh token (tokens may expire)
     const { stdout: remoteUrl } = await execAsync(
@@ -161,7 +163,7 @@ export async function syncRepo(repoPath: string, projectId?: string): Promise<vo
     );
 
     // Re-authenticate the URL
-    const authUrl = await getAuthenticatedRepoUrl(remoteUrl.trim(), projectId);
+    const authUrl = await getAuthenticatedRepoUrl(remoteUrl.trim());
     await execAsync(`git remote set-url origin "${authUrl}"`, { cwd: repoPath });
 
     // Fetch all refs

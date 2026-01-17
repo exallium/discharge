@@ -55,20 +55,13 @@ function getRunnerSecretRequirements(project: ProjectConfig): SecretRequirement[
 /**
  * Get VCS secret requirements by type
  * This is a static mapping since VCS secrets are known at compile time
+ * Note: GitHub uses GitHub App authentication, so no token secret is required
  */
 function getVCSSecretRequirements(vcsType: string): SecretRequirement[] {
   switch (vcsType) {
     case 'github':
-      return [
-        {
-          id: 'github_token',
-          label: 'GitHub Token',
-          description: 'Personal access token for GitHub API (repo scope required for creating PRs)',
-          required: true,
-          plugin: 'github',
-          key: 'token',
-        },
-      ];
+      // GitHub uses GitHub App authentication - no personal access token needed
+      return [];
     case 'gitlab':
       return [
         {

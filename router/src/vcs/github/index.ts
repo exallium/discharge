@@ -471,17 +471,9 @@ export class GitHubVCS implements VCSPlugin {
 
   /**
    * Get the secrets required by this VCS plugin
+   * Note: GitHub uses GitHub App authentication - no personal access token needed
    */
   getRequiredSecrets(): SecretRequirement[] {
-    return [
-      {
-        id: 'github_token',
-        label: 'GitHub Token',
-        description: 'Personal access token for GitHub API (repo scope required for creating PRs)',
-        required: true,
-        plugin: 'github',
-        key: 'token',
-      },
-    ];
+    return [];
   }
 }

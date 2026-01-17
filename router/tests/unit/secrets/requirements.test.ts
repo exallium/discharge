@@ -2,6 +2,7 @@
  * Tests for secret requirements aggregation
  *
  * Verifies that secrets are properly aggregated from VCS and trigger plugins.
+ * Note: GitHub uses GitHub App authentication, so no personal access token is required.
  */
 
 import {
@@ -17,21 +18,9 @@ import { ProjectConfig } from '../../../src/config/projects';
 jest.mock('../../../src/triggers', () => ({
   getTriggerById: jest.fn((id: string) => {
     const triggers: Record<string, { getRequiredSecrets: () => Array<{ id: string; label: string; description: string; required: boolean }> }> = {
+      // github-issues no longer requires github_token - uses GitHub App authentication
       'github-issues': {
-        getRequiredSecrets: () => [
-          {
-            id: 'github_token',
-            label: 'GitHub Token',
-            description: 'Token for GitHub API',
-            required: true,
-          },
-          {
-            id: 'github_webhook_secret',
-            label: 'GitHub Webhook Secret',
-            description: 'Secret for webhook validation',
-            required: false,
-          },
-        ],
+        getRequiredSecrets: () => [],
       },
       sentry: {
         getRequiredSecrets: () => [
@@ -98,13 +87,12 @@ describe('Secret Requirements Aggregation', () => {
   }
 
   describe('getProjectSecretRequirements', () => {
-    it('should return VCS secrets for GitHub project with no triggers', () => {
+    it('should return empty for GitHub project with no triggers (GitHub App handles auth)', () => {
       const project = createProject({ vcsType: 'github' });
       const requirements = getProjectSecretRequirements(project);
 
-      expect(requirements).toHaveLength(1);
-      expect(requirements[0].id).toBe('github_token');
-      expect(requirements[0].usedBy).toEqual(['vcs']);
+      // GitHub uses GitHub App authentication - no secrets required for VCS
+      expect(requirements).toHaveLength(0);
     });
 
     it('should return VCS secrets for GitLab project', () => {
@@ -137,25 +125,18 @@ describe('Secret Requirements Aggregation', () => {
       const requirements = getProjectSecretRequirements(project);
 
       const ids = requirements.map((r) => r.id);
-      expect(ids).toContain('github_token');
+      // GitHub VCS uses App auth, so only Sentry secrets are needed
       expect(ids).toContain('sentry_token');
       expect(ids).toContain('sentry_webhook_secret');
+      expect(ids).not.toContain('github_token'); // GitHub App handles this
     });
 
-    it('should deduplicate shared secrets between VCS and triggers', () => {
+    it('should return empty for GitHub project with github-issues (both use App auth)', () => {
       const project = createProject({ vcsType: 'github', githubIssuesEnabled: true });
       const requirements = getProjectSecretRequirements(project);
 
-      // github_token should appear once with usedBy containing both
-      const githubToken = requirements.find((r) => r.id === 'github_token');
-      expect(githubToken).toBeDefined();
-      expect(githubToken!.usedBy).toContain('vcs');
-      expect(githubToken!.usedBy).toContain('github-issues');
-      expect(githubToken!.usedBy.length).toBe(2);
-
-      // Should not have duplicate entries
-      const tokenCount = requirements.filter((r) => r.id === 'github_token').length;
-      expect(tokenCount).toBe(1);
+      // Both GitHub VCS and github-issues use GitHub App authentication
+      expect(requirements).toHaveLength(0);
     });
 
     it('should aggregate secrets from multiple triggers', () => {
@@ -167,14 +148,15 @@ describe('Secret Requirements Aggregation', () => {
       const requirements = getProjectSecretRequirements(project);
 
       const ids = requirements.map((r) => r.id);
-      expect(ids).toContain('github_token');
+      // GitHub VCS uses App auth, so only Sentry and CircleCI secrets needed
+      expect(ids).not.toContain('github_token');
       expect(ids).toContain('sentry_token');
       expect(ids).toContain('sentry_webhook_secret');
       expect(ids).toContain('circleci_token');
       expect(ids).toContain('circleci_webhook_secret');
     });
 
-    it('should handle all triggers enabled with shared GitHub token', () => {
+    it('should handle all triggers enabled without GitHub token', () => {
       const project = createProject({
         vcsType: 'github',
         sentryEnabled: true,
@@ -183,9 +165,9 @@ describe('Secret Requirements Aggregation', () => {
       });
       const requirements = getProjectSecretRequirements(project);
 
-      // github_token should be shared between VCS and github-issues
+      // GitHub uses App auth, so no github_token should be required
       const githubToken = requirements.find((r) => r.id === 'github_token');
-      expect(githubToken!.usedBy).toEqual(['vcs', 'github-issues']);
+      expect(githubToken).toBeUndefined();
 
       // Each unique secret should appear only once
       const uniqueIds = [...new Set(requirements.map((r) => r.id))];
@@ -198,20 +180,12 @@ describe('Secret Requirements Aggregation', () => {
       const requirements = getAllSecretRequirements();
 
       const ids = requirements.map((r) => r.id);
-      expect(ids).toContain('github_token');
+      // GitHub uses App auth, so no github_token
+      expect(ids).not.toContain('github_token');
       expect(ids).toContain('gitlab_token');
       expect(ids).toContain('bitbucket_token');
       expect(ids).toContain('sentry_token');
       expect(ids).toContain('circleci_token');
-    });
-
-    it('should show github_token as shared between VCS and github-issues', () => {
-      const requirements = getAllSecretRequirements();
-
-      const githubToken = requirements.find((r) => r.id === 'github_token');
-      expect(githubToken).toBeDefined();
-      expect(githubToken!.usedBy).toContain('vcs:github');
-      expect(githubToken!.usedBy).toContain('github-issues');
     });
 
     it('should not have duplicate secret IDs', () => {
@@ -224,17 +198,17 @@ describe('Secret Requirements Aggregation', () => {
   });
 
   describe('isSharedSecret', () => {
-    it('should return true for secrets used by multiple plugins', () => {
+    it('should return false for GitHub project (App auth, no secrets needed)', () => {
       const project = createProject({ vcsType: 'github', githubIssuesEnabled: true });
 
-      expect(isSharedSecret('github_token', project)).toBe(true);
+      // No github_token required with GitHub App
+      expect(isSharedSecret('github_token', project)).toBe(false);
     });
 
     it('should return false for secrets used by single plugin', () => {
       const project = createProject({ vcsType: 'github', sentryEnabled: true });
 
       expect(isSharedSecret('sentry_token', project)).toBe(false);
-      expect(isSharedSecret('github_token', project)).toBe(false);
     });
 
     it('should return false for non-existent secrets', () => {
