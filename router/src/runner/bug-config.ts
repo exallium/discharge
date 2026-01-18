@@ -1,10 +1,10 @@
 /**
- * Bug Fix Configuration Schema (Version 2)
+ * Bug Fix Configuration Schema
  *
  * Defines the structure of .ai-bugs.json files that live in target repositories.
- * This version introduces a rules + agents system that supports:
+ * This schema uses a rules + agents system that supports:
  * - Global rules (file paths or inline strings)
- * - Named agents with model selection (haiku/sonnet/opus)
+ * - Named agents with model selection (small/medium/large)
  * - System-defined agent hooks that users can extend
  * - AI-determined agent selection with escalation capabilities
  */
@@ -18,8 +18,11 @@ import { join } from 'path';
 
 /**
  * Model tier for agents
+ * - small: Fast, low-cost model for simple tasks (triage)
+ * - medium: Balanced model for most tasks (investigation, simple fixes)
+ * - large: Most capable model for complex tasks (complex fixes)
  */
-export type ModelTier = 'haiku' | 'sonnet' | 'opus';
+export type ModelTier = 'small' | 'medium' | 'large';
 
 /**
  * Rule definition - either an inline string or a file path reference
@@ -52,7 +55,7 @@ export interface AiBugsConfigOptions {
 }
 
 /**
- * Root configuration from .ai-bugs.json (Version 2)
+ * Root configuration from .ai-bugs.json
  */
 export interface AiBugsConfig {
   /** Schema version, e.g., "2" */
@@ -109,7 +112,7 @@ export interface TriageResult {
  * Escalation request (returned by agents)
  */
 export interface EscalationRequest {
-  /** Target agent name (e.g., "complex") or model tier (e.g., "opus") */
+  /** Target agent name (e.g., "complex") or model tier (e.g., "large") */
   targetAgent?: string;
 
   /** Reason for escalation */
@@ -153,7 +156,7 @@ export interface SystemAgentDefaults {
 export function getSystemAgentDefaults(): Record<string, SystemAgentDefaults> {
   return {
     triage: {
-      model: 'haiku',
+      model: 'small',
       description: 'Quick categorization - determines complexity and routes to appropriate agent',
       systemRules: [
         'Analyze the issue to determine if it is actionable.',
@@ -162,7 +165,7 @@ export function getSystemAgentDefaults(): Record<string, SystemAgentDefaults> {
       ],
     },
     investigate: {
-      model: 'sonnet',
+      model: 'medium',
       description: 'Deep analysis - reads code, identifies root cause, but does not implement fixes',
       systemRules: [
         'Thoroughly investigate the issue by reading relevant code files.',
@@ -171,7 +174,7 @@ export function getSystemAgentDefaults(): Record<string, SystemAgentDefaults> {
       ],
     },
     simple: {
-      model: 'sonnet',
+      model: 'medium',
       description: 'Simple fixes - straightforward bugs, typos, small features',
       systemRules: [
         'Implement the fix with minimal, focused changes.',
@@ -180,7 +183,7 @@ export function getSystemAgentDefaults(): Record<string, SystemAgentDefaults> {
       ],
     },
     complex: {
-      model: 'opus',
+      model: 'large',
       description: 'Complex fixes - architectural changes, multi-file refactors, subtle bugs',
       systemRules: [
         'Carefully plan the implementation approach.',
@@ -276,8 +279,8 @@ function validateAgent(name: string, agent: unknown): string | null {
 
   // Validate model if provided
   if (agentObj.model !== undefined) {
-    if (!['haiku', 'sonnet', 'opus'].includes(agentObj.model as string)) {
-      return `Agent '${name}' has invalid model: ${agentObj.model}. Must be 'haiku', 'sonnet', or 'opus'`;
+    if (!['small', 'medium', 'large'].includes(agentObj.model as string)) {
+      return `Agent '${name}' has invalid model: ${agentObj.model}. Must be 'small', 'medium', or 'large'`;
     }
   }
 
@@ -308,7 +311,7 @@ function validateAgent(name: string, agent: unknown): string | null {
 }
 
 /**
- * Validate a bug fix config (Version 2 schema)
+ * Validate a bug fix config
  */
 export function validateBugConfig(
   config: unknown
@@ -489,7 +492,7 @@ export function getAgentModel(
     systemDefaults
   );
 
-  return agentConfig.model || 'sonnet'; // Default to sonnet
+  return agentConfig.model || 'medium'; // Default to medium
 }
 
 /**
@@ -543,7 +546,7 @@ export function getAvailableAgents(
         agents.push({
           name,
           description: agentConfig.description || `Custom agent: ${name}`,
-          model: agentConfig.model || 'sonnet',
+          model: agentConfig.model || 'medium',
           isSystem: false,
         });
       }
@@ -559,178 +562,4 @@ export function getAvailableAgents(
 export function isSystemAgent(agentName: string): boolean {
   const systemDefaults = getSystemAgentDefaults();
   return agentName in systemDefaults;
-}
-
-// ============================================================================
-// Legacy Support (v1 compatibility)
-// ============================================================================
-
-/**
- * Legacy infrastructure configuration (from v1)
- * @deprecated Use agents system instead
- */
-export interface InfrastructureConfig {
-  setup: string;
-  teardown?: string;
-  healthcheck?: string;
-  timeout?: number;
-}
-
-/**
- * Legacy category match criteria (from v1)
- * @deprecated Use agents system instead
- */
-export interface CategoryMatch {
-  labels?: string[];
-}
-
-/**
- * Legacy category configuration (from v1)
- * @deprecated Use agents system instead
- */
-export interface CategoryConfig {
-  match?: CategoryMatch;
-  infrastructure?: InfrastructureConfig;
-  requirements: string[];
-  deliverables: string[];
-  testCommand: string;
-}
-
-/**
- * Legacy constraints configuration (from v1)
- * @deprecated Use agents system instead
- */
-export interface ConstraintsConfig {
-  excludePaths?: string[];
-  requireTests?: boolean;
-  maxFilesChanged?: number;
-}
-
-/**
- * Legacy root configuration (v1)
- * @deprecated Use AiBugsConfig (v2) instead
- */
-export interface BugFixConfig {
-  version: string;
-  secondaryRepos?: string[];
-  categories: Record<string, CategoryConfig>;
-  constraints?: ConstraintsConfig;
-}
-
-/**
- * Check if config is v1 format
- */
-export function isLegacyConfig(config: unknown): boolean {
-  if (!config || typeof config !== 'object') return false;
-  const cfg = config as Record<string, unknown>;
-  return 'categories' in cfg && typeof cfg.categories === 'object';
-}
-
-/**
- * Find the matching category for a set of labels (v1 compatibility)
- * @deprecated Use agent selection instead
- */
-export function findMatchingCategory(
-  categories: Record<string, CategoryConfig> | undefined,
-  labels: string[]
-): CategoryConfig | undefined {
-  if (!categories) return undefined;
-
-  const normalizedLabels = labels.map((l) => l.toLowerCase());
-
-  for (const [name, config] of Object.entries(categories)) {
-    if (name === 'default') continue;
-
-    const matchLabels = config.match?.labels?.map((l) => l.toLowerCase()) || [];
-    if (matchLabels.some((label) => normalizedLabels.includes(label))) {
-      return config;
-    }
-  }
-
-  return categories.default;
-}
-
-/**
- * Validate v1 config format
- * @deprecated Use validateBugConfig for v2
- */
-export function validateLegacyConfig(
-  config: unknown
-): { valid: true; config: BugFixConfig } | { valid: false; error: string } {
-  if (!config || typeof config !== 'object') {
-    return { valid: false, error: 'Config must be an object' };
-  }
-
-  const cfg = config as Record<string, unknown>;
-
-  if (typeof cfg.version !== 'string') {
-    return { valid: false, error: 'Config must have a version string' };
-  }
-
-  if (!cfg.categories || typeof cfg.categories !== 'object') {
-    return { valid: false, error: 'Config must have categories object' };
-  }
-
-  // Validate secondaryRepos if present
-  if (cfg.secondaryRepos !== undefined) {
-    if (!Array.isArray(cfg.secondaryRepos)) {
-      return { valid: false, error: 'secondaryRepos must be an array' };
-    }
-    for (const repo of cfg.secondaryRepos) {
-      if (typeof repo !== 'string' || !repo.includes('/')) {
-        return { valid: false, error: `Invalid repo format: ${repo}. Use 'owner/repo'` };
-      }
-    }
-  }
-
-  // Validate each category
-  for (const [name, category] of Object.entries(cfg.categories as Record<string, unknown>)) {
-    if (!category || typeof category !== 'object') {
-      return { valid: false, error: `Category '${name}' must be an object` };
-    }
-
-    const cat = category as Record<string, unknown>;
-
-    if (!Array.isArray(cat.requirements)) {
-      return { valid: false, error: `Category '${name}' must have requirements array` };
-    }
-
-    if (!Array.isArray(cat.deliverables)) {
-      return { valid: false, error: `Category '${name}' must have deliverables array` };
-    }
-
-    if (typeof cat.testCommand !== 'string') {
-      return { valid: false, error: `Category '${name}' must have testCommand string` };
-    }
-  }
-
-  return { valid: true, config: cfg as unknown as BugFixConfig };
-}
-
-/**
- * Smart config validator that handles both v1 and v2 formats
- * Returns the validated config in its native format
- */
-export function validateConfig(
-  config: unknown
-): { valid: true; config: AiBugsConfig | BugFixConfig; isV2: boolean } | { valid: false; error: string } {
-  if (!config || typeof config !== 'object') {
-    return { valid: false, error: 'Config must be an object' };
-  }
-
-  // Check if it's v2 format (has rules or agents, or no categories)
-  if (isLegacyConfig(config)) {
-    const result = validateLegacyConfig(config);
-    if (result.valid) {
-      return { valid: true, config: result.config, isV2: false };
-    }
-    return result;
-  }
-
-  // v2 format
-  const result = validateBugConfig(config);
-  if (result.valid) {
-    return { valid: true, config: result.config, isV2: true };
-  }
-  return result;
 }

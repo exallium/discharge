@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOctokitForRepo } from '@/src/github/app-service';
 import {
-  validateConfig,
+  validateBugConfig,
   AiBugsConfig,
-  BugFixConfig,
   getAvailableAgents,
 } from '@/src/runner/bug-config';
 
@@ -78,7 +77,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const validation = validateConfig(parsed);
+    const validation = validateBugConfig(parsed);
 
     if (!validation.valid) {
       return NextResponse.json({
@@ -88,15 +87,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Get secondary repos based on config version
-    let secondaryRepos: string[] = [];
-    if (validation.isV2) {
-      const v2Config = validation.config as AiBugsConfig;
-      secondaryRepos = v2Config.config?.secondaryRepos || [];
-    } else {
-      const v1Config = validation.config as BugFixConfig;
-      secondaryRepos = v1Config.secondaryRepos || [];
-    }
+    const config = validation.config as AiBugsConfig;
+    const secondaryRepos = config.config?.secondaryRepos || [];
 
     // Check access to secondary repos
     const secondaryAccess = await Promise.all(
@@ -109,43 +101,20 @@ export async function POST(request: NextRequest) {
     // Count inaccessible repos for warning
     const inaccessibleCount = secondaryAccess.filter(r => !r.hasAccess).length;
 
-    // Build response based on config version
-    if (validation.isV2) {
-      const v2Config = validation.config as AiBugsConfig;
-      const agents = getAvailableAgents(v2Config);
+    const agents = getAvailableAgents(config);
 
-      return NextResponse.json({
-        exists: true,
-        valid: true,
-        schemaVersion: 2,
-        config: {
-          version: v2Config.version,
-          rulesCount: v2Config.rules?.length || 0,
-          agents: agents.map(a => ({
-            name: a.name,
-            model: a.model,
-            description: a.description,
-            isSystem: a.isSystem,
-          })),
-        },
-        secondaryRepos: secondaryAccess,
-        warnings: inaccessibleCount > 0
-          ? [`${inaccessibleCount} secondary repo(s) are not accessible. Ensure the GitHub App is installed on those repositories.`]
-          : [],
-      });
-    }
-
-    // v1 legacy response
-    const v1Config = validation.config as BugFixConfig;
     return NextResponse.json({
       exists: true,
       valid: true,
-      schemaVersion: 1,
       config: {
-        version: v1Config.version,
-        categoryCount: Object.keys(v1Config.categories).length,
-        categoryNames: Object.keys(v1Config.categories),
-        hasConstraints: !!v1Config.constraints,
+        version: config.version,
+        rulesCount: config.rules?.length || 0,
+        agents: agents.map(a => ({
+          name: a.name,
+          model: a.model,
+          description: a.description,
+          isSystem: a.isSystem,
+        })),
       },
       secondaryRepos: secondaryAccess,
       warnings: inaccessibleCount > 0

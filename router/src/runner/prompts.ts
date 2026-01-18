@@ -1,10 +1,8 @@
 import { TriggerPlugin, TriggerEvent, Tool } from '../triggers/base';
 import {
-  BugFixConfig,
   AiBugsConfig,
   ResolvedRule,
   InvestigationContext,
-  findMatchingCategory,
   getAvailableAgents,
 } from './bug-config';
 
@@ -169,92 +167,8 @@ Create a file at \`.claude/analysis.json\` with your findings.
 `.trim();
 }
 
-/**
- * Enhance a prompt with category-specific requirements from .ai-bugs.json
- *
- * @param basePrompt - The base investigation prompt
- * @param bugConfig - Config from .ai-bugs.json (or undefined if not present)
- * @param eventLabels - Labels from the trigger event
- * @param mainRepoFullName - Optional main repo full name for secondary repos section
- * @returns Enhanced prompt with category requirements
- */
-export function buildCategoryPrompt(
-  basePrompt: string,
-  bugConfig: BugFixConfig | undefined,
-  eventLabels: string[],
-  mainRepoFullName?: string
-): string {
-  // Add secondary repos section if configured
-  let secondaryReposSection = '';
-  if (bugConfig?.secondaryRepos && bugConfig.secondaryRepos.length > 0 && mainRepoFullName) {
-    secondaryReposSection = buildSecondaryReposSection(mainRepoFullName, bugConfig.secondaryRepos);
-  }
-
-  if (!bugConfig?.categories) {
-    return secondaryReposSection ? `${basePrompt}\n\n${secondaryReposSection}` : basePrompt;
-  }
-
-  const category = findMatchingCategory(bugConfig.categories, eventLabels);
-  if (!category) {
-    return secondaryReposSection ? `${basePrompt}\n\n${secondaryReposSection}` : basePrompt;
-  }
-
-  const requirementsSection =
-    category.requirements.length > 0
-      ? `## Project-Specific Requirements
-
-${category.requirements.map((r) => `- ${r}`).join('\n')}
-`
-      : '';
-
-  const deliverablesSection =
-    category.deliverables.length > 0
-      ? `## Required Deliverables
-
-${category.deliverables.map((d) => `- [ ] ${d}`).join('\n')}
-`
-      : '';
-
-  const testSection = category.testCommand
-    ? `## Test Command
-
-Run this command to verify your fix:
-\`\`\`bash
-${category.testCommand}
-\`\`\`
-`
-    : '';
-
-  return `${basePrompt}
-
-${requirementsSection}${deliverablesSection}${testSection}${secondaryReposSection}`.trim();
-}
-
-/**
- * Get the matched category for logging/debugging
- */
-export function getMatchedCategoryName(
-  bugConfig: BugFixConfig | undefined,
-  eventLabels: string[]
-): string | undefined {
-  if (!bugConfig?.categories) return undefined;
-
-  const normalizedLabels = eventLabels.map((l) => l.toLowerCase());
-
-  for (const [name, config] of Object.entries(bugConfig.categories)) {
-    if (name === 'default') continue;
-
-    const matchLabels = config.match?.labels?.map((l) => l.toLowerCase()) || [];
-    if (matchLabels.some((label) => normalizedLabels.includes(label))) {
-      return name;
-    }
-  }
-
-  return bugConfig.categories.default ? 'default' : undefined;
-}
-
 // ============================================================================
-// Version 2: Agent-Based Prompts
+// Agent-Based Prompts
 // ============================================================================
 
 /**
@@ -615,30 +529,26 @@ Stop after creating analysis.json. Do NOT make any code changes.
 }
 
 /**
- * Build prompt with v2 config (agents/rules) or fall back to v1 (categories)
- * This is the main entry point for prompt building that handles both versions
+ * Build prompt with config (agents/rules system)
+ * This is the main entry point for prompt building
  */
 export function buildPromptWithConfig(
   trigger: TriggerPlugin,
   event: TriggerEvent,
   tools: Tool[],
-  config: AiBugsConfig | BugFixConfig | undefined,
+  config: AiBugsConfig | undefined,
   resolvedRules: ResolvedRule[],
   options: {
     agentName?: string;
     investigationContext?: InvestigationContext;
     mainRepoFullName?: string;
-    eventLabels?: string[];
-    isV2Config?: boolean;
   } = {}
 ): string {
-  const { agentName, investigationContext, mainRepoFullName, eventLabels = [], isV2Config } = options;
+  const { agentName, investigationContext, mainRepoFullName } = options;
+  const secondaryRepos = config?.config?.secondaryRepos;
 
-  // If we have a v2 config with an agent name, use the new agent prompt
-  if (isV2Config && agentName) {
-    const v2Config = config as AiBugsConfig | undefined;
-    const secondaryRepos = v2Config?.config?.secondaryRepos;
-
+  // If we have an agent name, use the agent-specific prompt
+  if (agentName) {
     return buildAgentPrompt(
       agentName,
       trigger,
@@ -651,9 +561,6 @@ export function buildPromptWithConfig(
     );
   }
 
-  // Fall back to legacy v1 category-based prompt
-  const basePrompt = buildInvestigationPrompt(trigger, event, tools);
-  const v1Config = config as BugFixConfig | undefined;
-
-  return buildCategoryPrompt(basePrompt, v1Config, eventLabels, mainRepoFullName);
+  // Default to investigation prompt (for backwards compatibility with callers that don't specify an agent)
+  return buildInvestigationPrompt(trigger, event, tools);
 }

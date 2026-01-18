@@ -1,13 +1,9 @@
 /**
- * Tests for bug-config validation (v2 schema)
+ * Tests for bug-config validation
  */
 
 import {
   validateBugConfig,
-  validateLegacyConfig,
-  validateConfig,
-  isLegacyConfig,
-  findMatchingCategory,
   getSystemAgentDefaults,
   mergeWithSystemAgent,
   getAgentModel,
@@ -17,13 +13,12 @@ import {
   resolveRules,
   getAgentRules,
   AiBugsConfig,
-  BugFixConfig,
 } from '../../../src/runner/bug-config';
 import { writeFile, mkdir, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-describe('Bug Config v2', () => {
+describe('Bug Config', () => {
   describe('validateBugConfig', () => {
     it('should validate a minimal valid config', () => {
       const config = {
@@ -61,11 +56,11 @@ describe('Bug Config v2', () => {
         agents: {
           ui: {
             agentPath: '.claude/agents/UI.md',
-            model: 'sonnet',
+            model: 'medium',
             description: 'Handles UI issues',
           },
           database: {
-            model: 'opus',
+            model: 'large',
             rules: ['Always create migrations.'],
           },
         },
@@ -75,8 +70,8 @@ describe('Bug Config v2', () => {
 
       expect(result.valid).toBe(true);
       if (result.valid) {
-        expect(result.config.agents?.ui?.model).toBe('sonnet');
-        expect(result.config.agents?.database?.model).toBe('opus');
+        expect(result.config.agents?.ui?.model).toBe('medium');
+        expect(result.config.agents?.database?.model).toBe('large');
       }
     });
 
@@ -185,10 +180,10 @@ describe('Bug Config v2', () => {
     it('should have correct model tiers', () => {
       const defaults = getSystemAgentDefaults();
 
-      expect(defaults.triage.model).toBe('haiku');
-      expect(defaults.investigate.model).toBe('sonnet');
-      expect(defaults.simple.model).toBe('sonnet');
-      expect(defaults.complex.model).toBe('opus');
+      expect(defaults.triage.model).toBe('small');
+      expect(defaults.investigate.model).toBe('medium');
+      expect(defaults.simple.model).toBe('medium');
+      expect(defaults.complex.model).toBe('large');
     });
 
     it('should have descriptions for all agents', () => {
@@ -204,7 +199,7 @@ describe('Bug Config v2', () => {
   describe('mergeWithSystemAgent', () => {
     it('should return user config as-is for non-system agent', () => {
       const userConfig = {
-        model: 'opus' as const,
+        model: 'large' as const,
         description: 'Custom agent',
         rules: ['Custom rule'],
       };
@@ -217,14 +212,14 @@ describe('Bug Config v2', () => {
 
     it('should merge user config with system agent defaults', () => {
       const userConfig = {
-        model: 'opus' as const, // Override default
+        model: 'large' as const, // Override default
         rules: ['User rule'],
       };
 
       const result = mergeWithSystemAgent('simple', userConfig, getSystemAgentDefaults());
 
       expect(result.isSystemAgent).toBe(true);
-      expect(result.config.model).toBe('opus'); // User override
+      expect(result.config.model).toBe('large'); // User override
       expect(result.config.rules).toContain('User rule');
       // System rules should be included
       expect(result.config.rules?.some(r => typeof r === 'string' && r.includes('minimal'))).toBe(true);
@@ -237,7 +232,7 @@ describe('Bug Config v2', () => {
 
       const result = mergeWithSystemAgent('complex', userConfig, getSystemAgentDefaults());
 
-      expect(result.config.model).toBe('opus'); // System default for complex
+      expect(result.config.model).toBe('large'); // System default for complex
     });
 
     it('should preserve user agentPath', () => {
@@ -253,25 +248,25 @@ describe('Bug Config v2', () => {
 
   describe('getAgentModel', () => {
     it('should return system default for system agent', () => {
-      expect(getAgentModel(undefined, 'triage')).toBe('haiku');
-      expect(getAgentModel(undefined, 'investigate')).toBe('sonnet');
-      expect(getAgentModel(undefined, 'simple')).toBe('sonnet');
-      expect(getAgentModel(undefined, 'complex')).toBe('opus');
+      expect(getAgentModel(undefined, 'triage')).toBe('small');
+      expect(getAgentModel(undefined, 'investigate')).toBe('medium');
+      expect(getAgentModel(undefined, 'simple')).toBe('medium');
+      expect(getAgentModel(undefined, 'complex')).toBe('large');
     });
 
     it('should return user override if specified', () => {
       const config: AiBugsConfig = {
         version: '2',
         agents: {
-          simple: { model: 'opus' },
+          simple: { model: 'large' },
         },
       };
 
-      expect(getAgentModel(config, 'simple')).toBe('opus');
+      expect(getAgentModel(config, 'simple')).toBe('large');
     });
 
-    it('should return sonnet for unknown agent', () => {
-      expect(getAgentModel(undefined, 'unknown')).toBe('sonnet');
+    it('should return medium for unknown agent', () => {
+      expect(getAgentModel(undefined, 'unknown')).toBe('medium');
     });
   });
 
@@ -313,8 +308,8 @@ describe('Bug Config v2', () => {
       const config: AiBugsConfig = {
         version: '2',
         agents: {
-          ui: { description: 'UI agent', model: 'sonnet' },
-          database: { description: 'DB agent', model: 'opus' },
+          ui: { description: 'UI agent', model: 'medium' },
+          database: { description: 'DB agent', model: 'large' },
         },
       };
 
@@ -452,194 +447,5 @@ describe('Bug Config v2', () => {
 
       expect(rules.some(r => r.content === 'Agent file content')).toBe(true);
     });
-  });
-});
-
-describe('Bug Config v1 (Legacy)', () => {
-  describe('validateLegacyConfig', () => {
-    it('should validate a minimal valid v1 config', () => {
-      const config = {
-        version: '1.0',
-        categories: {
-          default: {
-            requirements: ['Must not break tests'],
-            deliverables: ['Fix the bug'],
-            testCommand: 'npm test',
-          },
-        },
-      };
-
-      const result = validateLegacyConfig(config);
-
-      expect(result.valid).toBe(true);
-      if (result.valid) {
-        expect(result.config.version).toBe('1.0');
-      }
-    });
-
-    it('should reject config without categories', () => {
-      const config = {
-        version: '1.0',
-      };
-
-      const result = validateLegacyConfig(config);
-
-      expect(result.valid).toBe(false);
-      if (!result.valid) {
-        expect(result.error).toContain('categories');
-      }
-    });
-
-    it('should validate secondaryRepos', () => {
-      const config = {
-        version: '1.0',
-        secondaryRepos: ['myorg/backend'],
-        categories: {
-          default: {
-            requirements: ['Test'],
-            deliverables: ['Fix'],
-            testCommand: 'npm test',
-          },
-        },
-      };
-
-      const result = validateLegacyConfig(config);
-
-      expect(result.valid).toBe(true);
-      if (result.valid) {
-        expect(result.config.secondaryRepos).toEqual(['myorg/backend']);
-      }
-    });
-  });
-
-  describe('isLegacyConfig', () => {
-    it('should return true for v1 config with categories', () => {
-      const config = {
-        version: '1.0',
-        categories: { default: {} },
-      };
-
-      expect(isLegacyConfig(config)).toBe(true);
-    });
-
-    it('should return false for v2 config', () => {
-      const config = {
-        version: '2',
-        rules: ['Test'],
-      };
-
-      expect(isLegacyConfig(config)).toBe(false);
-    });
-
-    it('should return false for non-object', () => {
-      expect(isLegacyConfig(null)).toBe(false);
-      expect(isLegacyConfig('string')).toBe(false);
-    });
-  });
-
-  describe('findMatchingCategory', () => {
-    it('should return default category when no labels match', () => {
-      const categories = {
-        database: {
-          match: { labels: ['db', 'database'] },
-          requirements: ['DB req'],
-          deliverables: ['DB fix'],
-          testCommand: 'npm run test:db',
-        },
-        default: {
-          requirements: ['Default req'],
-          deliverables: ['Default fix'],
-          testCommand: 'npm test',
-        },
-      };
-
-      const result = findMatchingCategory(categories, ['ui', 'frontend']);
-
-      expect(result?.requirements).toEqual(['Default req']);
-    });
-
-    it('should return matching category when label matches', () => {
-      const categories = {
-        database: {
-          match: { labels: ['db', 'database'] },
-          requirements: ['DB req'],
-          deliverables: ['DB fix'],
-          testCommand: 'npm run test:db',
-        },
-        default: {
-          requirements: ['Default req'],
-          deliverables: ['Default fix'],
-          testCommand: 'npm test',
-        },
-      };
-
-      const result = findMatchingCategory(categories, ['db']);
-
-      expect(result?.requirements).toEqual(['DB req']);
-    });
-
-    it('should match labels case-insensitively', () => {
-      const categories = {
-        database: {
-          match: { labels: ['DB', 'Database'] },
-          requirements: ['DB req'],
-          deliverables: ['DB fix'],
-          testCommand: 'npm run test:db',
-        },
-      };
-
-      const result = findMatchingCategory(categories, ['db']);
-
-      expect(result?.requirements).toEqual(['DB req']);
-    });
-
-    it('should return undefined when no categories', () => {
-      const result = findMatchingCategory(undefined, ['db']);
-      expect(result).toBeUndefined();
-    });
-  });
-});
-
-describe('validateConfig (smart validator)', () => {
-  it('should detect and validate v1 config', () => {
-    const config = {
-      version: '1.0',
-      categories: {
-        default: {
-          requirements: ['Test'],
-          deliverables: ['Fix'],
-          testCommand: 'npm test',
-        },
-      },
-    };
-
-    const result = validateConfig(config);
-
-    expect(result.valid).toBe(true);
-    if (result.valid) {
-      expect(result.isV2).toBe(false);
-    }
-  });
-
-  it('should detect and validate v2 config', () => {
-    const config = {
-      version: '2',
-      rules: ['Test rule'],
-    };
-
-    const result = validateConfig(config);
-
-    expect(result.valid).toBe(true);
-    if (result.valid) {
-      expect(result.isV2).toBe(true);
-    }
-  });
-
-  it('should return error for invalid config', () => {
-    const config = 'not an object';
-
-    const result = validateConfig(config);
-
-    expect(result.valid).toBe(false);
   });
 });

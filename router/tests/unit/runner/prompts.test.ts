@@ -2,7 +2,6 @@ import {
   buildInvestigationPrompt,
   buildSimplePrompt,
   buildSecondaryReposSection,
-  buildCategoryPrompt,
   buildTriagePrompt,
   buildAgentPrompt,
   buildInvestigationHandoffSection,
@@ -10,7 +9,7 @@ import {
 } from '../../../src/runner/prompts';
 import { createMockTrigger } from '../../mocks/mock-trigger';
 import { TriggerEvent, Tool } from '../../../src/triggers/base';
-import { BugFixConfig, AiBugsConfig, ResolvedRule, InvestigationContext } from '../../../src/runner/bug-config';
+import { AiBugsConfig, ResolvedRule, InvestigationContext } from '../../../src/runner/bug-config';
 
 describe('Prompts', () => {
   const mockEvent: TriggerEvent = {
@@ -151,132 +150,6 @@ describe('Prompts', () => {
     });
   });
 
-  describe('buildCategoryPrompt', () => {
-    const basePrompt = 'Test base prompt';
-
-    it('should return base prompt when no bugConfig', () => {
-      const result = buildCategoryPrompt(basePrompt, undefined, []);
-      expect(result).toBe(basePrompt);
-    });
-
-    it('should return base prompt when no categories', () => {
-      const bugConfig: BugFixConfig = {
-        version: '1.0',
-        categories: {},
-      };
-      const result = buildCategoryPrompt(basePrompt, bugConfig, []);
-      expect(result).toBe(basePrompt);
-    });
-
-    it('should add category requirements to prompt', () => {
-      const bugConfig: BugFixConfig = {
-        version: '1.0',
-        categories: {
-          default: {
-            requirements: ['Must not break tests', 'Follow code style'],
-            deliverables: ['Fix the bug'],
-            testCommand: 'npm test',
-          },
-        },
-      };
-
-      const result = buildCategoryPrompt(basePrompt, bugConfig, []);
-
-      expect(result).toContain(basePrompt);
-      expect(result).toContain('Project-Specific Requirements');
-      expect(result).toContain('Must not break tests');
-      expect(result).toContain('Follow code style');
-      expect(result).toContain('Required Deliverables');
-      expect(result).toContain('Fix the bug');
-      expect(result).toContain('npm test');
-    });
-
-    it('should match category by label', () => {
-      const bugConfig: BugFixConfig = {
-        version: '1.0',
-        categories: {
-          database: {
-            match: { labels: ['db', 'database'] },
-            requirements: ['Use parameterized queries'],
-            deliverables: ['Fix DB issue'],
-            testCommand: 'npm run test:db',
-          },
-          default: {
-            requirements: ['Generic requirement'],
-            deliverables: ['Generic fix'],
-            testCommand: 'npm test',
-          },
-        },
-      };
-
-      const result = buildCategoryPrompt(basePrompt, bugConfig, ['db']);
-
-      expect(result).toContain('Use parameterized queries');
-      expect(result).toContain('npm run test:db');
-      expect(result).not.toContain('Generic requirement');
-    });
-
-    it('should add secondary repos section when configured', () => {
-      const bugConfig: BugFixConfig = {
-        version: '1.0',
-        secondaryRepos: ['myorg/backend', 'myorg/types'],
-        categories: {
-          default: {
-            requirements: ['Test requirement'],
-            deliverables: ['Test deliverable'],
-            testCommand: 'npm test',
-          },
-        },
-      };
-
-      const result = buildCategoryPrompt(basePrompt, bugConfig, [], 'myorg/main');
-
-      expect(result).toContain(basePrompt);
-      expect(result).toContain('Available Repositories');
-      expect(result).toContain('myorg/main');
-      expect(result).toContain('myorg/backend');
-      expect(result).toContain('/workspace-secondary/backend');
-      expect(result).toContain('myorg/types');
-    });
-
-    it('should not add secondary repos section without mainRepoFullName', () => {
-      const bugConfig: BugFixConfig = {
-        version: '1.0',
-        secondaryRepos: ['myorg/backend'],
-        categories: {
-          default: {
-            requirements: ['Test requirement'],
-            deliverables: ['Test deliverable'],
-            testCommand: 'npm test',
-          },
-        },
-      };
-
-      const result = buildCategoryPrompt(basePrompt, bugConfig, []);
-
-      expect(result).not.toContain('Available Repositories');
-      expect(result).not.toContain('/workspace-secondary');
-    });
-
-    it('should add secondary repos even without matching category', () => {
-      const bugConfig: BugFixConfig = {
-        version: '1.0',
-        secondaryRepos: ['myorg/backend'],
-        categories: {}, // Empty categories
-      };
-
-      const result = buildCategoryPrompt(basePrompt, bugConfig, [], 'myorg/main');
-
-      expect(result).toContain(basePrompt);
-      expect(result).toContain('Available Repositories');
-      expect(result).toContain('myorg/backend');
-    });
-  });
-
-  // =========================================================================
-  // Version 2: Agent-Based Prompts
-  // =========================================================================
-
   describe('buildTriagePrompt', () => {
     it('should build triage prompt with issue context', () => {
       const trigger = createMockTrigger();
@@ -298,7 +171,7 @@ describe('Prompts', () => {
       const config: AiBugsConfig = {
         version: '2',
         agents: {
-          ui: { description: 'Handles UI issues', model: 'sonnet' },
+          ui: { description: 'Handles UI issues', model: 'medium' },
         },
       };
 
@@ -484,7 +357,7 @@ describe('Prompts', () => {
   });
 
   describe('buildPromptWithConfig', () => {
-    it('should use v2 agent prompt when v2 config and agent name provided', () => {
+    it('should use agent prompt when agent name provided', () => {
       const trigger = createMockTrigger();
       const config: AiBugsConfig = {
         version: '2',
@@ -500,24 +373,17 @@ describe('Prompts', () => {
         [],
         config,
         resolvedRules,
-        { agentName: 'simple', isV2Config: true }
+        { agentName: 'simple' }
       );
 
       expect(prompt).toContain('fix agent');
       expect(prompt).toContain('Test rule');
     });
 
-    it('should fall back to v1 category prompt when no agent name', () => {
+    it('should fall back to investigation prompt when no agent name', () => {
       const trigger = createMockTrigger();
-      const config: BugFixConfig = {
-        version: '1.0',
-        categories: {
-          default: {
-            requirements: ['V1 requirement'],
-            deliverables: ['V1 deliverable'],
-            testCommand: 'npm test',
-          },
-        },
+      const config: AiBugsConfig = {
+        version: '2',
       };
 
       const prompt = buildPromptWithConfig(
@@ -525,15 +391,14 @@ describe('Prompts', () => {
         mockEvent,
         [],
         config,
-        [],
-        { isV2Config: false }
+        []
       );
 
-      expect(prompt).toContain('V1 requirement');
-      expect(prompt).toContain('V1 deliverable');
+      expect(prompt).toContain('Investigation Process');
+      expect(prompt).toContain('analysis.json');
     });
 
-    it('should include investigation context for v2 prompts', () => {
+    it('should include investigation context when provided', () => {
       const trigger = createMockTrigger();
       const config: AiBugsConfig = { version: '2' };
       const investigation: InvestigationContext = {
@@ -550,7 +415,6 @@ describe('Prompts', () => {
         [],
         {
           agentName: 'simple',
-          isV2Config: true,
           investigationContext: investigation,
         }
       );

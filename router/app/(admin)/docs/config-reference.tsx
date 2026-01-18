@@ -2,7 +2,7 @@
 
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, FileJson, GitBranch, Settings, Shield, Tag, Bot, Sparkles, ArrowUpCircle } from 'lucide-react';
+import { AlertTriangle, FileJson, GitBranch, Settings, Bot, Sparkles, ArrowUpCircle } from 'lucide-react';
 
 export function ConfigReference() {
   return (
@@ -29,22 +29,15 @@ export function ConfigReference() {
           <pre className="bg-muted p-3 rounded-md overflow-x-auto">
             <code>your-repo/.ai-bugs.json</code>
           </pre>
-
-          <h4>Schema Versions</h4>
-          <ul>
-            <li><strong>Version 2 (Recommended)</strong>: Rules + Agents system with AI-driven triage</li>
-            <li><strong>Version 1 (Legacy)</strong>: Category-based configuration</li>
-          </ul>
         </CardContent>
       </Card>
 
-      {/* Version 2 Schema */}
-      <Card className="border-green-500/30">
+      {/* Schema Reference */}
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-green-600" />
-            Version 2: Rules + Agents
-            <Badge className="ml-2">Recommended</Badge>
+            <Sparkles className="h-5 w-5" />
+            Schema Reference
           </CardTitle>
           <CardDescription>
             Flexible configuration with global rules, named agents, and AI-driven triage
@@ -58,7 +51,7 @@ export function ConfigReference() {
               <Badge variant="destructive">required</Badge>
               <Badge variant="outline">string</Badge>
             </div>
-            <p className="text-sm text-muted-foreground">Schema version. Use &quot;2&quot; for the rules + agents system.</p>
+            <p className="text-sm text-muted-foreground">Schema version. Use &quot;2&quot;.</p>
           </div>
 
           {/* rules */}
@@ -119,7 +112,7 @@ export function ConfigReference() {
         <CardContent className="space-y-4">
           <div className="grid gap-4">
             <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-              <Badge variant="secondary" className="mt-0.5">haiku</Badge>
+              <Badge variant="secondary" className="mt-0.5">small</Badge>
               <div>
                 <p className="font-medium">triage</p>
                 <p className="text-sm text-muted-foreground">
@@ -129,7 +122,7 @@ export function ConfigReference() {
             </div>
 
             <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-              <Badge variant="secondary" className="mt-0.5">sonnet</Badge>
+              <Badge variant="secondary" className="mt-0.5">medium</Badge>
               <div>
                 <p className="font-medium">investigate</p>
                 <p className="text-sm text-muted-foreground">
@@ -139,7 +132,7 @@ export function ConfigReference() {
             </div>
 
             <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-              <Badge variant="secondary" className="mt-0.5">sonnet</Badge>
+              <Badge variant="secondary" className="mt-0.5">medium</Badge>
               <div>
                 <p className="font-medium">simple</p>
                 <p className="text-sm text-muted-foreground">
@@ -149,7 +142,7 @@ export function ConfigReference() {
             </div>
 
             <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-              <Badge variant="secondary" className="mt-0.5">opus</Badge>
+              <Badge variant="secondary" className="mt-0.5">large</Badge>
               <div>
                 <p className="font-medium">complex</p>
                 <p className="text-sm text-muted-foreground">
@@ -186,7 +179,7 @@ export function ConfigReference() {
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <code className="font-mono text-sm bg-muted px-2 py-0.5 rounded">model</code>
-              <Badge variant="outline">&quot;haiku&quot; | &quot;sonnet&quot; | &quot;opus&quot;</Badge>
+              <Badge variant="outline">&quot;small&quot; | &quot;medium&quot; | &quot;large&quot;</Badge>
             </div>
             <p className="text-sm text-muted-foreground">
               Model tier for this agent. Defaults to the system default for that agent.
@@ -248,12 +241,12 @@ export function ConfigReference() {
         </CardContent>
       </Card>
 
-      {/* V2 Example */}
+      {/* Example */}
       <Card>
         <CardHeader>
-          <CardTitle>Version 2 Example</CardTitle>
+          <CardTitle>Complete Example</CardTitle>
           <CardDescription>
-            A full v2 configuration with rules and custom agents
+            A full configuration with rules and custom agents
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -267,12 +260,12 @@ export function ConfigReference() {
   "agents": {
     "ui": {
       "agentPath": ".claude/agents/UI.md",
-      "model": "sonnet",
+      "model": "medium",
       "description": "Handles UI/frontend issues"
     },
     "database": {
       "agentPath": ".claude/agents/DATABASE.md",
-      "model": "opus",
+      "model": "large",
       "rules": ["Always create migrations for schema changes."],
       "description": "Database and migration work"
     }
@@ -317,139 +310,6 @@ export function ConfigReference() {
               <li>Comments always link back to the originating issue in the main repo</li>
             </ul>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Version 1 Legacy */}
-      <Card className="border-muted">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Tag className="h-5 w-5 text-muted-foreground" />
-            Version 1: Categories
-            <Badge variant="outline" className="ml-2">Legacy</Badge>
-          </CardTitle>
-          <CardDescription>
-            Category-based configuration (still supported for backwards compatibility)
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* version */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <code className="font-mono text-sm bg-muted px-2 py-0.5 rounded">version</code>
-              <Badge variant="destructive">required</Badge>
-              <Badge variant="outline">string</Badge>
-            </div>
-            <p className="text-sm text-muted-foreground">Schema version &quot;1.0&quot;.</p>
-          </div>
-
-          {/* secondaryRepos */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <code className="font-mono text-sm bg-muted px-2 py-0.5 rounded">secondaryRepos</code>
-              <Badge variant="secondary">optional</Badge>
-              <Badge variant="outline">string[]</Badge>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Array of &quot;owner/repo&quot; strings for secondary repositories.
-            </p>
-          </div>
-
-          {/* categories */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <code className="font-mono text-sm bg-muted px-2 py-0.5 rounded">categories</code>
-              <Badge variant="destructive">required</Badge>
-              <Badge variant="outline">object</Badge>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Map of category names to their configurations. Use &quot;default&quot; as a fallback.
-            </p>
-          </div>
-
-          {/* constraints */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <code className="font-mono text-sm bg-muted px-2 py-0.5 rounded">constraints</code>
-              <Badge variant="secondary">optional</Badge>
-              <Badge variant="outline">object</Badge>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Global constraints: <code>excludePaths</code>, <code>requireTests</code>, <code>maxFilesChanged</code>.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* V1 Category Configuration */}
-      <Card className="border-muted">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-muted-foreground">
-            <Shield className="h-5 w-5" />
-            Category Configuration (v1)
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <code className="font-mono text-sm bg-muted px-2 py-0.5 rounded">match.labels</code>
-            <span className="text-sm text-muted-foreground ml-2">Issue labels that trigger this category</span>
-          </div>
-
-          <div className="space-y-2">
-            <code className="font-mono text-sm bg-muted px-2 py-0.5 rounded">infrastructure</code>
-            <span className="text-sm text-muted-foreground ml-2">Setup/teardown commands for infra</span>
-          </div>
-
-          <div className="space-y-2">
-            <code className="font-mono text-sm bg-muted px-2 py-0.5 rounded">requirements</code>
-            <span className="text-sm text-muted-foreground ml-2">Requirements the AI should follow</span>
-          </div>
-
-          <div className="space-y-2">
-            <code className="font-mono text-sm bg-muted px-2 py-0.5 rounded">deliverables</code>
-            <span className="text-sm text-muted-foreground ml-2">What must be completed</span>
-          </div>
-
-          <div className="space-y-2">
-            <code className="font-mono text-sm bg-muted px-2 py-0.5 rounded">testCommand</code>
-            <span className="text-sm text-muted-foreground ml-2">Command to run tests</span>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* V1 Complete Example */}
-      <Card className="border-muted">
-        <CardHeader>
-          <CardTitle className="text-muted-foreground">Version 1 Example</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <pre className="bg-muted p-4 rounded-md overflow-x-auto text-xs">
-{`{
-  "version": "1.0",
-  "secondaryRepos": ["myorg/backend-api"],
-  "categories": {
-    "default": {
-      "requirements": ["Must not break existing tests"],
-      "deliverables": ["Fix the reported issue"],
-      "testCommand": "npm test"
-    },
-    "database": {
-      "match": { "labels": ["database", "db"] },
-      "infrastructure": {
-        "setup": "supabase start",
-        "teardown": "supabase stop"
-      },
-      "requirements": ["Database migrations must be reversible"],
-      "deliverables": ["Fix the database issue", "Add migration if needed"],
-      "testCommand": "npm run test:db"
-    }
-  },
-  "constraints": {
-    "excludePaths": ["**/.env*"],
-    "requireTests": true
-  }
-}`}
-          </pre>
         </CardContent>
       </Card>
     </div>
