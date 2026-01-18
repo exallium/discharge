@@ -15,6 +15,7 @@ import {
   Sun,
   Moon,
   Bug,
+  BookOpen,
 } from 'lucide-react';
 
 const navigation = [
@@ -22,6 +23,7 @@ const navigation = [
   { name: 'Projects', href: '/projects', icon: FolderKanban },
   { name: 'Jobs', href: '/jobs', icon: History },
   { name: 'Logs', href: '/logs', icon: FileText },
+  { name: 'Docs', href: '/docs', icon: BookOpen },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

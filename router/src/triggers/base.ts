@@ -72,6 +72,8 @@ export interface AnalysisResult {
   reason?: string;
   filesInvolved: string[];
   complexity: 'trivial' | 'simple' | 'moderate' | 'complex';
+  /** Target repo for PR ('main' or 'owner/repo' from secondaryRepos) */
+  targetRepo?: string;
 }
 
 /**

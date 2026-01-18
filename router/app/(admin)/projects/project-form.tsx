@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { ProjectSecrets } from '@/components/projects/project-secrets';
 import { WebhookInfo } from '@/components/projects/webhook-info';
 import { RepositoryPicker } from '@/components/projects/repository-picker';
+import { AiBugsValidator } from '@/components/projects/ai-bugs-validator';
 import type { ProjectConfig } from '@/src/db/repositories/projects';
 
 // Available Runner options (only show implemented ones)
@@ -190,6 +191,9 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
           selectedRepo={repoFullName}
         />
       )}
+
+      {/* Config Validation - shows .ai-bugs.json preview */}
+      {repoFullName && <AiBugsValidator repoFullName={repoFullName} />}
 
       {/* Basic Info */}
       <Card>

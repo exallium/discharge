@@ -49,6 +49,24 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
   // Label that triggers plan approval and execution
   static readonly PLAN_APPROVED_LABEL = 'plan-approved';
 
+  // Escalation labels for agent routing
+  static readonly ESCALATE_COMPLEX_LABEL = 'escalate-complex';
+  static readonly ESCALATE_INVESTIGATE_LABEL = 'escalate-investigate';
+  static readonly RERUN_TRIAGE_LABEL = 'rerun-triage';
+
+  // Triage-applied labels
+  static readonly COMPLEXITY_SIMPLE_LABEL = 'complexity-simple';
+  static readonly COMPLEXITY_COMPLEX_LABEL = 'complexity-complex';
+  static readonly NEEDS_INFO_LABEL = 'needs-info';
+  static readonly OUT_OF_SCOPE_LABEL = 'out-of-scope';
+
+  // All escalation labels for easy checking
+  static readonly ESCALATION_LABELS = [
+    GitHubIssuesTrigger.ESCALATE_COMPLEX_LABEL,
+    GitHubIssuesTrigger.ESCALATE_INVESTIGATE_LABEL,
+    GitHubIssuesTrigger.RERUN_TRIAGE_LABEL,
+  ];
+
   // Conversation support
   supportsConversation = true;
 
@@ -487,7 +505,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
 
   /**
    * Parse PR labeled event
-   * Used for plan approval - when 'plan-approved' label is added
+   * Used for plan approval and escalation labels
    */
   private async parsePRLabeledEvent(payload: GitHubPullRequestEventPayload): Promise<TriggerEvent | null> {
     const { pull_request, repository, label } = payload;
@@ -497,13 +515,21 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       return null;
     }
 
-    // Only process if the 'plan-approved' label was added
-    if (label?.name !== GitHubIssuesTrigger.PLAN_APPROVED_LABEL) {
-      console.log(`[GitHubIssuesTrigger] Ignoring label: ${label?.name}, not plan-approved`);
+    // Check if this is a label we care about
+    const labelName = label?.name;
+    const isPlanApproved = labelName === GitHubIssuesTrigger.PLAN_APPROVED_LABEL;
+    const isEscalation = GitHubIssuesTrigger.ESCALATION_LABELS.includes(labelName || '');
+
+    if (!isPlanApproved && !isEscalation) {
+      console.log(`[GitHubIssuesTrigger] Ignoring label: ${labelName}`);
       return null;
     }
 
-    console.log(`[GitHubIssuesTrigger] Plan approved via label on PR #${pull_request.number}`);
+    if (isPlanApproved) {
+      console.log(`[GitHubIssuesTrigger] Plan approved via label on PR #${pull_request.number}`);
+    } else {
+      console.log(`[GitHubIssuesTrigger] Escalation label ${labelName} added to PR #${pull_request.number}`);
+    }
 
     // Find project configuration
     const repoFullName = repository.full_name;
@@ -519,24 +545,47 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     // Extract linked issue number from PR body (e.g., "Fixes #123")
     const linkedIssueNumber = this.extractLinkedIssueNumber(pull_request.body);
 
+    // Determine event type based on label
+    let triggerId: string;
+    let title: string;
+    let description: string;
+    const eventMetadata: Record<string, unknown> = {
+      severity: this.determineSeverity(prLabels),
+      issueNumber: linkedIssueNumber || undefined,
+      prNumber: pull_request.number,
+      prUrl: pull_request.html_url,
+      prBranch: pull_request.head?.ref,
+      labels: prLabels,
+      state: pull_request.state,
+      owner: repository.owner?.login,
+      repo: repository.name,
+    };
+
+    if (isPlanApproved) {
+      triggerId = `${repository.full_name}#${pull_request.number}-plan-approved`;
+      title = `Plan Approved: PR #${pull_request.number}`;
+      description = `The implementation plan for PR #${pull_request.number} has been approved.`;
+      eventMetadata.planApproved = true;
+    } else {
+      // Escalation label
+      triggerId = `${repository.full_name}#${pull_request.number}-escalation-${labelName}`;
+      title = `Escalation: ${labelName} on PR #${pull_request.number}`;
+      description = `Escalation requested via ${labelName} label.`;
+      eventMetadata.escalationLabel = labelName;
+      eventMetadata.escalationType = labelName === GitHubIssuesTrigger.ESCALATE_COMPLEX_LABEL
+        ? 'complex'
+        : labelName === GitHubIssuesTrigger.ESCALATE_INVESTIGATE_LABEL
+          ? 'investigate'
+          : 'triage';
+    }
+
     return {
       triggerType: 'github-issues',
-      triggerId: `${repository.full_name}#${pull_request.number}-plan-approved`,
+      triggerId,
       projectId: project.id,
-      title: `Plan Approved: PR #${pull_request.number}`,
-      description: `The implementation plan for PR #${pull_request.number} has been approved.`,
-      metadata: {
-        severity: this.determineSeverity(prLabels),
-        issueNumber: linkedIssueNumber || undefined,
-        prNumber: pull_request.number,
-        prUrl: pull_request.html_url,
-        prBranch: pull_request.head?.ref,
-        labels: prLabels,
-        state: pull_request.state,
-        planApproved: true,
-        owner: repository.owner?.login,
-        repo: repository.name,
-      },
+      title,
+      description,
+      metadata: eventMetadata,
       links: {
         web: pull_request.html_url,
       },
@@ -862,15 +911,73 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
       return this.parsePRReviewCommentConversationEvent(typedPayload);
     }
 
-    // Handle PR labeled (plan approval)
+    // Handle PR labeled (plan approval and escalation)
     if (isPullRequestEvent(typedPayload) && typedPayload.action === 'labeled') {
-      // Only handle plan-approved label
-      if (typedPayload.label?.name === GitHubIssuesTrigger.PLAN_APPROVED_LABEL) {
+      const labelName = typedPayload.label?.name;
+
+      // Handle plan-approved label
+      if (labelName === GitHubIssuesTrigger.PLAN_APPROVED_LABEL) {
         return this.parsePlanApprovedConversationEvent(typedPayload);
+      }
+
+      // Handle escalation labels
+      if (GitHubIssuesTrigger.ESCALATION_LABELS.includes(labelName || '')) {
+        return this.parseEscalationConversationEvent(typedPayload);
       }
     }
 
     return null;
+  }
+
+  /**
+   * Parse escalation label event to ConversationEvent
+   */
+  private parseEscalationConversationEvent(
+    payload: GitHubPullRequestEventPayload
+  ): ConversationEvent {
+    const { pull_request, repository, label } = payload;
+    const prLabels = (pull_request.labels || []).map((l: GitHubLabel) => l.name);
+    const labelName = label?.name || '';
+
+    // Try to link back to the originating issue
+    const linkedIssueNumber = this.extractLinkedIssueNumber(pull_request.body);
+    const externalId = linkedIssueNumber
+      ? `${repository.full_name}#${linkedIssueNumber}`
+      : `${repository.full_name}#${pull_request.number}`;
+
+    // Determine escalation type
+    let escalationType: 'complex' | 'investigate' | 'triage' = 'triage';
+    if (labelName === GitHubIssuesTrigger.ESCALATE_COMPLEX_LABEL) {
+      escalationType = 'complex';
+    } else if (labelName === GitHubIssuesTrigger.ESCALATE_INVESTIGATE_LABEL) {
+      escalationType = 'investigate';
+    }
+
+    return {
+      type: 'escalation_requested',
+      source: {
+        platform: 'github',
+        externalId,
+        url: pull_request.html_url,
+      },
+      target: {
+        type: 'pull_request',
+        number: pull_request.number,
+        title: pull_request.title,
+        body: pull_request.body || '',
+        labels: prLabels,
+        url: pull_request.html_url,
+      },
+      payload: {
+        action: 'labeled',
+        label: {
+          name: labelName,
+        },
+        escalationType,
+        prBranch: pull_request.head?.ref,
+      },
+      timestamp: new Date().toISOString(),
+    };
   }
 
   /**

@@ -18,6 +18,8 @@ import { getConversationService } from '../conversation';
 import { getPlanManager } from '../conversation/plan-manager';
 import { buildUserMessage } from '../conversation/prompts';
 import { logger } from '../logger';
+// Types for future escalation handling (currently used for documentation)
+// import type { EscalationRequest, InvestigationContext } from './bug-config';
 
 /**
  * Legacy orchestrator for triggers that don't support conversation mode.
@@ -143,9 +145,17 @@ export async function orchestrateFix(
     // Success! Create PR using PR provider
     console.log(`[Orchestrator] Creating PR for branch ${result.branchName}`);
 
+    // Determine target repo for PR (may route to secondary repo)
+    const targetProject = await getTargetProjectForPR(project, analysis);
+    const isSecondaryRepo = targetProject.repoFullName !== project.repoFullName;
+
+    if (isSecondaryRepo) {
+      console.log(`[Orchestrator] Routing PR to secondary repo: ${targetProject.repoFullName}`);
+    }
+
     // Use PR provider for deterministic PR creation
     const prResult = await createPullRequest(
-      project,
+      targetProject,
       result.branchName,
       `fix: ${analysis.summary}`,
       formatPRBody(analysis, trigger.getLink(event))
@@ -158,13 +168,13 @@ export async function orchestrateFix(
       console.log(`[Orchestrator] PR created: ${prUrl}`);
 
       // Add labels and reviewers if configured (GitHub specific)
-      const vcs = await getVCSForProject(project.vcs.type, project.id);
+      const vcs = await getVCSForProject(targetProject.vcs.type, targetProject.id);
       if (vcs instanceof GitHubVCS && prNumber) {
-        if (project.vcs.labels && project.vcs.labels.length > 0) {
-          await vcs.addLabels(project.vcs.owner, project.vcs.repo, prNumber, project.vcs.labels);
+        if (targetProject.vcs.labels && targetProject.vcs.labels.length > 0) {
+          await vcs.addLabels(targetProject.vcs.owner, targetProject.vcs.repo, prNumber, targetProject.vcs.labels);
         }
-        if (project.vcs.reviewers && project.vcs.reviewers.length > 0) {
-          await vcs.requestReviewers(project.vcs.owner, project.vcs.repo, prNumber, project.vcs.reviewers);
+        if (targetProject.vcs.reviewers && targetProject.vcs.reviewers.length > 0) {
+          await vcs.requestReviewers(targetProject.vcs.owner, targetProject.vcs.repo, prNumber, targetProject.vcs.reviewers);
         }
       }
     } else {
@@ -270,6 +280,59 @@ async function createPullRequest(
   }
 
   return result;
+}
+
+/**
+ * Get the target project for creating a PR
+ * Routes to secondary repo if analysis.targetRepo specifies one
+ *
+ * @param project - Original project config
+ * @param analysis - Analysis result with optional targetRepo
+ * @returns Project config with potentially modified VCS settings
+ */
+async function getTargetProjectForPR(
+  project: ProjectConfig,
+  analysis: AnalysisResult | undefined
+): Promise<ProjectConfig> {
+  // Use main project if no targetRepo specified or it's 'main'
+  if (!analysis?.targetRepo || analysis.targetRepo === 'main') {
+    return project;
+  }
+
+  // targetRepo is "owner/repo" format
+  const targetRepoFullName = analysis.targetRepo;
+  const [owner, repo] = targetRepoFullName.split('/');
+
+  if (!owner || !repo) {
+    logger.warn('Invalid targetRepo format, using main project', {
+      targetRepo: analysis.targetRepo,
+    });
+    return project;
+  }
+
+  // Check if this repo has its own project config
+  const targetProject = await findProjectById(targetRepoFullName);
+
+  if (targetProject) {
+    // Use target project's config (it owns that repo)
+    logger.info('Routing PR to secondary repo with existing project', {
+      targetRepo: targetRepoFullName,
+      projectId: targetProject.id,
+    });
+    return targetProject;
+  }
+
+  // No project for this repo - create PR using same VCS type but different owner/repo
+  logger.info('Routing PR to secondary repo (no existing project)', {
+    targetRepo: targetRepoFullName,
+    mainProject: project.id,
+  });
+
+  return {
+    ...project,
+    repoFullName: targetRepoFullName,
+    vcs: { ...project.vcs, owner, repo },
+  };
 }
 
 /**
@@ -436,6 +499,34 @@ export async function orchestrateConversation(
           `🚀 Plan approved! Starting implementation...\n\nI'll execute the approved plan and push the changes to this PR.`
         );
       }
+    }
+
+    // Check for escalation event - triggers re-run with different agent
+    const escalationEvent = events.find(e => e.type === 'escalation_requested');
+    if (escalationEvent) {
+      const escalationType = escalationEvent.payload.escalationType;
+      logger.info('Escalation requested', {
+        conversationId,
+        escalationType,
+        prNumber: existingPrNumber,
+      });
+
+      // Post acknowledgment
+      if (trigger.postFeedback) {
+        const agentName = escalationType === 'complex' ? 'complex (opus)'
+          : escalationType === 'investigate' ? 'investigate (sonnet)'
+          : 'triage (haiku)';
+        await trigger.postFeedback(
+          triggerEvent,
+          `🔄 Escalation requested. Re-running with ${agentName} agent...`
+        );
+      }
+
+      // Store escalation info in conversation metadata for runner to use
+      await conversationService.updateStatus(conversation.id, {
+        // Store escalation type so runner can pick the right agent
+        status: 'executing',
+      });
     }
 
     // Check if PR review events have meaningful content
@@ -984,6 +1075,10 @@ function checkEventsHaveContent(events: ConversationEvent[]): boolean {
 
       case 'issue_labeled':
         // Labels are meaningful signals
+        return true;
+
+      case 'escalation_requested':
+        // Escalation events are always meaningful - they trigger agent re-run
         return true;
 
       default:

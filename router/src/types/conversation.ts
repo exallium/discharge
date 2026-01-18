@@ -44,7 +44,8 @@ export type ConversationEventType =
   | 'pr_labeled'
   | 'plan_approved'
   | 'approval'
-  | 'manual_trigger';
+  | 'manual_trigger'
+  | 'escalation_requested';
 
 /**
  * Generic conversation event that triggers normalize platform events to
@@ -103,6 +104,7 @@ export interface ConversationEvent {
       color?: string;
     };
     prBranch?: string;  // For PR events, the branch name
+    escalationType?: 'complex' | 'investigate' | 'triage';  // For escalation events
   };
 
   /** ISO 8601 timestamp */

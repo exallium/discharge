@@ -28,9 +28,10 @@ import {
 } from '../../../conversation/prompts';
 import {
   BugFixConfig,
+  AiBugsConfig,
   CategoryConfig,
   findMatchingCategory,
-  validateBugConfig,
+  validateConfig,
 } from '../../bug-config';
 import { buildCategoryPrompt, getMatchedCategoryName } from '../../prompts';
 import { getErrorMessage, isExecError } from '../../../types/errors';
@@ -39,6 +40,9 @@ import { getSecret } from '../../../secrets';
 import {
   createWorktree,
   removeWorktree,
+  resolveSecondaryRepos,
+  cloneSecondaryRepos,
+  cleanupSecondaryRepos,
 } from '../../workspace';
 
 const execAsync = promisify(exec);
@@ -240,6 +244,9 @@ export class ClaudeCodeRunner implements RunnerPlugin {
     // Track matched category for infrastructure cleanup
     let matchedCategory: CategoryConfig | undefined;
 
+    // Track secondary repos for cleanup
+    let secondaryRepoPaths = new Map<string, string>();
+
     console.log(`[ClaudeCode:${jobId}] Starting execution`, {
       repo: options.repoUrl,
       branch: options.branch,
@@ -278,15 +285,24 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       }
 
       // Read .ai-bugs.json if it exists
+      // Supports both v1 (categories) and v2 (rules + agents) schemas
       let bugConfig: BugFixConfig | undefined;
+      let bugConfigV2: AiBugsConfig | undefined;
+      let isV2Config = false;
       try {
         const configPath = join(workspacePath, '.ai-bugs.json');
         const content = await readFile(configPath, 'utf-8');
         const parsed = JSON.parse(content);
-        const validation = validateBugConfig(parsed);
+        const validation = validateConfig(parsed);
         if (validation.valid) {
-          bugConfig = validation.config;
-          console.log(`[ClaudeCode:${jobId}] Loaded .ai-bugs.json`);
+          isV2Config = validation.isV2;
+          if (isV2Config) {
+            bugConfigV2 = validation.config as AiBugsConfig;
+            console.log(`[ClaudeCode:${jobId}] Loaded .ai-bugs.json (v2 schema)`);
+          } else {
+            bugConfig = validation.config as BugFixConfig;
+            console.log(`[ClaudeCode:${jobId}] Loaded .ai-bugs.json (v1 schema)`);
+          }
         } else {
           console.warn(
             `[ClaudeCode:${jobId}] Invalid .ai-bugs.json: ${validation.error}`
@@ -294,6 +310,19 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         }
       } catch {
         console.log(`[ClaudeCode:${jobId}] No .ai-bugs.json found, using defaults`);
+      }
+
+      // Clone secondary repositories if configured
+      // Handle both v1 and v2 formats
+      const secondaryRepos = isV2Config
+        ? bugConfigV2?.config?.secondaryRepos || []
+        : bugConfig?.secondaryRepos || [];
+
+      if (secondaryRepos.length > 0) {
+        console.log(`[ClaudeCode:${jobId}] Cloning ${secondaryRepos.length} secondary repos`);
+        const secondaryRepoInfos = resolveSecondaryRepos(secondaryRepos, 'github');
+        secondaryRepoPaths = await cloneSecondaryRepos(workspacePath, secondaryRepoInfos);
+        console.log(`[ClaudeCode:${jobId}] Cloned ${secondaryRepoPaths.size} secondary repos`);
       }
 
       // Find matching category based on event labels
@@ -371,11 +400,16 @@ export class ClaudeCodeRunner implements RunnerPlugin {
           ? `-e PATH="/workspace/.claude-tools:$PATH"`
           : '';
 
-      // Enhance prompt with category-specific requirements
+      // Extract repo full name from URL for prompt
+      const repoMatch = options.repoUrl.match(/github\.com[:/]([^/]+\/[^/.]+)/);
+      const mainRepoFullName = repoMatch ? repoMatch[1] : undefined;
+
+      // Enhance prompt with category-specific requirements and secondary repos
       const enhancedPrompt = buildCategoryPrompt(
         options.prompt,
         bugConfig,
-        eventLabels
+        eventLabels,
+        mainRepoFullName
       );
 
       // Write prompt to file (avoids shell argument length limits)
@@ -390,6 +424,14 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         ? `-v ${DOCKER_SOCKET_PATH}:/var/run/docker.sock`
         : '';
 
+      // Build volume mounts for secondary repos (read-only for reference)
+      const secondaryMounts = Array.from(secondaryRepoPaths.entries())
+        .map(([fullName, localPath]) => {
+          const repoName = fullName.split('/')[1];
+          return `-v ${localPath}:/workspace-secondary/${repoName}:ro`;
+        })
+        .join(' ');
+
       // Run Claude Code (read prompt from file inside container via cat pipe)
       console.log(`[ClaudeCode:${jobId}] Running Claude Code CLI...`);
       const { stdout } = await execAsync(
@@ -400,6 +442,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
           -v ${workspacePath}:/workspace \
           -v ${claudeConfigPath}:/home/agent/.claude \
           ${dockerMount} \
+          ${secondaryMounts} \
           ${envFlags} \
           ${pathEnv} \
           --cpus="2" \
@@ -479,6 +522,17 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         }).catch((err) => {
           console.error(
             `[ClaudeCode:${jobId}] Infrastructure teardown failed:`,
+            getErrorMessage(err)
+          );
+        });
+      }
+
+      // Cleanup secondary repositories
+      if (secondaryRepoPaths.size > 0) {
+        console.log(`[ClaudeCode:${jobId}] Cleaning up secondary repos...`);
+        await cleanupSecondaryRepos(workspacePath, secondaryRepoPaths).catch((err) => {
+          console.error(
+            `[ClaudeCode:${jobId}] Failed to cleanup secondary repos:`,
             getErrorMessage(err)
           );
         });

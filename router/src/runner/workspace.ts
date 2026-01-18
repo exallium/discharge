@@ -457,3 +457,193 @@ export async function listWorktrees(projectId: string): Promise<WorktreeMeta[]> 
 export function getWorkspaceRoot(): string {
   return WORKSPACE_ROOT;
 }
+
+/**
+ * Secondary repository info
+ */
+export interface SecondaryRepoInfo {
+  repoFullName: string;  // owner/repo
+  repoUrl: string;       // Git URL
+  branch: string;
+}
+
+/**
+ * Resolve secondary repo references to full repo info
+ *
+ * @param repos - Array of "owner/repo" strings
+ * @param vcsType - VCS type (github, gitlab)
+ * @returns Array of resolved repo info
+ */
+export function resolveSecondaryRepos(
+  repos: string[],
+  vcsType: string
+): SecondaryRepoInfo[] {
+  return repos.map(repoFullName => ({
+    repoFullName,
+    repoUrl: vcsType === 'github'
+      ? `https://github.com/${repoFullName}.git`
+      : `https://gitlab.com/${repoFullName}.git`,
+    branch: 'main', // Default branch, could be made configurable
+  }));
+}
+
+/**
+ * Get or create a cached bare repository for a secondary repo
+ * Uses the same caching approach as main workspace repos
+ */
+async function getOrCreateSecondaryBareRepo(
+  repoFullName: string,
+  repoUrl: string
+): Promise<string> {
+  // Store secondary bare repos in a dedicated directory
+  const secondaryCacheDir = join(WORKSPACE_ROOT, '_secondary-cache');
+  const safeRepoName = repoFullName.replace('/', '__'); // owner__repo format
+  const bareRepoPath = join(secondaryCacheDir, `${safeRepoName}.git`);
+
+  await mkdir(secondaryCacheDir, { recursive: true });
+
+  // Check if bare repo already exists
+  if (existsSync(join(bareRepoPath, 'HEAD'))) {
+    // Repo exists - fetch latest
+    logger.debug('Fetching updates for cached secondary repo', { repoFullName });
+    try {
+      // Update remote URL with fresh token
+      const authUrl = await getAuthenticatedRepoUrl(repoUrl);
+      await execAsync(`git remote set-url origin "${authUrl}"`, { cwd: bareRepoPath });
+      await execAsync('git fetch --all --prune', { cwd: bareRepoPath, timeout: 120000 });
+    } catch (error) {
+      logger.warn('Failed to fetch secondary repo updates, will try re-clone', {
+        repoFullName,
+        error: getErrorMessage(error),
+      });
+      // If fetch fails, remove and re-clone
+      await rm(bareRepoPath, { recursive: true, force: true });
+    }
+  }
+
+  // Clone if doesn't exist (or was removed due to fetch failure)
+  if (!existsSync(join(bareRepoPath, 'HEAD'))) {
+    logger.info('Cloning bare repository for secondary repo', { repoFullName });
+    const authUrl = await getAuthenticatedRepoUrl(repoUrl);
+    await execAsync(
+      `git clone --bare ${authUrl} "${bareRepoPath}"`,
+      { timeout: 300000 } // 5 minutes for initial clone
+    );
+  }
+
+  return bareRepoPath;
+}
+
+/**
+ * Clone secondary repositories for cross-referencing
+ * Uses cached bare repos + worktrees for efficiency
+ *
+ * @param basePath - Base workspace path (main repo path)
+ * @param repos - Array of secondary repo info
+ * @returns Map of repoFullName -> local path
+ */
+export async function cloneSecondaryRepos(
+  basePath: string,
+  repos: SecondaryRepoInfo[]
+): Promise<Map<string, string>> {
+  const paths = new Map<string, string>();
+
+  // Create secondary workspace directory for this job
+  const secondaryDir = join(basePath, '..', 'workspace-secondary');
+  await mkdir(secondaryDir, { recursive: true });
+
+  for (const repo of repos) {
+    const repoName = repo.repoFullName.split('/')[1];
+    const targetPath = join(secondaryDir, repoName);
+
+    logger.info('Setting up secondary repository', {
+      repo: repo.repoFullName,
+      branch: repo.branch,
+      targetPath,
+    });
+
+    try {
+      // Get or create cached bare repo
+      const bareRepoPath = await getOrCreateSecondaryBareRepo(
+        repo.repoFullName,
+        repo.repoUrl
+      );
+
+      // Create a worktree from the bare repo for this job
+      // Use --detach to avoid creating tracking branches
+      await execAsync(
+        `git worktree add "${targetPath}" "origin/${repo.branch}" --detach`,
+        { cwd: bareRepoPath, timeout: 60000 }
+      );
+
+      paths.set(repo.repoFullName, targetPath);
+      logger.info('Secondary repository ready', {
+        repo: repo.repoFullName,
+        path: targetPath,
+      });
+    } catch (error) {
+      logger.error('Failed to setup secondary repository', {
+        repo: repo.repoFullName,
+        error: getErrorMessage(error),
+      });
+      // Continue with other repos - don't fail the whole job
+    }
+  }
+
+  return paths;
+}
+
+/**
+ * Clean up secondary repository worktrees
+ * Properly removes worktrees from their bare repos to avoid orphaned refs
+ *
+ * @param basePath - Base workspace path (main repo path)
+ * @param repoPaths - Map of repoFullName -> local worktree path
+ */
+export async function cleanupSecondaryRepos(
+  basePath: string,
+  repoPaths?: Map<string, string>
+): Promise<void> {
+  const secondaryDir = join(basePath, '..', 'workspace-secondary');
+  const secondaryCacheDir = join(WORKSPACE_ROOT, '_secondary-cache');
+
+  // If we have paths, properly remove worktrees from their bare repos
+  if (repoPaths && repoPaths.size > 0) {
+    for (const [repoFullName, worktreePath] of repoPaths) {
+      try {
+        const safeRepoName = repoFullName.replace('/', '__');
+        const bareRepoPath = join(secondaryCacheDir, `${safeRepoName}.git`);
+
+        if (existsSync(bareRepoPath)) {
+          // Remove worktree through git
+          await execAsync(`git worktree remove "${worktreePath}" --force`, {
+            cwd: bareRepoPath,
+          }).catch(() => {
+            // Worktree might already be removed
+          });
+
+          // Prune orphaned refs
+          await execAsync('git worktree prune', { cwd: bareRepoPath }).catch(() => {});
+        }
+      } catch (error) {
+        logger.debug('Failed to remove secondary worktree via git', {
+          repo: repoFullName,
+          error: getErrorMessage(error),
+        });
+      }
+    }
+  }
+
+  // Clean up the secondary directory (fallback/belt-and-suspenders)
+  if (existsSync(secondaryDir)) {
+    try {
+      await rm(secondaryDir, { recursive: true, force: true });
+      logger.debug('Cleaned up secondary repositories directory', { secondaryDir });
+    } catch (error) {
+      logger.warn('Failed to cleanup secondary repositories directory', {
+        secondaryDir,
+        error: getErrorMessage(error),
+      });
+    }
+  }
+}
