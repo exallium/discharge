@@ -18,6 +18,13 @@ interface SecondaryRepoAccess {
   hasAccess: boolean;
 }
 
+interface AgentInfo {
+  name: string;
+  model: string;
+  description?: string;
+  isSystem: boolean;
+}
+
 interface ValidationResult {
   exists: boolean;
   valid?: boolean;
@@ -25,9 +32,8 @@ interface ValidationResult {
   message?: string;
   config?: {
     version: string;
-    categoryCount: number;
-    categoryNames: string[];
-    hasConstraints: boolean;
+    rulesCount: number;
+    agents: AgentInfo[];
   };
   secondaryRepos?: SecondaryRepoAccess[];
   warnings?: string[];
@@ -131,25 +137,35 @@ export function AiBugsValidator({ repoFullName }: AiBugsValidatorProps) {
               <span>Valid configuration (v{result.config.version})</span>
             </div>
 
-            {/* Categories */}
+            {/* Rules */}
+            {result.config.rulesCount > 0 && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Info className="h-4 w-4" />
+                <span>{result.config.rulesCount} global rule{result.config.rulesCount > 1 ? 's' : ''} configured</span>
+              </div>
+            )}
+
+            {/* Agents */}
             <div className="space-y-2">
-              <h4 className="text-sm font-medium">Categories ({result.config.categoryCount})</h4>
-              <div className="flex flex-wrap gap-1">
-                {result.config.categoryNames.map((name) => (
-                  <Badge key={name} variant="secondary">
-                    {name}
-                  </Badge>
+              <h4 className="text-sm font-medium">Agents ({result.config.agents.length})</h4>
+              <div className="space-y-1">
+                {result.config.agents.map((agent) => (
+                  <div key={agent.name} className="flex items-center gap-2 text-sm">
+                    <Badge variant={agent.isSystem ? 'outline' : 'secondary'}>
+                      {agent.name}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {agent.model}
+                    </span>
+                    {agent.description && (
+                      <span className="text-xs text-muted-foreground">
+                        - {agent.description}
+                      </span>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
-
-            {/* Constraints */}
-            {result.config.hasConstraints && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Info className="h-4 w-4" />
-                <span>Custom constraints configured</span>
-              </div>
-            )}
 
             {/* Secondary Repos */}
             {result.secondaryRepos && result.secondaryRepos.length > 0 && (

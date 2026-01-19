@@ -15,6 +15,8 @@ import {
   RunOptions,
   RunResult,
   AnalysisResult,
+  TriageResult,
+  InvestigationContext,
   ConversationRunOptions,
 } from '../../base';
 import { Tool } from '../../../triggers/base';
@@ -424,6 +426,39 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         console.log(`[ClaudeCode:${jobId}] No analysis.json found`);
       }
 
+      // Try to read triage-result.json
+      let triageResult: TriageResult | undefined;
+      try {
+        const triagePath = join(workspacePath, '.claude', 'triage-result.json');
+        const content = await readFile(triagePath, 'utf-8');
+        triageResult = JSON.parse(content);
+        if (triageResult) {
+          console.log(`[ClaudeCode:${jobId}] Triage:`, {
+            actionable: triageResult.actionable,
+            trivial: triageResult.trivial,
+            suggestedAgent: triageResult.suggestedAgent,
+          });
+        }
+      } catch {
+        // Triage result is optional - only present when running triage agent
+      }
+
+      // Try to read investigation.json
+      let investigationResult: InvestigationContext | undefined;
+      try {
+        const investigationPath = join(workspacePath, '.claude', 'investigation.json');
+        const content = await readFile(investigationPath, 'utf-8');
+        investigationResult = JSON.parse(content);
+        if (investigationResult) {
+          console.log(`[ClaudeCode:${jobId}] Investigation:`, {
+            filesInvolved: investigationResult.filesInvolved?.length || 0,
+            hasRootCause: !!investigationResult.rootCause,
+          });
+        }
+      } catch {
+        // Investigation result is optional - only present when running investigate agent
+      }
+
       // Push branch if there's a commit
       if (hasCommit) {
         console.log(`[ClaudeCode:${jobId}] Pushing branch ${fixBranch}...`);
@@ -436,6 +471,8 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         output: stdout,
         hasCommit,
         analysis,
+        triageResult,
+        investigationResult,
         branchName: hasCommit ? fixBranch : undefined,
       };
     } catch (error) {

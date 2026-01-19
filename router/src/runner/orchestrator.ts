@@ -1,8 +1,12 @@
 import { TriggerPlugin, TriggerEvent, FixStatus, AnalysisResult } from '../triggers/base';
 import { findProjectById, ProjectConfig } from '../config/projects';
 import { validateTools } from './tools';
-import { buildInvestigationPrompt } from './prompts';
-import { getRunner, RunnerPlugin } from './base';
+import {
+  buildInvestigationPrompt,
+  buildTriagePrompt,
+  buildAgentPrompt,
+} from './prompts';
+import { getRunner, RunnerPlugin, TriageResult, InvestigationContext } from './base';
 import { getVCSForProject } from '../vcs';
 import { formatPRBody } from '../vcs/base';
 import { GitHubVCS } from '../vcs/github';
@@ -18,8 +22,316 @@ import { getConversationService } from '../conversation';
 import { getPlanManager } from '../conversation/plan-manager';
 import { buildUserMessage } from '../conversation/prompts';
 import { logger } from '../logger';
-// Types for future escalation handling (currently used for documentation)
-// import type { EscalationRequest, InvestigationContext } from './bug-config';
+import {
+  AiBugsConfig,
+  getAgentRules,
+} from './bug-config';
+
+// ========================================
+// Triage-Based Orchestration
+// ========================================
+
+/**
+ * Orchestrate fix with triage-based agent routing
+ *
+ * Flow:
+ * 1. Run triage agent → determines if actionable, trivial, complexity
+ * 2. If not actionable → post comment, add labels, stop
+ * 3. If trivial → run simple agent directly
+ * 4. If non-trivial → run investigate agent, then fix agent
+ */
+export async function orchestrateWithTriage(
+  trigger: TriggerPlugin,
+  event: TriggerEvent,
+  project: ProjectConfig,
+  runner: RunnerPlugin,
+  config: AiBugsConfig | undefined,
+  workspacePath: string
+): Promise<FixStatus> {
+  const tools = await trigger.getTools(event);
+
+  // Step 1: Run triage agent
+  logger.info('Running triage agent', { triggerId: event.triggerId });
+
+  const triagePrompt = buildTriagePrompt(trigger, event, config);
+  const triageResult = await runner.run({
+    repoUrl: project.repo,
+    branch: project.branch,
+    prompt: triagePrompt,
+    tools,
+    timeoutMs: 120000, // 2 minutes for triage (it's fast)
+    env: project.runner?.env,
+    projectId: event.projectId,
+  });
+
+  if (!triageResult.success) {
+    await trigger.addComment(
+      event,
+      `⚠️ Triage failed: ${triageResult.error || 'Unknown error'}`
+    );
+    return {
+      fixed: false,
+      reason: 'triage_failed',
+      analysis: undefined,
+    };
+  }
+
+  const triage = triageResult.triageResult;
+  if (!triage) {
+    // No triage result - fall back to legacy investigation
+    logger.warn('No triage result, falling back to legacy flow', {
+      triggerId: event.triggerId,
+    });
+    return orchestrateLegacyFix(trigger, event, project, runner, tools);
+  }
+
+  logger.info('Triage complete', {
+    triggerId: event.triggerId,
+    actionable: triage.actionable,
+    trivial: triage.trivial,
+    complexity: triage.complexity,
+    suggestedAgent: triage.suggestedAgent,
+  });
+
+  // Step 2: Handle non-actionable issues
+  if (!triage.actionable) {
+    return handleNonActionableTriage(trigger, event, triage);
+  }
+
+  // Add labels from triage if provided
+  if (triage.labels && triage.labels.length > 0) {
+    try {
+      const vcs = await getVCSForProject(project.vcs.type, project.id);
+      if (vcs instanceof GitHubVCS && event.metadata?.issueNumber) {
+        await vcs.addLabels(
+          project.vcs.owner,
+          project.vcs.repo,
+          event.metadata.issueNumber as number,
+          triage.labels
+        );
+      }
+    } catch (error) {
+      logger.warn('Failed to add triage labels', { error: getErrorMessage(error) });
+    }
+  }
+
+  // Step 3: Route based on triage result
+  let investigationContext: InvestigationContext | undefined;
+
+  // Non-trivial issues need investigation first
+  if (!triage.trivial) {
+    logger.info('Running investigate agent', { triggerId: event.triggerId });
+
+    const investigateRules = await getAgentRules(config, 'investigate', workspacePath);
+    const investigatePrompt = buildAgentPrompt(
+      'investigate',
+      trigger,
+      event,
+      investigateRules,
+      tools,
+      undefined, // no prior investigation
+      project.repoFullName,
+      config?.config?.secondaryRepos
+    );
+
+    const investigateResult = await runner.run({
+      repoUrl: project.repo,
+      branch: project.branch,
+      prompt: investigatePrompt,
+      tools,
+      timeoutMs: project.runner?.timeout || 600000,
+      env: project.runner?.env,
+      projectId: event.projectId,
+    });
+
+    if (!investigateResult.success) {
+      await trigger.addComment(
+        event,
+        `⚠️ Investigation failed: ${investigateResult.error || 'Unknown error'}`
+      );
+      return {
+        fixed: false,
+        reason: 'investigation_failed',
+        analysis: undefined,
+      };
+    }
+
+    investigationContext = investigateResult.investigationResult;
+    if (!investigationContext) {
+      logger.warn('Investigation completed but no result found', {
+        triggerId: event.triggerId,
+      });
+    } else {
+      logger.info('Investigation complete', {
+        triggerId: event.triggerId,
+        filesInvolved: investigationContext.filesInvolved?.length || 0,
+      });
+    }
+  }
+
+  // Step 4: Run fix agent
+  const fixAgentName = triage.suggestedAgent || (triage.complexity === 'complex' ? 'complex' : 'simple');
+  logger.info('Running fix agent', {
+    triggerId: event.triggerId,
+    agent: fixAgentName,
+    hasInvestigationContext: !!investigationContext,
+  });
+
+  const fixRules = await getAgentRules(config, fixAgentName, workspacePath);
+  const fixPrompt = buildAgentPrompt(
+    fixAgentName,
+    trigger,
+    event,
+    fixRules,
+    tools,
+    investigationContext,
+    project.repoFullName,
+    config?.config?.secondaryRepos
+  );
+
+  const fixResult = await runner.run({
+    repoUrl: project.repo,
+    branch: project.branch,
+    prompt: fixPrompt,
+    tools,
+    timeoutMs: project.runner?.timeout || 600000,
+    env: project.runner?.env,
+    projectId: event.projectId,
+  });
+
+  if (!fixResult.success) {
+    await trigger.addComment(
+      event,
+      `⚠️ Fix attempt failed: ${fixResult.error || 'Unknown error'}`
+    );
+    return {
+      fixed: false,
+      reason: 'fix_agent_failed',
+      analysis: undefined,
+    };
+  }
+
+  // Return analysis result - PR creation is handled by the caller
+  return {
+    fixed: fixResult.hasCommit && fixResult.analysis?.canAutoFix === true,
+    reason: fixResult.analysis?.reason,
+    analysis: fixResult.analysis,
+    prUrl: undefined, // PR creation handled separately
+  };
+}
+
+/**
+ * Handle non-actionable triage results
+ */
+async function handleNonActionableTriage(
+  trigger: TriggerPlugin,
+  event: TriggerEvent,
+  triage: TriageResult
+): Promise<FixStatus> {
+  const reason = triage.reason || 'not_actionable';
+
+  logger.info('Issue not actionable', {
+    triggerId: event.triggerId,
+    reason,
+    reasoning: triage.reasoning,
+  });
+
+  // Build comment based on reason
+  let comment: string;
+  if (triage.comment) {
+    comment = triage.comment;
+  } else {
+    switch (reason) {
+      case 'needs-info':
+        comment = `ℹ️ I need more information to investigate this issue.\n\n${triage.reasoning || 'Please provide additional details about the problem.'}`;
+        break;
+      case 'duplicate':
+        comment = `🔄 This appears to be a duplicate issue.\n\n${triage.reasoning || 'Please check existing issues for a solution.'}`;
+        break;
+      case 'out-of-scope':
+        comment = `📋 This issue is outside the scope of automated fixes.\n\n${triage.reasoning || 'This may require manual intervention or architectural changes.'}`;
+        break;
+      case 'wont-fix':
+        comment = `🚫 This issue has been marked as won't fix.\n\n${triage.reasoning || 'The described behavior may be intentional.'}`;
+        break;
+      default:
+        comment = `ℹ️ Unable to proceed with this issue.\n\n${triage.reasoning || 'Please review and provide more context if needed.'}`;
+    }
+  }
+
+  await trigger.addComment(event, comment);
+
+  // Try to add label for the reason
+  try {
+    const project = await findProjectById(event.projectId);
+    if (project) {
+      const vcs = await getVCSForProject(project.vcs.type, project.id);
+      if (vcs instanceof GitHubVCS && event.metadata?.issueNumber) {
+        await vcs.addLabels(
+          project.vcs.owner,
+          project.vcs.repo,
+          event.metadata.issueNumber as number,
+          [reason]
+        );
+      }
+    }
+  } catch (error) {
+    logger.warn('Failed to add non-actionable label', { error: getErrorMessage(error) });
+  }
+
+  return {
+    fixed: false,
+    reason,
+    analysis: undefined,
+  };
+}
+
+/**
+ * Legacy fix flow (no triage)
+ */
+async function orchestrateLegacyFix(
+  trigger: TriggerPlugin,
+  event: TriggerEvent,
+  project: ProjectConfig,
+  runner: RunnerPlugin,
+  tools: Awaited<ReturnType<TriggerPlugin['getTools']>>
+): Promise<FixStatus> {
+  const prompt = buildInvestigationPrompt(trigger, event, tools);
+
+  const result = await runner.run({
+    repoUrl: project.repo,
+    branch: project.branch,
+    prompt,
+    tools,
+    timeoutMs: project.runner?.timeout || 600000,
+    env: project.runner?.env,
+    eventLabels: event.metadata?.tags || [],
+    projectId: event.projectId,
+  });
+
+  if (!result.success) {
+    await trigger.addComment(
+      event,
+      `⚠️ Auto-fix attempt failed:\n\`\`\`\n${result.error || result.output.slice(0, 500)}\n\`\`\``
+    );
+    return {
+      fixed: false,
+      reason: 'runner_execution_failed',
+      analysis: undefined,
+    };
+  }
+
+  return {
+    fixed: result.hasCommit && result.analysis?.canAutoFix === true,
+    reason: result.analysis?.reason,
+    analysis: result.analysis,
+    prUrl: undefined,
+  };
+}
+
+// ========================================
+// Legacy Orchestrator
+// ========================================
 
 /**
  * Legacy orchestrator for triggers that don't support conversation mode.

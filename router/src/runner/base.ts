@@ -13,9 +13,10 @@ import type {
   RunnerConversationResult,
   RunnerErrorType,
 } from '../types/conversation';
+import type { TriageResult, InvestigationContext } from './bug-config';
 
 // Re-export for convenience
-export type { AnalysisResult };
+export type { AnalysisResult, TriageResult, InvestigationContext };
 
 /**
  * Options for running an AI agent
@@ -40,7 +41,9 @@ export interface RunResult {
   output: string;            // Agent's stdout output
   hasCommit: boolean;        // Whether a commit was made
   branchName?: string;       // Fix branch name (if commit made)
-  analysis?: AnalysisResult; // Parsed analysis (if exists)
+  analysis?: AnalysisResult; // Parsed analysis.json (if exists)
+  triageResult?: TriageResult; // Parsed triage-result.json (if exists)
+  investigationResult?: InvestigationContext; // Parsed investigation.json (if exists)
   error?: string;            // Error message (if failed)
   errorType?: RunnerErrorType;           // Error classification
   requiresAdminIntervention?: boolean;   // Whether admin action is needed
