@@ -312,30 +312,45 @@ export class GitHubVCS implements VCSPlugin {
     }
 
     try {
-      // Get current file SHA
-      const { data: currentFile } = await this.octokit.repos.getContent({
-        owner,
-        repo: repoName,
-        path: filePath,
-        ref: branchName,
-      });
+      // Try to get current file SHA (may not exist if branch was recreated)
+      let existingSha: string | undefined;
+      try {
+        const { data: currentFile } = await this.octokit.repos.getContent({
+          owner,
+          repo: repoName,
+          path: filePath,
+          ref: branchName,
+        });
 
-      if (Array.isArray(currentFile) || currentFile.type !== 'file') {
-        throw new Error(`Plan path is not a file: ${filePath}`);
+        if (!Array.isArray(currentFile) && currentFile.type === 'file') {
+          existingSha = currentFile.sha;
+        }
+      } catch (getError) {
+        // File doesn't exist - that's OK, we'll create it
+        const errorMessage = getErrorMessage(getError);
+        if (!errorMessage.includes('Not Found')) {
+          throw getError;
+        }
+        logger.info('Plan file does not exist, will create it', {
+          owner,
+          repo: repoName,
+          branch: branchName,
+          filePath,
+        });
       }
 
-      // Update the file
+      // Create or update the file
       await this.octokit.repos.createOrUpdateFileContents({
         owner,
         repo: repoName,
         path: filePath,
-        message: 'Update AI fix plan based on feedback',
+        message: existingSha ? 'Update AI fix plan based on feedback' : 'Create AI fix plan',
         content: Buffer.from(content).toString('base64'),
-        sha: currentFile.sha,
+        ...(existingSha && { sha: existingSha }),
         branch: branchName,
       });
 
-      logger.info('Updated plan file', {
+      logger.info(existingSha ? 'Updated plan file' : 'Created plan file', {
         owner,
         repo: repoName,
         branch: branchName,

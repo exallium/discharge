@@ -254,8 +254,8 @@ export class SentryTrigger implements TriggerPlugin {
    * These are bash scripts that Claude can run to gather more information
    */
   async getTools(event: TriggerEvent): Promise<Tool[]> {
-    const { triggerId, metadata } = event;
-    const sentryToken = await getSecret('sentry', 'auth_token');
+    const { triggerId, projectId, metadata } = event;
+    const sentryToken = await getSecret('sentry', 'auth_token', projectId);
     const sentryBaseUrl = (metadata.sentryInstanceUrl as string) || 'https://sentry.io';
 
     if (!sentryToken) {
@@ -398,13 +398,12 @@ EOF
    * Update issue status in Sentry
    */
   async updateStatus(event: TriggerEvent, status: FixStatus): Promise<void> {
-    const sentryToken = await getSecret('sentry', 'auth_token');
+    const { triggerId, projectId, metadata } = event;
+    const sentryToken = await getSecret('sentry', 'auth_token', projectId);
     if (!sentryToken) {
       console.warn('[SentryTrigger] Cannot update status - Sentry auth token not configured');
       return;
     }
-
-    const { triggerId, metadata } = event;
     const sentryBaseUrl = (metadata.sentryInstanceUrl as string) || 'https://sentry.io';
 
     // If fixed successfully, mark issue as resolved
@@ -439,13 +438,12 @@ EOF
    * Add a comment to the Sentry issue
    */
   async addComment(event: TriggerEvent, comment: string): Promise<void> {
-    const sentryToken = await getSecret('sentry', 'auth_token');
+    const { triggerId, projectId, metadata } = event;
+    const sentryToken = await getSecret('sentry', 'auth_token', projectId);
     if (!sentryToken) {
       console.warn('[SentryTrigger] Cannot add comment - Sentry auth token not configured');
       return;
     }
-
-    const { triggerId, metadata } = event;
     const sentryBaseUrl = (metadata.sentryInstanceUrl as string) || 'https://sentry.io';
 
     try {
@@ -504,13 +502,12 @@ EOF
    * Fetches the latest event with full stack trace and breadcrumbs
    */
   async prefetchData(event: TriggerEvent): Promise<PrefetchedData | undefined> {
-    const sentryToken = await getSecret('sentry', 'auth_token');
+    const { triggerId, projectId, metadata } = event;
+    const sentryToken = await getSecret('sentry', 'auth_token', projectId);
     if (!sentryToken) {
       console.warn('[SentryTrigger] Cannot prefetch data - Sentry auth token not configured');
       return undefined;
     }
-
-    const { triggerId, metadata } = event;
     const sentryBaseUrl = (metadata.sentryInstanceUrl as string) || 'https://sentry.io';
 
     try {
