@@ -719,6 +719,10 @@ export class ClaudeCodeRunner implements RunnerPlugin {
           fixBranch = options.existingPrBranch || `fix/conversation-${jobId.slice(0, 8)}`;
           console.log(`[ClaudeCode:${jobId}] Creating new branch ${fixBranch} (original branch was deleted)`);
           await execAsync(`git checkout -b ${fixBranch}`, { cwd: workspacePath });
+
+          // Push the recreated branch to remote so it exists for GitHub API operations
+          console.log(`[ClaudeCode:${jobId}] Pushing recreated branch to remote...`);
+          await execAsync(`git push -u origin ${fixBranch}`, { cwd: workspacePath });
         } else if (isUpdatingExistingPR) {
           // Use existing PR branch - no need to create a new one
           fixBranch = options.existingPrBranch!;
