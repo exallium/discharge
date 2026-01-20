@@ -468,7 +468,7 @@ describe('GitHubIssuesTrigger', () => {
   });
 
   describe('getTools', () => {
-    it('should generate investigation tools', async () => {
+    it('should return empty array (GitHub tools provided via MCP)', async () => {
       const event = {
         triggerType: 'github-issues',
         triggerId: 'owner/repo#42',
@@ -484,18 +484,9 @@ describe('GitHubIssuesTrigger', () => {
 
       const tools = await trigger.getTools(event);
 
-      expect(tools).toHaveLength(5);
-      expect(tools[0].name).toBe('get-issue-details');
-      expect(tools[1].name).toBe('get-issue-comments');
-      expect(tools[2].name).toBe('get-issue-events');
-      expect(tools[3].name).toBe('search-related-issues');
-      expect(tools[4].name).toBe('get-repo-issues');
-
-      // Check scripts contain proper API endpoints
-      expect(tools[0].script).toContain('https://api.github.com/repos/owner/repo/issues/42');
-      expect(tools[1].script).toContain('/issues/42/comments');
-      expect(tools[2].script).toContain('/issues/42/events');
-      expect(tools[3].script).toContain('search/issues');
+      // GitHub tools are now provided via MCP server (github_* tools)
+      // No bash scripts needed - Claude uses MCP tools directly
+      expect(tools).toHaveLength(0);
     });
   });
 

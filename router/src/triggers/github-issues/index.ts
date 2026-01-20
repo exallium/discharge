@@ -635,6 +635,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     const author = event.metadata.author as string;
     const triggeredBy = event.metadata.triggeredBy as string | undefined;
     const repoFullName = event.triggerId.split('#')[0];
+    const [owner, repo] = repoFullName.split('/');
 
     let context = `# GitHub Issue #${issueNumber}\n\n`;
     context += `**Repository:** ${repoFullName}\n`;
@@ -652,12 +653,12 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     context += `\n## Description\n\n${event.description}\n\n`;
 
     context += `## Investigation\n\n`;
-    context += `You have access to these tools for investigation:\n`;
-    context += `- \`get-issue-details\` - Fetch full issue metadata\n`;
-    context += `- \`get-issue-comments\` - Read all discussion comments\n`;
-    context += `- \`get-issue-events\` - View timeline (labels, references, etc.)\n`;
-    context += `- \`search-related-issues\` - Find similar issues\n`;
-    context += `- \`get-repo-issues\` - See recent issues for context\n\n`;
+    context += `You have access to GitHub MCP tools for investigation. Use these with owner="${owner}", repo="${repo}", issueNumber=${issueNumber}:\n`;
+    context += `- \`github_get_issue\` - Fetch full issue metadata\n`;
+    context += `- \`github_get_issue_comments\` - Read all discussion comments\n`;
+    context += `- \`github_get_issue_events\` - View timeline (labels, references, etc.)\n`;
+    context += `- \`github_search_issues\` - Find similar issues\n`;
+    context += `- \`github_get_repo_issues\` - See recent issues for context\n\n`;
 
     context += `Please investigate this issue and attempt to create a fix if possible.\n`;
 
@@ -674,74 +675,13 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
 
   /**
    * Generate investigation tools for GitHub issues
-   * Note: These tools use $GITHUB_TOKEN which is injected by the runner
-   * from the GitHub App installation token
+   * Note: GitHub tools are now provided via MCP server (github_* tools)
+   * No bash scripts needed - Claude uses MCP tools directly
    */
-  async getTools(event: TriggerEvent): Promise<Tool[]> {
-    const { issueNumber } = event.metadata;
-    const repoFullName = event.triggerId.split('#')[0];
-    const [owner, repo] = repoFullName.split('/');
-
-    const tools: Tool[] = [
-      {
-        name: 'get-issue-details',
-        description: 'Fetch full issue details including all comments and metadata',
-        script: `#!/bin/bash
-# Get detailed issue information from GitHub API
-curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
-  -H "Accept: application/vnd.github+json" \\
-  "https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}" | jq '.'
-`,
-      },
-      {
-        name: 'get-issue-comments',
-        description: 'Fetch all comments on the issue',
-        script: `#!/bin/bash
-# Get all comments on the issue
-curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
-  -H "Accept: application/vnd.github+json" \\
-  "https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments" | jq '.'
-`,
-      },
-      {
-        name: 'get-issue-events',
-        description: 'Fetch issue timeline events (labels, assignments, references, etc.)',
-        script: `#!/bin/bash
-# Get issue timeline events
-curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
-  -H "Accept: application/vnd.github+json" \\
-  "https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/events" | jq '.'
-`,
-      },
-      {
-        name: 'search-related-issues',
-        description: 'Search for related issues in the repository',
-        script: `#!/bin/bash
-# Search for related issues based on key terms from the issue title
-# Extract key terms from title (remove common words)
-TITLE=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
-  -H "Accept: application/vnd.github+json" \\
-  "https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}" | jq -r '.title')
-
-# Search for similar issues
-curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
-  -H "Accept: application/vnd.github+json" \\
-  "https://api.github.com/search/issues?q=repo:${owner}/${repo}+\${TITLE// /+}" | jq '.items[] | {number, title, state, html_url}'
-`,
-      },
-      {
-        name: 'get-repo-issues',
-        description: 'Get recent open issues in the repository for context',
-        script: `#!/bin/bash
-# Get recent open issues
-curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
-  -H "Accept: application/vnd.github+json" \\
-  "https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=10" | jq '.[] | {number, title, labels: [.labels[].name], created_at}'
-`,
-      },
-    ];
-
-    return tools;
+  async getTools(_event: TriggerEvent): Promise<Tool[]> {
+    // GitHub investigation tools are provided via MCP server
+    // See: router/mcp-server/src/tools/github.ts
+    return [];
   }
 
   /**
@@ -819,10 +759,13 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
   }
 
   /**
-   * Add comment to issue
+   * Add comment to issue or PR
+   * Note: In GitHub's API, PRs are treated as issues so both use the issues endpoint
    */
   async addComment(event: TriggerEvent, comment: string): Promise<void> {
-    const { issueNumber } = event.metadata;
+    const { issueNumber, prNumber } = event.metadata;
+    // Use issueNumber if available, fall back to prNumber (PRs are issues in GitHub API)
+    const targetNumber = issueNumber || prNumber;
 
     // Get owner/repo from metadata (conversation mode) or triggerId (standard mode)
     let owner: string;
@@ -837,8 +780,8 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
       [owner, repo] = repoFullName.split('/');
     }
 
-    if (!owner || !repo || !issueNumber) {
-      console.error('[GitHubIssuesTrigger] Missing required fields for comment:', { owner, repo, issueNumber });
+    if (!owner || !repo || !targetNumber) {
+      console.error('[GitHubIssuesTrigger] Missing required fields for comment:', { owner, repo, issueNumber, prNumber });
       return;
     }
 
@@ -850,7 +793,7 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
     }
 
     try {
-      const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
+      const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${targetNumber}/comments`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -866,7 +809,7 @@ curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
         return;
       }
 
-      console.log(`[GitHubIssuesTrigger] Posted comment to ${owner}/${repo}#${issueNumber}`);
+      console.log(`[GitHubIssuesTrigger] Posted comment to ${owner}/${repo}#${targetNumber}`);
     } catch (error: unknown) {
       console.error(`[GitHubIssuesTrigger] Failed to post comment:`, getErrorMessage(error));
     }

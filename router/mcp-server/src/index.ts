@@ -30,6 +30,7 @@ import { createServer } from 'http';
 import { URL } from 'url';
 import { closePool } from './db.js';
 import { sentryTools } from './tools/sentry.js';
+import { githubTools } from './tools/github.js';
 import type { McpTool } from './types.js';
 
 /**
@@ -37,6 +38,12 @@ import type { McpTool } from './types.js';
  * Set when a client connects with a projectId parameter
  */
 let currentProjectId: string | null = null;
+
+/**
+ * Active SSE transports keyed by sessionId
+ * Used to route /message POST requests to the correct transport
+ */
+const activeTransports = new Map<string, SSEServerTransport>();
 
 /**
  * Get the current project ID for tool calls
@@ -116,8 +123,10 @@ const toolRegistry: McpTool[] = [
   // Sentry tools for error tracking
   ...sentryTools,
 
+  // GitHub tools for issues and PRs
+  ...githubTools,
+
   // Future: Add more tool providers here
-  // ...githubTools,
   // ...circleciTools,
   // ...datadogTools,
 ];
@@ -335,13 +344,40 @@ async function main() {
         }
 
         const transport = new SSEServerTransport('/message', res);
+
+        // Store transport for message routing
+        activeTransports.set(transport.sessionId, transport);
+        console.error(`[MCP] Registered transport with sessionId: ${transport.sessionId}`);
+
+        // Cleanup on connection close
+        res.on('close', () => {
+          activeTransports.delete(transport.sessionId);
+          console.error(`[MCP] Removed transport with sessionId: ${transport.sessionId}`);
+        });
+
         await server.connect(transport);
         return;
       }
 
       // Message endpoint for SSE transport
-      if (req.url === '/message' && req.method === 'POST') {
-        // SSEServerTransport handles this internally
+      if (req.url?.startsWith('/message') && req.method === 'POST') {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`);
+        const sessionId = urlObj.searchParams.get('sessionId');
+
+        if (!sessionId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'sessionId is required' }));
+          return;
+        }
+
+        const transport = activeTransports.get(sessionId);
+        if (!transport) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Session not found' }));
+          return;
+        }
+
+        await transport.handlePostMessage(req, res);
         return;
       }
 
