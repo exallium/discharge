@@ -18,8 +18,9 @@ import { toast } from 'sonner';
 import { ProjectSecrets } from '@/components/projects/project-secrets';
 import { WebhookInfo } from '@/components/projects/webhook-info';
 import { RepositoryPicker } from '@/components/projects/repository-picker';
-import { AiBugsValidator } from '@/components/projects/ai-bugs-validator';
+import { AiBugsValidator, DetectedIntegrations } from '@/components/projects/ai-bugs-validator';
 import type { ProjectConfig } from '@/src/db/repositories/projects';
+import { useCallback } from 'react';
 
 // Available Runner options (only show implemented ones)
 const RUNNER_OPTIONS = [
@@ -67,6 +68,24 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
   const [sentry, setSentry] = useState(!!project?.triggers?.sentry?.enabled);
   const [circleci, setCircleci] = useState(!!project?.triggers?.circleci?.enabled);
 
+  // Detected integrations from .ai-bugs.json
+  const [detectedIntegrations, setDetectedIntegrations] = useState<DetectedIntegrations>({});
+
+  // Handle detected integrations from .ai-bugs.json validation
+  const handleIntegrationsDetected = useCallback((integrations: DetectedIntegrations) => {
+    setDetectedIntegrations(integrations);
+
+    // Auto-enable triggers when integrations are detected (only for new projects)
+    if (isNew) {
+      if (integrations.sentry && !sentry) {
+        setSentry(true);
+      }
+      if (integrations.circleci && !circleci) {
+        setCircleci(true);
+      }
+    }
+  }, [isNew, sentry, circleci]);
+
   // Conversation mode settings
   const [autoExecuteThreshold, setAutoExecuteThreshold] = useState(
     String(project?.conversation?.autoExecuteThreshold ?? 0.85)
@@ -106,10 +125,25 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
         triggers.github = { issues: true };
       }
       if (sentry) {
-        triggers.sentry = { enabled: true };
+        // Include detected config from .ai-bugs.json if available
+        triggers.sentry = {
+          enabled: true,
+          ...(detectedIntegrations.sentry && {
+            projectSlug: detectedIntegrations.sentry.project,
+            organization: detectedIntegrations.sentry.organization,
+            instanceUrl: detectedIntegrations.sentry.instanceUrl,
+          }),
+        };
       }
       if (circleci) {
-        triggers.circleci = { enabled: true };
+        // Include detected config from .ai-bugs.json if available
+        triggers.circleci = {
+          enabled: true,
+          ...(detectedIntegrations.circleci && {
+            project: detectedIntegrations.circleci.project,
+            configPath: detectedIntegrations.circleci.configPath,
+          }),
+        };
       }
 
       // Parse owner/repo from repoFullName (e.g., "owner/repo")
@@ -150,8 +184,15 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
         throw new Error(error.error || 'Failed to save project');
       }
 
-      toast.success(isNew ? 'Project created' : 'Project updated');
-      router.push('/projects');
+      const needsSecrets = isNew && (sentry || circleci);
+
+      if (needsSecrets) {
+        toast.success('Project created - configure required secrets below');
+        router.push(`/projects/${id}`);
+      } else {
+        toast.success(isNew ? 'Project created' : 'Project updated');
+        router.push('/projects');
+      }
       router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to save project');
@@ -193,7 +234,12 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
       )}
 
       {/* Config Validation - shows .ai-bugs.json preview */}
-      {repoFullName && <AiBugsValidator repoFullName={repoFullName} />}
+      {repoFullName && (
+        <AiBugsValidator
+          repoFullName={repoFullName}
+          onIntegrationsDetected={handleIntegrationsDetected}
+        />
+      )}
 
       {/* Basic Info */}
       <Card>
@@ -440,7 +486,36 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
             ...(sentry ? ['sentry'] : []),
             ...(circleci ? ['circleci'] : []),
           ]}
+          sentryConfig={sentry ? {
+            organization: detectedIntegrations.sentry?.organization || (project?.triggers?.sentry?.organization as string | undefined),
+            project: detectedIntegrations.sentry?.project || (project?.triggers?.sentry?.projectSlug as string | undefined),
+            instanceUrl: detectedIntegrations.sentry?.instanceUrl || (project?.triggers?.sentry?.instanceUrl as string | undefined),
+          } : undefined}
         />
+      )}
+
+      {/* Secrets reminder for new projects with triggers that need them */}
+      {isNew && (sentry || circleci) && (
+        <Card className="border-blue-500/50 bg-blue-500/5">
+          <CardHeader>
+            <CardTitle className="text-sm text-blue-600 dark:text-blue-400">
+              Secrets Configuration Required
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground space-y-2">
+            <p>
+              After creating this project, you&apos;ll need to configure API tokens in the project settings:
+            </p>
+            <ul className="list-disc list-inside space-y-1">
+              {sentry && (
+                <li><strong>Sentry:</strong> Auth token (with project:read, event:read, issue:write scopes) and webhook secret</li>
+              )}
+              {circleci && (
+                <li><strong>CircleCI:</strong> API token</li>
+              )}
+            </ul>
+          </CardContent>
+        </Card>
       )}
 
       {/* Webhook URLs - only show when editing and triggers are enabled */}

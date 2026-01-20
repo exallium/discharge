@@ -129,6 +129,10 @@ export class SentryTrigger implements TriggerPlugin {
     // Get environment
     const environment = (issue.tags || []).find((tag: SentryTag) => tag.key === 'environment')?.value;
 
+    // Get Sentry config from project (may have instanceUrl from .ai-bugs.json sync)
+    const sentryConfig = project.triggers.sentry;
+    const sentryBaseUrl = sentryConfig?.instanceUrl || 'https://sentry.io';
+
     return {
       triggerType: 'sentry',
       triggerId: issue.id,
@@ -147,10 +151,13 @@ export class SentryTrigger implements TriggerPlugin {
         count: issue.count,
         userCount: issue.userCount,
         sentryProjectSlug: sentryProject.slug,
+        // Store Sentry config for use in other methods
+        sentryOrganization: sentryConfig?.organization,
+        sentryInstanceUrl: sentryBaseUrl,
       },
       links: {
         web: issue.permalink,
-        api: `https://sentry.io/api/0/issues/${issue.id}/`,
+        api: `${sentryBaseUrl}/api/0/issues/${issue.id}/`,
       },
       raw: typedPayload,
     };
@@ -181,6 +188,7 @@ export class SentryTrigger implements TriggerPlugin {
   async getTools(event: TriggerEvent): Promise<Tool[]> {
     const { triggerId, metadata } = event;
     const sentryToken = await getSecret('sentry', 'auth_token');
+    const sentryBaseUrl = (metadata.sentryInstanceUrl as string) || 'https://sentry.io';
 
     if (!sentryToken) {
       console.warn('[SentryTrigger] Sentry auth token not configured - tools will be limited');
@@ -196,7 +204,7 @@ export class SentryTrigger implements TriggerPlugin {
         script: `#!/bin/bash
 # Fetch Sentry issue details
 curl -s -H "Authorization: Bearer ${sentryToken}" \\
-  "https://sentry.io/api/0/issues/${triggerId}/" | jq .
+  "${sentryBaseUrl}/api/0/issues/${triggerId}/" | jq .
 `,
         env: {
           SENTRY_AUTH_TOKEN: sentryToken,
@@ -210,7 +218,7 @@ curl -s -H "Authorization: Bearer ${sentryToken}" \\
         script: `#!/bin/bash
 # Fetch latest events for this issue
 curl -s -H "Authorization: Bearer ${sentryToken}" \\
-  "https://sentry.io/api/0/issues/${triggerId}/events/" | jq '.[] | {
+  "${sentryBaseUrl}/api/0/issues/${triggerId}/events/" | jq '.[] | {
     eventID: .eventID,
     dateCreated: .dateCreated,
     message: .message,
@@ -230,7 +238,7 @@ curl -s -H "Authorization: Bearer ${sentryToken}" \\
         script: `#!/bin/bash
 # Get latest event ID
 EVENT_ID=$(curl -s -H "Authorization: Bearer ${sentryToken}" \\
-  "https://sentry.io/api/0/issues/${triggerId}/events/" | jq -r '.[0].eventID')
+  "${sentryBaseUrl}/api/0/issues/${triggerId}/events/" | jq -r '.[0].eventID')
 
 if [ -z "$EVENT_ID" ] || [ "$EVENT_ID" = "null" ]; then
   echo "No events found for this issue"
@@ -239,7 +247,7 @@ fi
 
 # Get full event details
 curl -s -H "Authorization: Bearer ${sentryToken}" \\
-  "https://sentry.io/api/0/issues/${triggerId}/events/$EVENT_ID/" | jq .
+  "${sentryBaseUrl}/api/0/issues/${triggerId}/events/$EVENT_ID/" | jq .
 `,
         env: {
           SENTRY_AUTH_TOKEN: sentryToken,
@@ -328,12 +336,13 @@ EOF
       return;
     }
 
-    const { triggerId } = event;
+    const { triggerId, metadata } = event;
+    const sentryBaseUrl = (metadata.sentryInstanceUrl as string) || 'https://sentry.io';
 
     // If fixed successfully, mark issue as resolved
     if (status.fixed) {
       try {
-        const response = await fetch(`https://sentry.io/api/0/issues/${triggerId}/`, {
+        const response = await fetch(`${sentryBaseUrl}/api/0/issues/${triggerId}/`, {
           method: 'PUT',
           headers: {
             'Authorization': `Bearer ${sentryToken}`,
@@ -368,10 +377,11 @@ EOF
       return;
     }
 
-    const { triggerId } = event;
+    const { triggerId, metadata } = event;
+    const sentryBaseUrl = (metadata.sentryInstanceUrl as string) || 'https://sentry.io';
 
     try {
-      const response = await fetch(`https://sentry.io/api/0/issues/${triggerId}/notes/`, {
+      const response = await fetch(`${sentryBaseUrl}/api/0/issues/${triggerId}/notes/`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${sentryToken}`,
@@ -436,9 +446,9 @@ EOF
       },
       {
         id: 'sentry_webhook_secret',
-        label: 'Sentry Webhook Secret',
-        description: 'Secret for validating Sentry webhook signatures (optional but recommended)',
-        required: false,
+        label: 'Sentry Client Secret',
+        description: 'Client Secret from Internal Integration (required for webhook signature verification)',
+        required: true,
         plugin: 'sentry',
         key: 'webhook_secret',
       },

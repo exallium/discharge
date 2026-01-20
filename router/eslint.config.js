@@ -20,6 +20,7 @@ module.exports = tseslint.config(
       'dist/**',
       'node_modules/**',
       '.next/**',
+      'mcp-server/**',
       'jest.config.js',
       'eslint.config.js',
       'next.config.js',

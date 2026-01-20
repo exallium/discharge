@@ -544,4 +544,136 @@ describe('SentryTrigger', () => {
       expect(global.fetch).not.toHaveBeenCalled();
     });
   });
+
+  describe('Custom Instance URL', () => {
+    const mockProjectWithInstanceUrl = {
+      id: 'test-project',
+      repo: 'git@github.com:owner/my-app.git',
+      repoFullName: 'owner/my-app',
+      branch: 'main',
+      vcs: {
+        type: 'github' as const,
+        owner: 'owner',
+        repo: 'my-app',
+      },
+      triggers: {
+        sentry: {
+          projectSlug: 'my-app',
+          enabled: true,
+          organization: 'my-org',
+          instanceUrl: 'https://sentry.mycompany.com',
+        },
+      },
+    };
+
+    it('should include instanceUrl in parsed event metadata', async () => {
+      mockFindProjectsBySource.mockResolvedValue([mockProjectWithInstanceUrl]);
+
+      const payload = mockWebhookPayloads.sentry.issueCreated;
+      const event = await trigger.parseWebhook(payload);
+
+      expect(event).toBeTruthy();
+      expect(event?.metadata.sentryInstanceUrl).toBe('https://sentry.mycompany.com');
+      expect(event?.metadata.sentryOrganization).toBe('my-org');
+    });
+
+    it('should include instanceUrl in API link', async () => {
+      mockFindProjectsBySource.mockResolvedValue([mockProjectWithInstanceUrl]);
+
+      const payload = mockWebhookPayloads.sentry.issueCreated;
+      const event = await trigger.parseWebhook(payload);
+
+      expect(event?.links?.api).toBe('https://sentry.mycompany.com/api/0/issues/12345/');
+    });
+
+    it('should use default sentry.io when no instanceUrl configured', async () => {
+      const payload = mockWebhookPayloads.sentry.issueCreated;
+      const event = await trigger.parseWebhook(payload);
+
+      expect(event?.metadata.sentryInstanceUrl).toBe('https://sentry.io');
+      expect(event?.links?.api).toBe('https://sentry.io/api/0/issues/12345/');
+    });
+
+    it('should use custom instanceUrl in API tools', async () => {
+      process.env.SENTRY_AUTH_TOKEN = 'test-token';
+
+      const event: TriggerEvent = {
+        triggerType: 'sentry',
+        triggerId: '12345',
+        projectId: 'test-project',
+        title: 'Test error',
+        description: 'Test description',
+        metadata: {
+          severity: 'critical',
+          level: 'error',
+          sentryInstanceUrl: 'https://sentry.mycompany.com',
+        },
+        links: {
+          web: 'https://sentry.mycompany.com/issue/12345/',
+        },
+        raw: {},
+      };
+
+      const tools = await trigger.getTools(event);
+
+      // Check that API tools use custom URL
+      const apiTool = tools.find(t => t.name === 'get-sentry-issue');
+      expect(apiTool?.script).toContain('https://sentry.mycompany.com/api/0/issues/12345/');
+      expect(apiTool?.script).not.toContain('https://sentry.io');
+    });
+
+    it('should use custom instanceUrl when updating status', async () => {
+      process.env.SENTRY_AUTH_TOKEN = 'test-token';
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        statusText: 'OK',
+      });
+
+      const event: TriggerEvent = {
+        triggerType: 'sentry',
+        triggerId: '12345',
+        projectId: 'test-project',
+        title: 'Test',
+        description: 'Test',
+        metadata: {
+          sentryInstanceUrl: 'https://sentry.mycompany.com',
+        },
+        raw: {},
+      };
+
+      await trigger.updateStatus(event, { fixed: true });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://sentry.mycompany.com/api/0/issues/12345/',
+        expect.any(Object)
+      );
+    });
+
+    it('should use custom instanceUrl when adding comments', async () => {
+      process.env.SENTRY_AUTH_TOKEN = 'test-token';
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        statusText: 'OK',
+      });
+
+      const event: TriggerEvent = {
+        triggerType: 'sentry',
+        triggerId: '12345',
+        projectId: 'test-project',
+        title: 'Test',
+        description: 'Test',
+        metadata: {
+          sentryInstanceUrl: 'https://sentry.mycompany.com',
+        },
+        raw: {},
+      };
+
+      await trigger.addComment(event, 'Test comment');
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://sentry.mycompany.com/api/0/issues/12345/notes/',
+        expect.any(Object)
+      );
+    });
+  });
 });

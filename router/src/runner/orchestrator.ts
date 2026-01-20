@@ -169,6 +169,30 @@ export async function orchestrateWithTriage(
     }
   }
 
+  // Check for investigate-only mode (from Sentry UI component or manual trigger)
+  if (event.metadata?.mode === 'investigate') {
+    logger.info('Investigate-only mode - skipping fix agent', {
+      triggerId: event.triggerId,
+    });
+
+    // Post investigation results as a comment
+    if (investigationContext) {
+      const comment = formatInvestigationComment(investigationContext);
+      await trigger.addComment(event, comment);
+    } else {
+      await trigger.addComment(
+        event,
+        '🔍 Investigation complete but no detailed findings were generated.'
+      );
+    }
+
+    return {
+      fixed: false,
+      reason: 'investigate_only_mode',
+      analysis: undefined,
+    };
+  }
+
   // Step 4: Run fix agent
   const fixAgentName = triage.suggestedAgent || (triage.complexity === 'complex' ? 'complex' : 'simple');
   logger.info('Running fix agent', {
@@ -670,6 +694,23 @@ ${analysis.filesInvolved.map((f) => `- \`${f}\``).join('\n')}
 
 ---
 *This analysis was generated automatically by AI Bug Fixer*
+  `.trim();
+}
+
+function formatInvestigationComment(investigation: InvestigationContext): string {
+  return `
+## 🔍 Investigation Results
+
+${investigation.summary ? `**Summary:** ${investigation.summary}\n` : ''}
+**Root Cause:** ${investigation.rootCause}
+
+**Suggested Approach:** ${investigation.suggestedApproach}
+
+**Files Involved:**
+${investigation.filesInvolved.map((f) => `- \`${f}\``).join('\n')}
+
+---
+*This investigation was generated automatically by AI Bug Fixer (investigate-only mode)*
   `.trim();
 }
 

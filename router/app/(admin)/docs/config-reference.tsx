@@ -95,6 +95,59 @@ export function ConfigReference() {
               Array of &quot;owner/repo&quot; strings for secondary repositories.
             </p>
           </div>
+
+          {/* config.sentry */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <code className="font-mono text-sm bg-muted px-2 py-0.5 rounded">config.sentry</code>
+              <Badge variant="secondary">optional</Badge>
+              <Badge variant="outline">object</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Sentry integration configuration. Auth tokens are configured separately in secrets.
+            </p>
+            <div className="ml-4 space-y-2 border-l-2 border-muted pl-4">
+              <div>
+                <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">organization</code>
+                <Badge variant="destructive" className="ml-2 text-xs">required</Badge>
+                <p className="text-xs text-muted-foreground mt-1">Sentry organization slug (visible in URLs)</p>
+              </div>
+              <div>
+                <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">project</code>
+                <Badge variant="destructive" className="ml-2 text-xs">required</Badge>
+                <p className="text-xs text-muted-foreground mt-1">Sentry project slug (visible in URLs)</p>
+              </div>
+              <div>
+                <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">instanceUrl</code>
+                <Badge variant="secondary" className="ml-2 text-xs">optional</Badge>
+                <p className="text-xs text-muted-foreground mt-1">Custom Sentry instance URL for self-hosted (defaults to https://sentry.io)</p>
+              </div>
+            </div>
+          </div>
+
+          {/* config.circleci */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <code className="font-mono text-sm bg-muted px-2 py-0.5 rounded">config.circleci</code>
+              <Badge variant="secondary">optional</Badge>
+              <Badge variant="outline">object</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              CircleCI integration configuration. Auth tokens are configured separately in secrets.
+            </p>
+            <div className="ml-4 space-y-2 border-l-2 border-muted pl-4">
+              <div>
+                <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">project</code>
+                <Badge variant="destructive" className="ml-2 text-xs">required</Badge>
+                <p className="text-xs text-muted-foreground mt-1">CircleCI project slug (e.g., &quot;gh/my-org/my-repo&quot;)</p>
+              </div>
+              <div>
+                <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">configPath</code>
+                <Badge variant="secondary" className="ml-2 text-xs">optional</Badge>
+                <p className="text-xs text-muted-foreground mt-1">Path to CircleCI config file (defaults to .circleci/config.yml)</p>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -246,7 +299,7 @@ export function ConfigReference() {
         <CardHeader>
           <CardTitle>Complete Example</CardTitle>
           <CardDescription>
-            A full configuration with rules and custom agents
+            A full configuration with rules, custom agents, and service integrations
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -271,7 +324,14 @@ export function ConfigReference() {
     }
   },
   "config": {
-    "secondaryRepos": ["myorg/shared-types"]
+    "secondaryRepos": ["myorg/shared-types"],
+    "sentry": {
+      "organization": "my-org",
+      "project": "my-project"
+    },
+    "circleci": {
+      "project": "gh/my-org/my-repo"
+    }
   }
 }`}
           </pre>
@@ -309,6 +369,43 @@ export function ConfigReference() {
               <li>To submit a fix to a secondary repo, the AI sets <code>targetRepo</code> in analysis.json</li>
               <li>Comments always link back to the originating issue in the main repo</li>
             </ul>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Service Integrations Info */}
+      <Card className="border-blue-500/50 bg-blue-500/5">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-blue-600 dark:text-blue-500">
+            <Settings className="h-5 w-5" />
+            Service Integrations
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              The <code>config.sentry</code> and <code>config.circleci</code> blocks define public
+              configuration (organization, project, URLs) that lives in your repository.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Secrets Configuration</h4>
+            <p className="text-sm text-muted-foreground">
+              Authentication tokens must be configured separately in the project settings:
+            </p>
+            <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+              <li><strong>Sentry:</strong> Auth token and webhook secret in Secrets page</li>
+              <li><strong>CircleCI:</strong> API token in Secrets page</li>
+            </ul>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Self-Hosted Instances</h4>
+            <p className="text-sm text-muted-foreground">
+              For self-hosted Sentry, set <code>instanceUrl</code> to your instance URL.
+              API calls will use this URL instead of sentry.io.
+            </p>
           </div>
         </CardContent>
       </Card>

@@ -32,9 +32,9 @@ jest.mock('../../../src/triggers', () => ({
           },
           {
             id: 'sentry_webhook_secret',
-            label: 'Sentry Webhook Secret',
-            description: 'Secret for webhook validation',
-            required: false,
+            label: 'Sentry Client Secret',
+            description: 'Client Secret from Internal Integration',
+            required: true,
           },
         ],
       },

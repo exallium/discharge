@@ -210,6 +210,59 @@ services:
         max-file: "5"
 
   # ─────────────────────────────────────────────
+  # MCP Server (read-only access to integrations for agents)
+  # ─────────────────────────────────────────────
+  mcp:
+    build:
+      context: ./router/mcp-server
+      dockerfile: Dockerfile
+    container_name: claude-agent-mcp
+
+    # Depends on PostgreSQL for secrets
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    # Environment
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-aibugfixer}:${POSTGRES_PASSWORD}@postgres:5432/ai_bug_fixer
+      - DB_ENCRYPTION_KEY=${DB_ENCRYPTION_KEY}
+      - MCP_PORT=3001
+      - MCP_TRANSPORT=sse
+
+    # Network
+    networks:
+      - internal
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────
   # Agent Runners (Built separately, spawned dynamically by runner plugins)
   # ─────────────────────────────────────────────
   agent-runner-claude:

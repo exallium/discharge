@@ -129,6 +129,7 @@ export function WebhookInfo({ enabledTriggers }: WebhookInfoProps) {
                       className="font-mono text-sm h-8"
                     />
                     <Button
+                      type="button"
                       variant="outline"
                       size="icon"
                       className="h-8 w-8 shrink-0"

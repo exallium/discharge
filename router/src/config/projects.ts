@@ -36,8 +36,13 @@ export interface ProjectConfig {
 
   triggers: {
     sentry?: {
+      /** Sentry project slug - will be synced from .ai-bugs.json integrations.sentry.project */
       projectSlug: string;
       enabled: boolean;
+      /** Sentry organization slug - synced from .ai-bugs.json integrations.sentry.organization */
+      organization?: string;
+      /** Custom Sentry instance URL for self-hosted - synced from .ai-bugs.json integrations.sentry.instanceUrl */
+      instanceUrl?: string;
     };
     github?: {
       issues: boolean;

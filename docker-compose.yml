@@ -12,6 +12,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     networks:
       - internal
     restart: unless-stopped
@@ -25,6 +27,8 @@ services:
     image: redis:7-alpine
     volumes:
       - redis_data:/data
+    ports:
+      - "6379:6379"
     networks:
       - internal
     restart: unless-stopped
@@ -104,6 +108,28 @@ services:
     networks:
       - internal
     restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # MCP Server (read-only access to integrations for agents)
+  # ─────────────────────────────────────────────
+  mcp:
+    build: ./router/mcp-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-aibugfixer}:${POSTGRES_PASSWORD}@postgres:5432/ai_bug_fixer
+      - DB_ENCRYPTION_KEY=${DB_ENCRYPTION_KEY}
+      - MCP_PORT=3001
+      - MCP_TRANSPORT=sse
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   # ─────────────────────────────────────────────
   # Agent Runners (images only, spawned dynamically by runner plugins)

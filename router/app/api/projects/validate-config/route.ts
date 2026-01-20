@@ -4,6 +4,8 @@ import {
   validateBugConfig,
   AiBugsConfig,
   getAvailableAgents,
+  getSentryConfig,
+  getCircleCIConfig,
 } from '@/src/runner/bug-config';
 
 // Force dynamic rendering
@@ -103,6 +105,10 @@ export async function POST(request: NextRequest) {
 
     const agents = getAvailableAgents(config);
 
+    // Extract service integrations
+    const sentryConfig = getSentryConfig(config);
+    const circleCIConfig = getCircleCIConfig(config);
+
     return NextResponse.json({
       exists: true,
       valid: true,
@@ -117,6 +123,18 @@ export async function POST(request: NextRequest) {
         })),
       },
       secondaryRepos: secondaryAccess,
+      // Include detected service integrations
+      integrations: {
+        sentry: sentryConfig ? {
+          organization: sentryConfig.organization,
+          project: sentryConfig.project,
+          instanceUrl: sentryConfig.instanceUrl,
+        } : null,
+        circleci: circleCIConfig ? {
+          project: circleCIConfig.project,
+          configPath: circleCIConfig.configPath,
+        } : null,
+      },
       warnings: inaccessibleCount > 0
         ? [`${inaccessibleCount} secondary repo(s) are not accessible. Ensure the GitHub App is installed on those repositories.`]
         : [],

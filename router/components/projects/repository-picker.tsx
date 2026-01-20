@@ -176,7 +176,7 @@ export function RepositoryPicker({ onSelect, selectedRepo }: RepositoryPickerPro
           <p className="text-sm text-muted-foreground">
             Install the GitHub App on your account or organization to grant access to repositories.
           </p>
-          <Button onClick={handleConnect} disabled={isConnecting}>
+          <Button type="button" onClick={handleConnect} disabled={isConnecting}>
             {isConnecting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -219,7 +219,7 @@ export function RepositoryPicker({ onSelect, selectedRepo }: RepositoryPickerPro
             <p className="text-sm mt-2">
               Make sure the GitHub App has access to at least one repository.
             </p>
-            <Button variant="outline" size="sm" onClick={handleConnect} className="mt-4">
+            <Button type="button" variant="outline" size="sm" onClick={handleConnect} className="mt-4">
               <Github className="mr-2 h-4 w-4" />
               Manage GitHub Access
             </Button>
@@ -266,7 +266,7 @@ export function RepositoryPicker({ onSelect, selectedRepo }: RepositoryPickerPro
             )}
 
             <div className="flex justify-end">
-              <Button variant="ghost" size="sm" onClick={handleConnect}>
+              <Button type="button" variant="ghost" size="sm" onClick={handleConnect}>
                 <Github className="mr-2 h-4 w-4" />
                 Connect Another Account
               </Button>

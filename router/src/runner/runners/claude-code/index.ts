@@ -153,10 +153,21 @@ function formatUserFacingError(
 }
 
 /**
+ * Whether MCP server is enabled (runs as a service in docker-compose)
+ */
+const ENABLE_MCP_SERVER = process.env.ENABLE_MCP_SERVER !== 'false';
+
+/**
+ * MCP server URL (internal docker network)
+ */
+const MCP_SERVER_URL = process.env.MCP_SERVER_URL || 'http://mcp:3001';
+
+/**
  * Prepare a writable .claude directory for the container
  * Creates the config structure and sets up the onboarding flag for CLAUDE_CODE_OAUTH_TOKEN auth
+ * Also configures MCP server connection if enabled
  */
-async function prepareClaudeConfig(workspacePath: string): Promise<string> {
+async function prepareClaudeConfig(workspacePath: string, projectId?: string): Promise<string> {
   const claudeConfigPath = join(workspacePath, '.claude-config');
 
   // Create the config directory
@@ -171,6 +182,21 @@ async function prepareClaudeConfig(workspacePath: string): Promise<string> {
   await mkdir(join(claudeConfigPath, 'projects'), { recursive: true });
   await mkdir(join(claudeConfigPath, 'debug'), { recursive: true });
   await mkdir(join(claudeConfigPath, 'statsig'), { recursive: true });
+
+  // Configure MCP server if enabled
+  if (ENABLE_MCP_SERVER && projectId) {
+    const mcpConfigPath = join(claudeConfigPath, 'mcp.json');
+    const mcpConfig = {
+      mcpServers: {
+        'ai-bug-fixer': {
+          transport: 'sse',
+          url: `${MCP_SERVER_URL}/sse?projectId=${encodeURIComponent(projectId)}`,
+        },
+      },
+    };
+    await writeFile(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
+    console.log(`[ClaudeCode] MCP config written to ${mcpConfigPath}`);
+  }
 
   return claudeConfigPath;
 }
@@ -357,8 +383,8 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       const promptFile = join(workspacePath, '.claude-prompt.txt');
       await writeFile(promptFile, enhancedPrompt, 'utf-8');
 
-      // Prepare writable .claude config directory
-      const claudeConfigPath = await prepareClaudeConfig(workspacePath);
+      // Prepare writable .claude config directory (with MCP config if project ID available)
+      const claudeConfigPath = await prepareClaudeConfig(workspacePath, options.projectId);
 
       // Docker socket mount for running containers inside agent (e.g., Supabase)
       const dockerMount = ENABLE_DOCKER_IN_AGENT
@@ -728,8 +754,8 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         await this.writeToolsToWorkspace(workspacePath, options.tools);
       }
 
-      // Prepare writable .claude config directory
-      const claudeConfigPath = await prepareClaudeConfig(workspacePath);
+      // Prepare writable .claude config directory (with MCP config if project ID available)
+      const claudeConfigPath = await prepareClaudeConfig(workspacePath, options.projectId);
 
       // Docker socket mount for running containers inside agent (e.g., Supabase)
       const dockerMount = ENABLE_DOCKER_IN_AGENT

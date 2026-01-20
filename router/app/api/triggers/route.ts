@@ -1,23 +1,22 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
 
 import { listTriggers } from '@/src/triggers';
-import { settingsRepo } from '@/src/db/repositories';
 
 /**
  * GET /api/triggers
  * List available triggers with their webhook configuration
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const triggers = listTriggers();
 
-    // Get configured base URL from settings or fall back to env
-    const baseUrl = await settingsRepo.get('system:base_url')
-      || process.env.BASE_URL
-      || null;
+    // Derive base URL from request headers
+    const host = request.headers.get('host') || 'localhost:3000';
+    const protocol = request.headers.get('x-forwarded-proto') || 'http';
+    const baseUrl = `${protocol}://${host}`;
 
     const triggerInfo = triggers.map((trigger) => ({
       id: trigger.id,

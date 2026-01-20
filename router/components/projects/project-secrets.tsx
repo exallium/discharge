@@ -5,11 +5,19 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { SecretField } from '@/components/ui/secret-field';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, AlertCircle, CheckCircle2, Globe, Server, Users } from 'lucide-react';
+import { SentrySetupGuide } from './sentry-setup-guide';
 import type { SecretStatus } from '@/app/api/projects/[id]/secrets/route';
+
+interface SentryConfig {
+  organization?: string;
+  project?: string;
+  instanceUrl?: string;
+}
 
 interface ProjectSecretsProps {
   projectId: string;
   enabledTriggers: string[];
+  sentryConfig?: SentryConfig;
 }
 
 const SOURCE_CONFIG = {
@@ -19,7 +27,8 @@ const SOURCE_CONFIG = {
   none: { label: 'Missing', variant: 'destructive' as const, icon: AlertCircle },
 };
 
-export function ProjectSecrets({ projectId, enabledTriggers }: ProjectSecretsProps) {
+export function ProjectSecrets({ projectId, enabledTriggers, sentryConfig }: ProjectSecretsProps) {
+  const hasSentry = enabledTriggers.includes('sentry');
   const [secrets, setSecrets] = useState<SecretStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,16 +126,27 @@ export function ProjectSecrets({ projectId, enabledTriggers }: ProjectSecretsPro
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Secrets</CardTitle>
-        <CardDescription>
-          Configure credentials for enabled integrations. Project secrets override global and
-          environment variables.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {secrets.map((secret) => {
+    <div className="space-y-4">
+      {/* Sentry Setup Guide - shown when Sentry trigger is enabled */}
+      {hasSentry && (
+        <SentrySetupGuide
+          projectId={projectId}
+          sentryOrg={sentryConfig?.organization}
+          sentryProject={sentryConfig?.project}
+          instanceUrl={sentryConfig?.instanceUrl}
+        />
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Secrets</CardTitle>
+          <CardDescription>
+            Configure credentials for enabled integrations. Project secrets override global and
+            environment variables.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {secrets.map((secret) => {
           const sourceConfig = SOURCE_CONFIG[secret.source];
           const SourceIcon = sourceConfig.icon;
           const isShared = secret.usedBy.length > 1;
@@ -165,7 +185,8 @@ export function ProjectSecrets({ projectId, enabledTriggers }: ProjectSecretsPro
             </div>
           );
         })}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

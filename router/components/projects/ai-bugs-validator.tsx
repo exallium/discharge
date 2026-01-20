@@ -11,6 +11,7 @@ import {
   FileJson,
   GitBranch,
   Info,
+  Plug,
 } from 'lucide-react';
 
 interface SecondaryRepoAccess {
@@ -25,6 +26,22 @@ interface AgentInfo {
   isSystem: boolean;
 }
 
+interface SentryIntegration {
+  organization: string;
+  project: string;
+  instanceUrl?: string;
+}
+
+interface CircleCIIntegration {
+  project: string;
+  configPath?: string;
+}
+
+interface IntegrationsConfig {
+  sentry: SentryIntegration | null;
+  circleci: CircleCIIntegration | null;
+}
+
 interface ValidationResult {
   exists: boolean;
   valid?: boolean;
@@ -36,14 +53,21 @@ interface ValidationResult {
     agents: AgentInfo[];
   };
   secondaryRepos?: SecondaryRepoAccess[];
+  integrations?: IntegrationsConfig;
   warnings?: string[];
+}
+
+export interface DetectedIntegrations {
+  sentry?: SentryIntegration;
+  circleci?: CircleCIIntegration;
 }
 
 interface AiBugsValidatorProps {
   repoFullName: string | null;
+  onIntegrationsDetected?: (integrations: DetectedIntegrations) => void;
 }
 
-export function AiBugsValidator({ repoFullName }: AiBugsValidatorProps) {
+export function AiBugsValidator({ repoFullName, onIntegrationsDetected }: AiBugsValidatorProps) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [result, setResult] = useState<ValidationResult | null>(null);
 
@@ -73,6 +97,20 @@ export function AiBugsValidator({ repoFullName }: AiBugsValidatorProps) {
         const data = await response.json();
         setResult(data);
         setStatus(data.error ? 'error' : 'success');
+
+        // Notify parent about detected integrations
+        if (data.valid && data.integrations && onIntegrationsDetected) {
+          const detected: DetectedIntegrations = {};
+          if (data.integrations.sentry) {
+            detected.sentry = data.integrations.sentry;
+          }
+          if (data.integrations.circleci) {
+            detected.circleci = data.integrations.circleci;
+          }
+          if (detected.sentry || detected.circleci) {
+            onIntegrationsDetected(detected);
+          }
+        }
       } catch {
         setResult({ exists: false, error: 'Failed to validate configuration' });
         setStatus('error');
@@ -80,7 +118,7 @@ export function AiBugsValidator({ repoFullName }: AiBugsValidatorProps) {
     };
 
     validateConfig();
-  }, [repoFullName]);
+  }, [repoFullName, onIntegrationsDetected]);
 
   if (!repoFullName) {
     return null;
@@ -166,6 +204,43 @@ export function AiBugsValidator({ repoFullName }: AiBugsValidatorProps) {
                 ))}
               </div>
             </div>
+
+            {/* Detected Integrations */}
+            {result.integrations && (result.integrations.sentry || result.integrations.circleci) && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <Plug className="h-4 w-4" />
+                  Detected Integrations
+                </h4>
+                <div className="space-y-2">
+                  {result.integrations.sentry && (
+                    <div className="flex items-start gap-2 text-sm p-2 bg-muted/50 rounded">
+                      <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                      <div>
+                        <span className="font-medium">Sentry</span>
+                        <p className="text-xs text-muted-foreground">
+                          {result.integrations.sentry.organization}/{result.integrations.sentry.project}
+                          {result.integrations.sentry.instanceUrl && (
+                            <span className="ml-1">({result.integrations.sentry.instanceUrl})</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {result.integrations.circleci && (
+                    <div className="flex items-start gap-2 text-sm p-2 bg-muted/50 rounded">
+                      <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                      <div>
+                        <span className="font-medium">CircleCI</span>
+                        <p className="text-xs text-muted-foreground">
+                          {result.integrations.circleci.project}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Secondary Repos */}
             {result.secondaryRepos && result.secondaryRepos.length > 0 && (

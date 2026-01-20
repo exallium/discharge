@@ -218,6 +218,7 @@ export function GitHubConnection({ projectId, isNewProject = false, canConnect =
               </p>
             )}
             <Button
+              type="button"
               variant="ghost"
               size="sm"
               className="text-destructive hover:text-destructive"
@@ -252,7 +253,7 @@ export function GitHubConnection({ projectId, isNewProject = false, canConnect =
                 The project will be saved automatically when you connect to GitHub.
               </p>
             ) : null}
-            <Button onClick={handleConnect} disabled={isConnecting || !canConnect}>
+            <Button type="button" onClick={handleConnect} disabled={isConnecting || !canConnect}>
               {isConnecting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

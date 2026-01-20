@@ -47,11 +47,42 @@ export interface AgentConfig {
 }
 
 /**
+ * Sentry configuration (public info only - secrets stored separately)
+ */
+export interface SentryConfig {
+  /** Sentry organization slug (visible in URLs) */
+  organization: string;
+
+  /** Sentry project slug (visible in URLs) */
+  project: string;
+
+  /** Custom Sentry instance URL for self-hosted (defaults to https://sentry.io) */
+  instanceUrl?: string;
+}
+
+/**
+ * CircleCI configuration (public info only)
+ */
+export interface CircleCIConfig {
+  /** CircleCI project slug (org/repo format or full slug) */
+  project: string;
+
+  /** Path to CircleCI config file (defaults to .circleci/config.yml) */
+  configPath?: string;
+}
+
+/**
  * Additional configuration options
  */
 export interface AiBugsConfigOptions {
   /** Secondary repos for cross-referencing */
   secondaryRepos?: string[];
+
+  /** Sentry error tracking configuration */
+  sentry?: SentryConfig;
+
+  /** CircleCI CI/CD configuration */
+  circleci?: CircleCIConfig;
 }
 
 /**
@@ -67,7 +98,7 @@ export interface AiBugsConfig {
   /** Named agents with their configuration */
   agents?: Record<string, AgentConfig>;
 
-  /** Additional configuration options */
+  /** Additional configuration options (including service configs like sentry, circleci) */
   config?: AiBugsConfigOptions;
 }
 
@@ -311,6 +342,64 @@ function validateAgent(name: string, agent: unknown): string | null {
 }
 
 /**
+ * Validate Sentry configuration
+ */
+function validateSentryConfig(sentry: unknown): string | null {
+  if (!sentry || typeof sentry !== 'object') {
+    return 'config.sentry must be an object';
+  }
+
+  const sentryObj = sentry as Record<string, unknown>;
+
+  // organization is required
+  if (typeof sentryObj.organization !== 'string' || sentryObj.organization.trim().length === 0) {
+    return 'config.sentry.organization is required and must be a non-empty string';
+  }
+
+  // project is required
+  if (typeof sentryObj.project !== 'string' || sentryObj.project.trim().length === 0) {
+    return 'config.sentry.project is required and must be a non-empty string';
+  }
+
+  // instanceUrl is optional but must be a valid URL if provided
+  if (sentryObj.instanceUrl !== undefined) {
+    if (typeof sentryObj.instanceUrl !== 'string') {
+      return 'config.sentry.instanceUrl must be a string';
+    }
+    try {
+      new URL(sentryObj.instanceUrl);
+    } catch {
+      return `config.sentry.instanceUrl is not a valid URL: ${sentryObj.instanceUrl}`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Validate CircleCI configuration
+ */
+function validateCircleCIConfig(circleci: unknown): string | null {
+  if (!circleci || typeof circleci !== 'object') {
+    return 'config.circleci must be an object';
+  }
+
+  const circleciObj = circleci as Record<string, unknown>;
+
+  // project is required
+  if (typeof circleciObj.project !== 'string' || circleciObj.project.trim().length === 0) {
+    return 'config.circleci.project is required and must be a non-empty string';
+  }
+
+  // configPath is optional but must be a string if provided
+  if (circleciObj.configPath !== undefined && typeof circleciObj.configPath !== 'string') {
+    return 'config.circleci.configPath must be a string';
+  }
+
+  return null;
+}
+
+/**
  * Validate a bug fix config
  */
 export function validateBugConfig(
@@ -370,6 +459,22 @@ export function validateBugConfig(
         if (typeof repo !== 'string' || !repo.includes('/')) {
           return { valid: false, error: `Invalid repo format: ${repo}. Use 'owner/repo'` };
         }
+      }
+    }
+
+    // Validate sentry config if present
+    if (configOptions.sentry !== undefined) {
+      const sentryError = validateSentryConfig(configOptions.sentry);
+      if (sentryError) {
+        return { valid: false, error: sentryError };
+      }
+    }
+
+    // Validate circleci config if present
+    if (configOptions.circleci !== undefined) {
+      const circleciError = validateCircleCIConfig(configOptions.circleci);
+      if (circleciError) {
+        return { valid: false, error: circleciError };
       }
     }
   }
@@ -562,4 +667,61 @@ export function getAvailableAgents(
 export function isSystemAgent(agentName: string): boolean {
   const systemDefaults = getSystemAgentDefaults();
   return agentName in systemDefaults;
+}
+
+// ============================================================================
+// Service Config Helpers
+// ============================================================================
+
+/**
+ * Get Sentry configuration from AiBugsConfig
+ *
+ * @param config - The AiBugsConfig
+ * @returns Sentry config or undefined if not configured
+ */
+export function getSentryConfig(config: AiBugsConfig | undefined): SentryConfig | undefined {
+  return config?.config?.sentry;
+}
+
+/**
+ * Get CircleCI configuration from AiBugsConfig
+ *
+ * @param config - The AiBugsConfig
+ * @returns CircleCI config or undefined if not configured
+ */
+export function getCircleCIConfig(config: AiBugsConfig | undefined): CircleCIConfig | undefined {
+  return config?.config?.circleci;
+}
+
+/**
+ * Get all configured services from AiBugsConfig
+ *
+ * @param config - The AiBugsConfig
+ * @returns Array of service names that are configured (e.g., ['sentry', 'circleci'])
+ */
+export function getConfiguredServices(config: AiBugsConfig | undefined): string[] {
+  if (!config?.config) {
+    return [];
+  }
+
+  // Known service config keys
+  const serviceKeys = ['sentry', 'circleci'];
+
+  return serviceKeys.filter((key) => {
+    const value = config.config?.[key as keyof AiBugsConfigOptions];
+    return value !== undefined && value !== null;
+  });
+}
+
+/**
+ * Get the Sentry API base URL from config
+ * Uses instanceUrl if configured, otherwise defaults to https://sentry.io
+ *
+ * @param sentryConfig - Sentry config
+ * @returns Base URL for Sentry API calls
+ */
+export function getSentryApiUrl(sentryConfig: SentryConfig): string {
+  const baseUrl = sentryConfig.instanceUrl || 'https://sentry.io';
+  // Ensure no trailing slash
+  return baseUrl.replace(/\/$/, '');
 }

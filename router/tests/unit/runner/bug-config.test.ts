@@ -12,7 +12,12 @@ import {
   isSystemAgent,
   resolveRules,
   getAgentRules,
+  getSentryConfig,
+  getCircleCIConfig,
+  getConfiguredServices,
+  getSentryApiUrl,
   AiBugsConfig,
+  SentryConfig,
 } from '../../../src/runner/bug-config';
 import { writeFile, mkdir, rm } from 'fs/promises';
 import { join } from 'path';
@@ -446,6 +451,431 @@ describe('Bug Config', () => {
       const rules = await getAgentRules(config, 'custom', testDir);
 
       expect(rules.some(r => r.content === 'Agent file content')).toBe(true);
+    });
+  });
+
+  describe('Sentry Config Validation', () => {
+    it('should validate a valid sentry config', () => {
+      const config = {
+        version: '2',
+        config: {
+          sentry: {
+            organization: 'my-org',
+            project: 'my-project',
+          },
+        },
+      };
+
+      const result = validateBugConfig(config);
+
+      expect(result.valid).toBe(true);
+      if (result.valid) {
+        expect(result.config.config?.sentry?.organization).toBe('my-org');
+        expect(result.config.config?.sentry?.project).toBe('my-project');
+      }
+    });
+
+    it('should validate sentry config with custom instanceUrl', () => {
+      const config = {
+        version: '2',
+        config: {
+          sentry: {
+            organization: 'my-org',
+            project: 'my-project',
+            instanceUrl: 'https://sentry.mycompany.com',
+          },
+        },
+      };
+
+      const result = validateBugConfig(config);
+
+      expect(result.valid).toBe(true);
+      if (result.valid) {
+        expect(result.config.config?.sentry?.instanceUrl).toBe('https://sentry.mycompany.com');
+      }
+    });
+
+    it('should reject sentry config without organization', () => {
+      const config = {
+        version: '2',
+        config: {
+          sentry: {
+            project: 'my-project',
+          },
+        },
+      };
+
+      const result = validateBugConfig(config);
+
+      expect(result.valid).toBe(false);
+      if (!result.valid) {
+        expect(result.error).toContain('config.sentry.organization');
+      }
+    });
+
+    it('should reject sentry config without project', () => {
+      const config = {
+        version: '2',
+        config: {
+          sentry: {
+            organization: 'my-org',
+          },
+        },
+      };
+
+      const result = validateBugConfig(config);
+
+      expect(result.valid).toBe(false);
+      if (!result.valid) {
+        expect(result.error).toContain('config.sentry.project');
+      }
+    });
+
+    it('should reject sentry config with empty organization', () => {
+      const config = {
+        version: '2',
+        config: {
+          sentry: {
+            organization: '   ',
+            project: 'my-project',
+          },
+        },
+      };
+
+      const result = validateBugConfig(config);
+
+      expect(result.valid).toBe(false);
+      if (!result.valid) {
+        expect(result.error).toContain('config.sentry.organization');
+      }
+    });
+
+    it('should reject sentry config with invalid instanceUrl', () => {
+      const config = {
+        version: '2',
+        config: {
+          sentry: {
+            organization: 'my-org',
+            project: 'my-project',
+            instanceUrl: 'not-a-valid-url',
+          },
+        },
+      };
+
+      const result = validateBugConfig(config);
+
+      expect(result.valid).toBe(false);
+      if (!result.valid) {
+        expect(result.error).toContain('config.sentry.instanceUrl');
+        expect(result.error).toContain('not a valid URL');
+      }
+    });
+
+    it('should allow sentry config alongside other config options', () => {
+      const config = {
+        version: '2',
+        config: {
+          secondaryRepos: ['myorg/backend'],
+          sentry: {
+            organization: 'my-org',
+            project: 'my-project',
+          },
+        },
+      };
+
+      const result = validateBugConfig(config);
+
+      expect(result.valid).toBe(true);
+      if (result.valid) {
+        expect(result.config.config?.secondaryRepos).toEqual(['myorg/backend']);
+        expect(result.config.config?.sentry?.organization).toBe('my-org');
+      }
+    });
+  });
+
+  describe('CircleCI Config Validation', () => {
+    it('should validate a valid circleci config', () => {
+      const config = {
+        version: '2',
+        config: {
+          circleci: {
+            project: 'gh/my-org/my-repo',
+          },
+        },
+      };
+
+      const result = validateBugConfig(config);
+
+      expect(result.valid).toBe(true);
+      if (result.valid) {
+        expect(result.config.config?.circleci?.project).toBe('gh/my-org/my-repo');
+      }
+    });
+
+    it('should validate circleci config with custom configPath', () => {
+      const config = {
+        version: '2',
+        config: {
+          circleci: {
+            project: 'gh/my-org/my-repo',
+            configPath: '.circleci/custom-config.yml',
+          },
+        },
+      };
+
+      const result = validateBugConfig(config);
+
+      expect(result.valid).toBe(true);
+      if (result.valid) {
+        expect(result.config.config?.circleci?.configPath).toBe('.circleci/custom-config.yml');
+      }
+    });
+
+    it('should reject circleci config without project', () => {
+      const config = {
+        version: '2',
+        config: {
+          circleci: {
+            configPath: '.circleci/config.yml',
+          },
+        },
+      };
+
+      const result = validateBugConfig(config);
+
+      expect(result.valid).toBe(false);
+      if (!result.valid) {
+        expect(result.error).toContain('config.circleci.project');
+      }
+    });
+
+    it('should reject circleci config with empty project', () => {
+      const config = {
+        version: '2',
+        config: {
+          circleci: {
+            project: '',
+          },
+        },
+      };
+
+      const result = validateBugConfig(config);
+
+      expect(result.valid).toBe(false);
+      if (!result.valid) {
+        expect(result.error).toContain('config.circleci.project');
+      }
+    });
+  });
+
+  describe('Combined Service Configs', () => {
+    it('should validate config with both sentry and circleci', () => {
+      const config = {
+        version: '2',
+        config: {
+          sentry: {
+            organization: 'my-org',
+            project: 'my-sentry-project',
+          },
+          circleci: {
+            project: 'gh/my-org/my-repo',
+          },
+        },
+      };
+
+      const result = validateBugConfig(config);
+
+      expect(result.valid).toBe(true);
+      if (result.valid) {
+        expect(result.config.config?.sentry?.organization).toBe('my-org');
+        expect(result.config.config?.circleci?.project).toBe('gh/my-org/my-repo');
+      }
+    });
+
+    it('should validate full config with rules, agents, and services', () => {
+      const config = {
+        version: '2',
+        rules: ['Always run tests'],
+        agents: {
+          simple: { model: 'large' },
+        },
+        config: {
+          secondaryRepos: ['myorg/shared'],
+          sentry: {
+            organization: 'my-org',
+            project: 'my-project',
+            instanceUrl: 'https://sentry.internal.com',
+          },
+          circleci: {
+            project: 'gh/my-org/my-repo',
+          },
+        },
+      };
+
+      const result = validateBugConfig(config);
+
+      expect(result.valid).toBe(true);
+    });
+  });
+
+  describe('getSentryConfig', () => {
+    it('should return sentry config when present', () => {
+      const config: AiBugsConfig = {
+        version: '2',
+        config: {
+          sentry: {
+            organization: 'my-org',
+            project: 'my-project',
+          },
+        },
+      };
+
+      const sentry = getSentryConfig(config);
+
+      expect(sentry).toBeDefined();
+      expect(sentry?.organization).toBe('my-org');
+      expect(sentry?.project).toBe('my-project');
+    });
+
+    it('should return undefined when sentry not configured', () => {
+      const config: AiBugsConfig = {
+        version: '2',
+      };
+
+      const sentry = getSentryConfig(config);
+
+      expect(sentry).toBeUndefined();
+    });
+
+    it('should return undefined for undefined config', () => {
+      const sentry = getSentryConfig(undefined);
+
+      expect(sentry).toBeUndefined();
+    });
+  });
+
+  describe('getCircleCIConfig', () => {
+    it('should return circleci config when present', () => {
+      const config: AiBugsConfig = {
+        version: '2',
+        config: {
+          circleci: {
+            project: 'gh/my-org/my-repo',
+            configPath: '.circleci/config.yml',
+          },
+        },
+      };
+
+      const circleci = getCircleCIConfig(config);
+
+      expect(circleci).toBeDefined();
+      expect(circleci?.project).toBe('gh/my-org/my-repo');
+      expect(circleci?.configPath).toBe('.circleci/config.yml');
+    });
+
+    it('should return undefined when circleci not configured', () => {
+      const config: AiBugsConfig = {
+        version: '2',
+      };
+
+      const circleci = getCircleCIConfig(config);
+
+      expect(circleci).toBeUndefined();
+    });
+  });
+
+  describe('getConfiguredServices', () => {
+    it('should return empty array when no config', () => {
+      const services = getConfiguredServices(undefined);
+
+      expect(services).toEqual([]);
+    });
+
+    it('should return empty array when config has no services', () => {
+      const config: AiBugsConfig = {
+        version: '2',
+        config: {
+          secondaryRepos: ['myorg/repo'],
+        },
+      };
+
+      const services = getConfiguredServices(config);
+
+      expect(services).toEqual([]);
+    });
+
+    it('should return sentry when only sentry configured', () => {
+      const config: AiBugsConfig = {
+        version: '2',
+        config: {
+          sentry: {
+            organization: 'my-org',
+            project: 'my-project',
+          },
+        },
+      };
+
+      const services = getConfiguredServices(config);
+
+      expect(services).toEqual(['sentry']);
+    });
+
+    it('should return both services when both configured', () => {
+      const config: AiBugsConfig = {
+        version: '2',
+        config: {
+          sentry: {
+            organization: 'my-org',
+            project: 'my-project',
+          },
+          circleci: {
+            project: 'gh/my-org/my-repo',
+          },
+        },
+      };
+
+      const services = getConfiguredServices(config);
+
+      expect(services).toContain('sentry');
+      expect(services).toContain('circleci');
+      expect(services).toHaveLength(2);
+    });
+  });
+
+  describe('getSentryApiUrl', () => {
+    it('should return default sentry.io URL when no instanceUrl', () => {
+      const sentryConfig: SentryConfig = {
+        organization: 'my-org',
+        project: 'my-project',
+      };
+
+      const url = getSentryApiUrl(sentryConfig);
+
+      expect(url).toBe('https://sentry.io');
+    });
+
+    it('should return custom instanceUrl when provided', () => {
+      const sentryConfig: SentryConfig = {
+        organization: 'my-org',
+        project: 'my-project',
+        instanceUrl: 'https://sentry.mycompany.com',
+      };
+
+      const url = getSentryApiUrl(sentryConfig);
+
+      expect(url).toBe('https://sentry.mycompany.com');
+    });
+
+    it('should strip trailing slash from instanceUrl', () => {
+      const sentryConfig: SentryConfig = {
+        organization: 'my-org',
+        project: 'my-project',
+        instanceUrl: 'https://sentry.mycompany.com/',
+      };
+
+      const url = getSentryApiUrl(sentryConfig);
+
+      expect(url).toBe('https://sentry.mycompany.com');
     });
   });
 });
