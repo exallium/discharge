@@ -191,7 +191,7 @@ export function buildTriagePrompt(
 
   // Build prefetched and MCP sections
   const prefetchedSection = buildPrefetchedDataSection(prefetchedData);
-  const mcpToolsSection = buildMCPToolsSection(event.triggerType);
+  const mcpToolsSection = buildMCPToolsSection(event.triggerType, event.triggerId);
 
   // Build agent list for triage to consider
   const agentList = availableAgents
@@ -307,8 +307,19 @@ export function buildAgentPrompt(
   const parts: string[] = [];
 
   // Header based on agent type
+  const isSentryTrigger = event.triggerType === 'sentry';
   const agentHeaders: Record<string, string> = {
-    investigate: 'You are an investigation agent analyzing an issue to understand its root cause.',
+    investigate: isSentryTrigger
+      ? `You are an investigation agent analyzing a Sentry error to understand its root cause.
+
+**Your investigation process:**
+1. First, use the Sentry MCP tools (documented below) to fetch the full stack trace and breadcrumbs
+2. Analyze the error context, including request data and user actions leading to the error
+3. Search the codebase to locate the relevant code
+4. Identify the root cause and document your findings
+
+Start by calling \`sentry_get_latest_event\` to get the complete error details.`
+      : 'You are an investigation agent analyzing an issue to understand its root cause.',
     simple: 'You are a fix agent implementing a straightforward solution.',
     complex: 'You are a fix agent handling a complex implementation requiring careful planning.',
   };
@@ -331,7 +342,7 @@ export function buildAgentPrompt(
   }
 
   // MCP tools documentation (for Sentry triggers)
-  const mcpToolsSection = buildMCPToolsSection(event.triggerType);
+  const mcpToolsSection = buildMCPToolsSection(event.triggerType, event.triggerId);
   if (mcpToolsSection) {
     parts.push(mcpToolsSection);
     parts.push('');
@@ -559,21 +570,37 @@ Stop after creating analysis.json. Do NOT make any code changes.
  *
  * Informs the agent about available MCP tools for fetching Sentry data
  */
-export function buildMCPToolsSection(triggerType: string): string {
+export function buildMCPToolsSection(triggerType: string, issueId?: string): string {
   if (triggerType !== 'sentry') return '';
 
+  const issueIdNote = issueId
+    ? `The Sentry issue ID for this error is: \`${issueId}\``
+    : 'Use the issue ID from the error details above.';
+
   return `
-## MCP Tools Available
+## Sentry MCP Tools
 
-You have access to MCP tools for fetching additional Sentry data:
+You have MCP tools available to fetch additional data from Sentry. **Use these tools to get more context about the error.**
 
-- \`sentry_get_issue\` - Get full issue details (metadata, tags, context)
-- \`sentry_get_events\` - Get recent events/occurrences for the issue
-- \`sentry_get_latest_event\` - Get most recent event with full stack trace and breadcrumbs
-- \`sentry_get_event_details\` - Get complete details for a specific event ID
-- \`sentry_search_issues\` - Search for related issues
+${issueIdNote}
 
-Use these when you need more stack trace details, breadcrumbs, request context, or to find related issues.
+### Available Tools
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| \`sentry_get_issue\` | Get full issue details including metadata, tags, and context | \`issueId\` (required) |
+| \`sentry_get_latest_event\` | Get the most recent event with full stack trace and breadcrumbs | \`issueId\` (required) |
+| \`sentry_get_events\` | Get recent event occurrences for the issue | \`issueId\` (required), \`limit\` (optional) |
+| \`sentry_get_event_details\` | Get complete details for a specific event | \`issueId\`, \`eventId\` (both required) |
+| \`sentry_search_issues\` | Search for related issues | \`query\` (required, Sentry search syntax) |
+
+### Recommended Usage
+
+1. **Start with \`sentry_get_latest_event\`** to get the full stack trace and breadcrumbs
+2. **Use \`sentry_get_issue\`** for metadata, tags, and aggregated information
+3. **Use \`sentry_search_issues\`** to find related errors (e.g., \`is:unresolved error.type:TypeError\`)
+
+These tools provide real-time data from Sentry that may be more detailed than the pre-fetched summary above.
 `.trim();
 }
 
