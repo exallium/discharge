@@ -186,13 +186,15 @@ export async function syncRepo(repoPath: string): Promise<void> {
  * @param jobId - Job identifier
  * @param branch - Branch to checkout
  * @param repoUrl - Repository URL (used if repo doesn't exist yet)
+ * @param fallbackBranch - Optional fallback branch if main branch doesn't exist (e.g., 'main')
  * @returns Path to the worktree
  */
 export async function createWorktree(
   projectId: string,
   jobId: string,
   branch: string,
-  repoUrl: string
+  repoUrl: string,
+  fallbackBranch?: string
 ): Promise<string> {
   const { repoPath, worktreesPath } = getProjectPaths(projectId);
   const worktreePath = join(worktreesPath, jobId);
@@ -203,6 +205,8 @@ export async function createWorktree(
 
   logger.info('Creating worktree', { projectId, jobId, branch });
 
+  let branchNotFound = false;
+
   try {
     // Create worktree from the specified branch
     // Use origin/<branch> to ensure we get the remote version
@@ -210,9 +214,48 @@ export async function createWorktree(
       `git worktree add "${worktreePath}" "origin/${branch}" --detach`,
       { cwd: repoPath, timeout: 60000 }
     );
+  } catch (error) {
+    const errorMsg = getErrorMessage(error);
+    // Check if the error is because the branch doesn't exist
+    if (errorMsg.includes('not a valid ref') || errorMsg.includes('invalid reference')) {
+      branchNotFound = true;
+      logger.warn('Branch not found, will try fallback', {
+        projectId,
+        jobId,
+        branch,
+        fallbackBranch,
+      });
+    } else {
+      logger.error('Failed to create worktree', {
+        projectId,
+        jobId,
+        error: errorMsg,
+      });
+      throw error;
+    }
+  }
 
+  // If branch doesn't exist, try the fallback branch
+  if (branchNotFound && fallbackBranch) {
+    logger.info('Using fallback branch for worktree', {
+      projectId,
+      jobId,
+      originalBranch: branch,
+      fallbackBranch,
+    });
+
+    await execAsync(
+      `git worktree add "${worktreePath}" "origin/${fallbackBranch}" --detach`,
+      { cwd: repoPath, timeout: 60000 }
+    );
+  } else if (branchNotFound) {
+    throw new Error(`Branch '${branch}' not found and no fallback branch provided`);
+  }
+
+  try {
     // Create a new branch for the job
-    const fixBranch = `fix/auto-${jobId.slice(0, 8)}`;
+    // If the original branch was not found, use the original branch name (to recreate it)
+    const fixBranch = branchNotFound ? branch : `fix/auto-${jobId.slice(0, 8)}`;
     await execAsync(`git checkout -b "${fixBranch}"`, { cwd: worktreePath });
 
     // Write metadata
@@ -229,11 +272,12 @@ export async function createWorktree(
       jobId,
       worktreePath,
       branch: fixBranch,
+      branchRecreated: branchNotFound,
     });
 
     return worktreePath;
   } catch (error) {
-    logger.error('Failed to create worktree', {
+    logger.error('Failed to create worktree branch', {
       projectId,
       jobId,
       error: getErrorMessage(error),

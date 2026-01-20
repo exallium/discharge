@@ -670,7 +670,8 @@ export class ClaudeCodeRunner implements RunnerPlugin {
           options.projectId!,
           jobId,
           options.existingPrBranch || options.branch, // Use PR branch if updating existing PR
-          options.repoUrl
+          options.repoUrl,
+          options.existingPrBranch ? options.branch : undefined // Fallback to main branch if PR branch is gone
         );
         fixBranch = options.existingPrBranch || `fix/auto-${jobId.slice(0, 8)}`;
         console.log(`[ClaudeCode:${jobId}] Worktree created at ${workspacePath}`);
@@ -683,12 +684,40 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         const cloneBranch = options.existingPrBranch || options.branch;
         console.log(`[ClaudeCode:${jobId}] Cloning repository (branch: ${cloneBranch})...`);
         const authUrl = await getAuthenticatedRepoUrl(options.repoUrl);
-        await execAsync(
-          `git clone --depth 1 -b ${cloneBranch} ${authUrl} ${workspacePath}`,
-          { timeout: 60000 }
-        );
 
-        if (isUpdatingExistingPR) {
+        let branchNotFound = false;
+
+        try {
+          await execAsync(
+            `git clone --depth 1 -b ${cloneBranch} ${authUrl} ${workspacePath}`,
+            { timeout: 60000 }
+          );
+        } catch (cloneError) {
+          const errorMsg = cloneError instanceof Error ? cloneError.message : String(cloneError);
+          // Check if the error is because the branch doesn't exist
+          if (errorMsg.includes('Remote branch') && errorMsg.includes('not found')) {
+            branchNotFound = true;
+            console.log(`[ClaudeCode:${jobId}] Branch ${cloneBranch} not found, falling back to ${options.branch}`);
+          } else {
+            // Re-throw other clone errors
+            throw cloneError;
+          }
+        }
+
+        // If the target branch doesn't exist, clone the main branch and create a new one
+        if (branchNotFound) {
+          console.log(`[ClaudeCode:${jobId}] Cloning main branch ${options.branch} instead...`);
+          await execAsync(
+            `git clone --depth 1 -b ${options.branch} ${authUrl} ${workspacePath}`,
+            { timeout: 60000 }
+          );
+
+          // Create a new branch since the old one is gone
+          // Use the same branch name pattern so the conversation can continue
+          fixBranch = options.existingPrBranch || `fix/conversation-${jobId.slice(0, 8)}`;
+          console.log(`[ClaudeCode:${jobId}] Creating new branch ${fixBranch} (original branch was deleted)`);
+          await execAsync(`git checkout -b ${fixBranch}`, { cwd: workspacePath });
+        } else if (isUpdatingExistingPR) {
           // Use existing PR branch - no need to create a new one
           fixBranch = options.existingPrBranch!;
           console.log(`[ClaudeCode:${jobId}] Using existing PR branch: ${fixBranch}`);
