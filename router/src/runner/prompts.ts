@@ -312,13 +312,21 @@ export function buildAgentPrompt(
     investigate: isSentryTrigger
       ? `You are an investigation agent analyzing a Sentry error to understand its root cause.
 
-**Your investigation process:**
-1. First, use the Sentry MCP tools (documented below) to fetch the full stack trace and breadcrumbs
-2. Analyze the error context, including request data and user actions leading to the error
-3. Search the codebase to locate the relevant code
-4. Identify the root cause and document your findings
+**IMPORTANT: You MUST use the Sentry MCP tools to fetch error data.**
 
-Start by calling \`sentry_get_latest_event\` to get the complete error details.`
+The pre-fetched data above may be incomplete or empty. You have MCP tools that can fetch real-time data directly from Sentry. **Always call these tools** to get the full picture.
+
+**Your REQUIRED first steps:**
+1. Call \`sentry_get_latest_event\` with issueId "${event.triggerId}" to get the full stack trace
+2. Call \`sentry_get_issue\` with issueId "${event.triggerId}" to get issue metadata and tags
+3. If no events exist, use \`sentry_search_issues\` to find related errors
+
+**Then continue investigation:**
+4. Analyze the error context, including request data and user actions leading to the error
+5. Search the codebase to locate the relevant code
+6. Identify the root cause and document your findings
+
+**Start now by calling \`sentry_get_latest_event\` with issueId: ${event.triggerId}**`
       : 'You are an investigation agent analyzing an issue to understand its root cause.',
     simple: 'You are a fix agent implementing a straightforward solution.',
     complex: 'You are a fix agent handling a complex implementation requiring careful planning.',

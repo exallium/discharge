@@ -1,4 +1,5 @@
 import { TriggerPlugin, TriggerEvent, FixStatus, AnalysisResult, PrefetchedData } from '../triggers/base';
+import { requireMCPForSentry } from './mcp';
 import { findProjectById, ProjectConfig } from '../config/projects';
 import { validateTools } from './tools';
 import {
@@ -48,6 +49,52 @@ export async function orchestrateWithTriage(
   config: AiBugsConfig | undefined,
   workspacePath: string
 ): Promise<FixStatus> {
+  // For Sentry triggers, MCP is REQUIRED for investigation
+  // Fail fast if MCP is not available
+  if (event.triggerType === 'sentry') {
+    try {
+      await requireMCPForSentry();
+    } catch (error) {
+      const errorMsg = getErrorMessage(error);
+      logger.error('MCP unavailable for Sentry investigation', {
+        triggerId: event.triggerId,
+        projectId: event.projectId,
+        error: errorMsg,
+      });
+      await trigger.addComment(
+        event,
+        `❌ **System Error:** Cannot investigate this Sentry issue.\n\n` +
+        `The MCP server is required for fetching error data but is not available.\n\n` +
+        `**Error:** ${errorMsg}\n\n` +
+        `Please check that the MCP service is running and try again.`
+      );
+      return {
+        fixed: false,
+        reason: 'mcp_unavailable',
+        analysis: undefined,
+      };
+    }
+
+    // Verify projectId is set (required for MCP to look up Sentry credentials)
+    if (!event.projectId) {
+      logger.error('Missing projectId for Sentry investigation', {
+        triggerId: event.triggerId,
+      });
+      await trigger.addComment(
+        event,
+        `❌ **System Error:** Cannot investigate this Sentry issue.\n\n` +
+        `No project ID is associated with this event. The MCP server requires a project ID ` +
+        `to look up Sentry credentials.\n\n` +
+        `Please ensure the webhook is configured with a valid project.`
+      );
+      return {
+        fixed: false,
+        reason: 'missing_project_id',
+        analysis: undefined,
+      };
+    }
+  }
+
   const tools = await trigger.getTools(event);
 
   // Pre-fetch additional data from trigger (stack traces, breadcrumbs, etc.)
