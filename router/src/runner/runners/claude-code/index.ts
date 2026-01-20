@@ -185,8 +185,8 @@ async function prepareClaudeConfig(workspacePath: string, projectId?: string): P
 
   // Configure MCP server if enabled
   // Config format: https://code.claude.com/docs/en/mcp
+  // Write to both ~/.claude/mcp.json AND workspace/.mcp.json for compatibility
   if (ENABLE_MCP_SERVER && projectId) {
-    const mcpConfigPath = join(claudeConfigPath, 'mcp.json');
     const mcpConfig = {
       mcpServers: {
         'ai-bug-fixer': {
@@ -195,8 +195,17 @@ async function prepareClaudeConfig(workspacePath: string, projectId?: string): P
         },
       },
     };
-    await writeFile(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
-    console.log(`[ClaudeCode] MCP config written to ${mcpConfigPath}`);
+    const mcpConfigJson = JSON.stringify(mcpConfig, null, 2);
+
+    // Write to ~/.claude/mcp.json (mounted config dir)
+    const homeMcpPath = join(claudeConfigPath, 'mcp.json');
+    await writeFile(homeMcpPath, mcpConfigJson);
+
+    // Also write to workspace/.mcp.json (project-level config)
+    const workspaceMcpPath = join(workspacePath, '.mcp.json');
+    await writeFile(workspaceMcpPath, mcpConfigJson);
+
+    console.log(`[ClaudeCode] MCP config written to ${homeMcpPath} and ${workspaceMcpPath}`);
   }
 
   return claudeConfigPath;
