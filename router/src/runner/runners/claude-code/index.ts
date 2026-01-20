@@ -158,9 +158,10 @@ function formatUserFacingError(
 const ENABLE_MCP_SERVER = process.env.ENABLE_MCP_SERVER !== 'false';
 
 /**
- * MCP server URL (internal docker network)
+ * MCP server URL for agent (always uses Docker internal network name)
+ * The agent runs in Docker, so it always needs to use the internal hostname
  */
-const MCP_SERVER_URL = process.env.MCP_SERVER_URL || 'http://mcp:3001';
+const MCP_AGENT_URL = 'http://mcp:3001';
 
 /**
  * Prepare a writable .claude directory for the container
@@ -189,7 +190,7 @@ async function prepareClaudeConfig(workspacePath: string, projectId?: string): P
     const mcpServersConfig = {
       'ai-bug-fixer': {
         type: 'sse',
-        url: `${MCP_SERVER_URL}/sse?projectId=${encodeURIComponent(projectId)}`,
+        url: `${MCP_AGENT_URL}/sse?projectId=${encodeURIComponent(projectId)}`,
       },
     };
 

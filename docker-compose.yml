@@ -122,6 +122,8 @@ services:
       - DB_ENCRYPTION_KEY=${DB_ENCRYPTION_KEY}
       - MCP_PORT=3001
       - MCP_TRANSPORT=sse
+    ports:
+      - "3001:3001"  # Expose for dev mode (router running outside Docker)
     networks:
       - internal
     restart: unless-stopped
