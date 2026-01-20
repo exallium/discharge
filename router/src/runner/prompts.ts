@@ -312,9 +312,9 @@ export function buildAgentPrompt(
     investigate: isSentryTrigger
       ? `You are an investigation agent analyzing a Sentry error to understand its root cause.
 
-**IMPORTANT: You MUST use the Sentry MCP tools to fetch error data.**
+**IMPORTANT: You MUST use the MCP tools from the \`ai-bug-fixer\` MCP server to fetch Sentry data.**
 
-The pre-fetched data above may be incomplete or empty. You have MCP tools that can fetch real-time data directly from Sentry. **Always call these tools** to get the full picture.
+The \`ai-bug-fixer\` MCP server is already configured and connected to Sentry. Do NOT try to install or use any other Sentry MCP - just call the tools directly.
 
 **Your REQUIRED first steps:**
 1. Call \`sentry_get_latest_event\` with issueId "${event.triggerId}" to get the full stack trace
@@ -586,13 +586,17 @@ export function buildMCPToolsSection(triggerType: string, issueId?: string): str
     : 'Use the issue ID from the error details above.';
 
   return `
-## Sentry MCP Tools
+## Sentry Data Access via MCP
 
-You have MCP tools available to fetch additional data from Sentry. **Use these tools to get more context about the error.**
+You have access to Sentry data through the \`ai-bug-fixer\` MCP server that is already configured for you.
+
+**IMPORTANT:** Do NOT try to install or configure any other Sentry MCP servers. The \`ai-bug-fixer\` MCP server is already connected and authenticated with this project's Sentry account.
 
 ${issueIdNote}
 
-### Available Tools
+### Available MCP Tools
+
+These tools are provided by the \`ai-bug-fixer\` MCP server:
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
@@ -602,13 +606,13 @@ ${issueIdNote}
 | \`sentry_get_event_details\` | Get complete details for a specific event | \`issueId\`, \`eventId\` (both required) |
 | \`sentry_search_issues\` | Search for related issues | \`query\` (required, Sentry search syntax) |
 
-### Recommended Usage
+### How to Use
 
-1. **Start with \`sentry_get_latest_event\`** to get the full stack trace and breadcrumbs
+1. **Start by calling \`sentry_get_latest_event\`** with the issue ID above to get the full stack trace and breadcrumbs
 2. **Use \`sentry_get_issue\`** for metadata, tags, and aggregated information
 3. **Use \`sentry_search_issues\`** to find related errors (e.g., \`is:unresolved error.type:TypeError\`)
 
-These tools provide real-time data from Sentry that may be more detailed than the pre-fetched summary above.
+These tools fetch real-time data directly from Sentry via our pre-configured MCP server.
 `.trim();
 }
 

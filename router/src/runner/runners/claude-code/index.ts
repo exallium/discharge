@@ -164,28 +164,43 @@ const ENABLE_MCP_SERVER = process.env.ENABLE_MCP_SERVER !== 'false';
 const MCP_AGENT_URL = 'http://mcp:3001';
 
 /**
- * Prepare a writable .claude directory for the container
- * Creates the config structure and sets up the onboarding flag for CLAUDE_CODE_OAUTH_TOKEN auth
- * Also configures MCP server connection if enabled
+ * Paths returned from prepareClaudeConfig
  */
-async function prepareClaudeConfig(workspacePath: string, projectId?: string): Promise<string> {
-  const claudeConfigPath = join(workspacePath, '.claude-config');
+interface ClaudeConfigPaths {
+  /** Directory for .claude subdirs (projects, debug, statsig) - mounted to ~/.claude/ */
+  claudeDir: string;
+  /** Config file path - mounted to ~/.claude.json */
+  claudeJsonFile: string;
+}
 
-  // Create the config directory
-  await mkdir(claudeConfigPath, { recursive: true });
-
-  // Create .claude.json with hasCompletedOnboarding flag
-  // This is required for CLAUDE_CODE_OAUTH_TOKEN to work without interactive prompts
-  const claudeJsonPath = join(claudeConfigPath, '.claude.json');
-  await writeFile(claudeJsonPath, JSON.stringify({ hasCompletedOnboarding: true }, null, 2));
+/**
+ * Prepare a writable .claude directory and config file for the container
+ *
+ * Claude Code CLI expects:
+ * - ~/.claude.json - config file with mcpServers, hasCompletedOnboarding, etc.
+ * - ~/.claude/ - directory containing projects/, debug/, statsig/, etc.
+ *
+ * We create:
+ * - {workspace}/.claude-config/ -> mounted to /home/agent/.claude/
+ * - {workspace}/.claude.json -> mounted to /home/agent/.claude.json
+ */
+async function prepareClaudeConfig(workspacePath: string, projectId?: string): Promise<ClaudeConfigPaths> {
+  // Directory for Claude Code's internal state (projects, debug, statsig)
+  const claudeDir = join(workspacePath, '.claude-config');
+  await mkdir(claudeDir, { recursive: true });
 
   // Create necessary subdirectories that Claude Code expects to write to
-  await mkdir(join(claudeConfigPath, 'projects'), { recursive: true });
-  await mkdir(join(claudeConfigPath, 'debug'), { recursive: true });
-  await mkdir(join(claudeConfigPath, 'statsig'), { recursive: true });
+  await mkdir(join(claudeDir, 'projects'), { recursive: true });
+  await mkdir(join(claudeDir, 'debug'), { recursive: true });
+  await mkdir(join(claudeDir, 'statsig'), { recursive: true });
+
+  // Config file goes at workspace root, will be mounted to ~/.claude.json
+  const claudeJsonFile = join(workspacePath, '.claude.json');
+
+  // Build config with hasCompletedOnboarding (required for non-interactive auth)
+  const claudeConfig: Record<string, unknown> = { hasCompletedOnboarding: true };
 
   // Configure MCP server if enabled
-  // Config is in ~/.claude.json with mcpServers key
   if (ENABLE_MCP_SERVER && projectId) {
     const mcpServersConfig = {
       'ai-bug-fixer': {
@@ -193,25 +208,14 @@ async function prepareClaudeConfig(workspacePath: string, projectId?: string): P
         url: `${MCP_AGENT_URL}/sse?projectId=${encodeURIComponent(projectId)}`,
       },
     };
-
-    // Read existing .claude.json and merge mcpServers
-    const claudeJsonPath = join(claudeConfigPath, '.claude.json');
-    let claudeConfig: Record<string, unknown> = { hasCompletedOnboarding: true };
-    try {
-      const existing = await readFile(claudeJsonPath, 'utf-8');
-      claudeConfig = JSON.parse(existing);
-    } catch {
-      // File doesn't exist or invalid, use default
-    }
-
-    // Add/update mcpServers
     claudeConfig.mcpServers = mcpServersConfig;
-    await writeFile(claudeJsonPath, JSON.stringify(claudeConfig, null, 2));
-
-    console.log(`[ClaudeCode] MCP servers configured in ${claudeJsonPath}`);
+    console.log(`[ClaudeCode] MCP servers configured for project ${projectId}`);
   }
 
-  return claudeConfigPath;
+  await writeFile(claudeJsonFile, JSON.stringify(claudeConfig, null, 2));
+  console.log(`[ClaudeCode] Claude config written to ${claudeJsonFile}`);
+
+  return { claudeDir, claudeJsonFile };
 }
 
 /**
@@ -396,8 +400,8 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       const promptFile = join(workspacePath, '.claude-prompt.txt');
       await writeFile(promptFile, enhancedPrompt, 'utf-8');
 
-      // Prepare writable .claude config directory (with MCP config if project ID available)
-      const claudeConfigPath = await prepareClaudeConfig(workspacePath, options.projectId);
+      // Prepare writable .claude config directory and config file (with MCP config if project ID available)
+      const { claudeDir, claudeJsonFile } = await prepareClaudeConfig(workspacePath, options.projectId);
 
       // Docker socket mount for running containers inside agent (e.g., Supabase)
       const dockerMount = ENABLE_DOCKER_IN_AGENT
@@ -420,7 +424,8 @@ export class ClaudeCodeRunner implements RunnerPlugin {
           --name claude-${jobId.slice(0, 8)} \
           --network ${process.env.DOCKER_NETWORK || 'ai-bug-fixer_internal'} \
           -v ${workspacePath}:/workspace \
-          -v ${claudeConfigPath}:/home/agent/.claude \
+          -v ${claudeDir}:/home/agent/.claude \
+          -v ${claudeJsonFile}:/home/agent/.claude.json \
           ${dockerMount} \
           ${secondaryMounts} \
           ${envFlags} \
@@ -802,8 +807,8 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         await this.writeToolsToWorkspace(workspacePath, options.tools);
       }
 
-      // Prepare writable .claude config directory (with MCP config if project ID available)
-      const claudeConfigPath = await prepareClaudeConfig(workspacePath, options.projectId);
+      // Prepare writable .claude config directory and config file (with MCP config if project ID available)
+      const { claudeDir, claudeJsonFile } = await prepareClaudeConfig(workspacePath, options.projectId);
 
       // Docker socket mount for running containers inside agent (e.g., Supabase)
       const dockerMount = ENABLE_DOCKER_IN_AGENT
@@ -818,7 +823,8 @@ export class ClaudeCodeRunner implements RunnerPlugin {
           --name claude-conv-${jobId.slice(0, 8)} \
           --network ${process.env.DOCKER_NETWORK || 'ai-bug-fixer_internal'} \
           -v ${workspacePath}:/workspace \
-          -v ${claudeConfigPath}:/home/agent/.claude \
+          -v ${claudeDir}:/home/agent/.claude \
+          -v ${claudeJsonFile}:/home/agent/.claude.json \
           ${dockerMount} \
           ${envFlags} \
           ${pathEnv} \
