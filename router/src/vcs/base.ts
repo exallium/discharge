@@ -187,15 +187,39 @@ function extractIssueNumber(url: string): number | null {
 }
 
 /**
+ * Investigation context for inclusion in PR body
+ */
+interface InvestigationContext {
+  rootCause: string;
+  filesInvolved: string[];
+  suggestedApproach: string;
+  summary?: string;
+}
+
+/**
  * Helper to format PR body from analysis
  */
 export function formatPRBody(
   analysis: AnalysisResult,
-  sourceLink: string
+  sourceLink: string,
+  investigationContext?: InvestigationContext
 ): string {
   // Extract issue number for "Fixes #X" reference (enables auto-close and conversation linking)
   const issueNumber = extractIssueNumber(sourceLink);
   const fixesReference = issueNumber ? `Fixes #${issueNumber}` : '';
+
+  // Build investigation section if context is available
+  let investigationSection = '';
+  if (investigationContext) {
+    investigationSection = `
+### Investigation Summary
+
+${investigationContext.summary || investigationContext.rootCause}
+
+**Suggested Approach:** ${investigationContext.suggestedApproach}
+
+`;
+  }
 
   return `
 ## Automated Fix
@@ -203,7 +227,7 @@ export function formatPRBody(
 ${fixesReference}
 
 ${sourceLink}
-
+${investigationSection}
 ### Analysis
 
 - **Root Cause:** ${analysis.rootCause}

@@ -84,6 +84,13 @@ export interface FixStatus {
   reason?: string;
   analysis?: AnalysisResult;
   prUrl?: string;
+  /** Investigation context when running in investigate or investigate_and_fix mode */
+  investigationContext?: {
+    rootCause: string;
+    filesInvolved: string[];
+    suggestedApproach: string;
+    summary?: string;
+  };
 }
 
 /**
@@ -96,6 +103,25 @@ export interface WebhookConfig {
   docsUrl: string;
   /** Content type expected (usually application/json) */
   contentType?: string;
+}
+
+/**
+ * Prefetched data from triggers for inclusion in prompts
+ * Provides immediate context so agents don't need to fetch it themselves.
+ *
+ * This is a generic interface - any trigger can implement prefetchData() to
+ * provide pre-fetched data from their respective systems (Sentry, Datadog,
+ * CircleCI, GitHub Actions, etc.)
+ */
+export interface PrefetchedData {
+  /** Formatted markdown with issue/error details */
+  summary: string;
+  /** Full stack trace if available (from any error tracking system) */
+  stackTrace?: string;
+  /** Breadcrumbs/event trail if available (Sentry, LogRocket, etc.) */
+  breadcrumbs?: string;
+  /** Additional context (request data, user info, logs, etc.) */
+  additionalContext?: string;
 }
 
 /**
@@ -145,6 +171,16 @@ export interface TriggerPlugin {
 
   // Optional: Pre-filtering
   shouldProcess?(event: TriggerEvent): Promise<boolean>;
+
+  // Optional: Pre-fetch additional data for prompts
+  /**
+   * Pre-fetch additional data for inclusion in prompts
+   * Called before running agents to provide immediate context
+   *
+   * @param event - Trigger event
+   * @returns Pre-fetched data (stack traces, breadcrumbs, etc.) or undefined if not available
+   */
+  prefetchData?(event: TriggerEvent): Promise<PrefetchedData | undefined>;
 
   // ========================================
   // Conversation Support (Optional)

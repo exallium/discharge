@@ -1,4 +1,4 @@
-import { TriggerPlugin, TriggerEvent, FixStatus, AnalysisResult } from '../triggers/base';
+import { TriggerPlugin, TriggerEvent, FixStatus, AnalysisResult, PrefetchedData } from '../triggers/base';
 import { findProjectById, ProjectConfig } from '../config/projects';
 import { validateTools } from './tools';
 import {
@@ -50,10 +50,31 @@ export async function orchestrateWithTriage(
 ): Promise<FixStatus> {
   const tools = await trigger.getTools(event);
 
+  // Pre-fetch additional data from trigger (stack traces, breadcrumbs, etc.)
+  let prefetchedData: PrefetchedData | undefined;
+  if (trigger.prefetchData) {
+    logger.info('Pre-fetching trigger data', { triggerId: event.triggerId });
+    try {
+      prefetchedData = await trigger.prefetchData(event);
+      if (prefetchedData) {
+        logger.info('Pre-fetched data available', {
+          triggerId: event.triggerId,
+          hasStackTrace: !!prefetchedData.stackTrace,
+          hasBreadcrumbs: !!prefetchedData.breadcrumbs,
+        });
+      }
+    } catch (error) {
+      logger.warn('Failed to prefetch data', {
+        triggerId: event.triggerId,
+        error: getErrorMessage(error),
+      });
+    }
+  }
+
   // Step 1: Run triage agent
   logger.info('Running triage agent', { triggerId: event.triggerId });
 
-  const triagePrompt = buildTriagePrompt(trigger, event, config);
+  const triagePrompt = buildTriagePrompt(trigger, event, config, prefetchedData);
   const triageResult = await runner.run({
     repoUrl: project.repo,
     branch: project.branch,
@@ -131,7 +152,8 @@ export async function orchestrateWithTriage(
       tools,
       undefined, // no prior investigation
       project.repoFullName,
-      config?.config?.secondaryRepos
+      config?.config?.secondaryRepos,
+      prefetchedData
     );
 
     const investigateResult = await runner.run({
@@ -170,25 +192,49 @@ export async function orchestrateWithTriage(
   }
 
   // Check for investigate-only mode (from Sentry UI component or manual trigger)
+  // In this mode, create a PR with investigation findings and wait for approval
   if (event.metadata?.mode === 'investigate') {
-    logger.info('Investigate-only mode - skipping fix agent', {
+    logger.info('Investigate mode - creating investigation PR', {
       triggerId: event.triggerId,
     });
 
-    // Post investigation results as a comment
-    if (investigationContext) {
-      const comment = formatInvestigationComment(investigationContext);
-      await trigger.addComment(event, comment);
-    } else {
+    if (!investigationContext) {
       await trigger.addComment(
         event,
         '🔍 Investigation complete but no detailed findings were generated.'
       );
+      return {
+        fixed: false,
+        reason: 'investigation_failed',
+        analysis: undefined,
+      };
+    }
+
+    // Create investigation PR using VCS
+    const investigationResult = await createInvestigationPR(
+      project,
+      event,
+      investigationContext,
+      trigger
+    );
+
+    if (investigationResult.prUrl) {
+      await trigger.addComment(
+        event,
+        `🔍 Investigation complete!\n\n` +
+        `**PR:** ${investigationResult.prUrl}\n\n` +
+        formatInvestigationComment(investigationContext) + '\n\n' +
+        `---\n` +
+        `**To proceed with the fix**, add the \`plan-approved\` label to the PR.`
+      );
+    } else {
+      // Fallback: post investigation as comment
+      await trigger.addComment(event, formatInvestigationComment(investigationContext));
     }
 
     return {
       fixed: false,
-      reason: 'investigate_only_mode',
+      reason: 'investigate_pending_approval',
       analysis: undefined,
     };
   }
@@ -210,7 +256,8 @@ export async function orchestrateWithTriage(
     tools,
     investigationContext,
     project.repoFullName,
-    config?.config?.secondaryRepos
+    config?.config?.secondaryRepos,
+    prefetchedData
   );
 
   const fixResult = await runner.run({
@@ -236,11 +283,18 @@ export async function orchestrateWithTriage(
   }
 
   // Return analysis result - PR creation is handled by the caller
+  // Include investigation context for investigate_and_fix mode so it can be included in PR
   return {
     fixed: fixResult.hasCommit && fixResult.analysis?.canAutoFix === true,
     reason: fixResult.analysis?.reason,
     analysis: fixResult.analysis,
     prUrl: undefined, // PR creation handled separately
+    investigationContext: investigationContext ? {
+      rootCause: investigationContext.rootCause,
+      filesInvolved: investigationContext.filesInvolved,
+      suggestedApproach: investigationContext.suggestedApproach,
+      summary: investigationContext.summary,
+    } : undefined,
   };
 }
 
@@ -712,6 +766,151 @@ ${investigation.filesInvolved.map((f) => `- \`${f}\``).join('\n')}
 ---
 *This investigation was generated automatically by AI Bug Fixer (investigate-only mode)*
   `.trim();
+}
+
+/**
+ * Format investigation as markdown for PR/file
+ */
+function formatInvestigationMarkdown(
+  event: TriggerEvent,
+  investigation: InvestigationContext
+): string {
+  return `# Investigation: ${event.title}
+
+**Issue ID:** ${event.triggerId}
+**Trigger Type:** ${event.triggerType}
+**Generated:** ${new Date().toISOString()}
+
+## Summary
+
+${investigation.summary || 'No summary available.'}
+
+## Root Cause
+
+${investigation.rootCause}
+
+## Suggested Approach
+
+${investigation.suggestedApproach}
+
+## Files Involved
+
+${investigation.filesInvolved.map((f) => `- \`${f}\``).join('\n')}
+
+## Complexity
+
+${investigation.complexity || 'unknown'}
+
+## Recommended Agent
+
+${investigation.recommendedAgent || 'simple'}
+
+---
+*This investigation was generated automatically by AI Bug Fixer.*
+*To proceed with the fix, add the \`plan-approved\` label to this PR.*
+`.trim();
+}
+
+/**
+ * Clean up investigation file after fix is applied
+ * This removes the investigation markdown from the branch
+ */
+export async function cleanupInvestigationFile(
+  project: ProjectConfig,
+  investigationRef: string
+): Promise<void> {
+  try {
+    const vcs = await getVCSForProject(project.vcs.type, project.id);
+    if (!vcs || !(vcs instanceof GitHubVCS)) {
+      logger.warn('VCS does not support file cleanup');
+      return;
+    }
+
+    // Use the same cleanup method as plan files
+    await vcs.removePlanFileOnly(project, investigationRef);
+    logger.info('Cleaned up investigation file', { investigationRef });
+  } catch (error) {
+    // Log but don't fail - cleanup is best-effort
+    logger.warn('Failed to clean up investigation file', {
+      investigationRef,
+      error: getErrorMessage(error),
+    });
+  }
+}
+
+/**
+ * Get investigation file path for a trigger event
+ */
+export function getInvestigationFilePath(triggerId: string): string {
+  return `.ai-bug-fixer/investigations/${triggerId}.md`;
+}
+
+/**
+ * Create an investigation PR with findings
+ */
+async function createInvestigationPR(
+  project: ProjectConfig,
+  event: TriggerEvent,
+  investigation: InvestigationContext,
+  _trigger: TriggerPlugin
+): Promise<{ prUrl?: string; prNumber?: number; branchName?: string; investigationRef?: string }> {
+  try {
+    const vcs = await getVCSForProject(project.vcs.type, project.id);
+    if (!vcs?.supportsPlanFiles || !vcs.createPlanFile) {
+      logger.warn('VCS does not support plan files, skipping investigation PR');
+      return {};
+    }
+
+    // Generate investigation file content
+    const investigationContent = formatInvestigationMarkdown(event, investigation);
+
+    // Create investigation file path using helper
+    const filePath = getInvestigationFilePath(event.triggerId);
+
+    // Create the investigation file (this creates a branch + PR)
+    const result = await vcs.createPlanFile(
+      project,
+      investigationContent,
+      filePath,
+      event.metadata?.issueNumber as number | undefined
+    );
+
+    logger.info('Investigation PR created', {
+      triggerId: event.triggerId,
+      prNumber: result.prNumber,
+      planRef: result.planRef,
+    });
+
+    // Add plan-approved label instruction to PR if we have the capability
+    if (result.prNumber && vcs instanceof GitHubVCS) {
+      // Add a 'needs-review' or 'investigation' label
+      try {
+        await vcs.addLabels(
+          project.vcs.owner,
+          project.vcs.repo,
+          result.prNumber,
+          ['investigation', 'needs-review']
+        );
+      } catch (labelError) {
+        logger.warn('Failed to add labels to investigation PR', {
+          error: getErrorMessage(labelError),
+        });
+      }
+    }
+
+    return {
+      prUrl: result.url,
+      prNumber: result.prNumber,
+      branchName: result.branch,
+      investigationRef: result.planRef, // For cleanup after fix is applied
+    };
+  } catch (error) {
+    logger.error('Failed to create investigation PR', {
+      triggerId: event.triggerId,
+      error: getErrorMessage(error),
+    });
+    return {};
+  }
 }
 
 // ========================================

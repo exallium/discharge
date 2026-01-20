@@ -165,6 +165,12 @@ export interface InvestigationContext {
 
   /** Full investigation summary */
   summary?: string;
+
+  /** Complexity assessment from investigation */
+  complexity?: 'simple' | 'complex';
+
+  /** Recommended agent for the fix */
+  recommendedAgent?: string;
 }
 
 // ============================================================================

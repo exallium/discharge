@@ -1,9 +1,77 @@
 import crypto from 'crypto';
-import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest, WebhookConfig, SecretRequirement } from '../base';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest, WebhookConfig, SecretRequirement, PrefetchedData } from '../base';
 import { findProjectsBySource } from '../../config/projects';
 import { SentryWebhookPayload, SentryTag, isIssueCreatedEvent } from '../../types/webhooks/sentry';
 import { getErrorMessage } from '../../types/errors';
 import { getSecret } from '../../secrets';
+
+/**
+ * Sentry event data types for prefetch
+ */
+interface SentryStackFrame {
+  filename?: string;
+  absPath?: string;
+  function?: string;
+  lineNo?: number;
+  colNo?: number;
+  context?: Array<[number, string]>;
+}
+
+interface SentryException {
+  type: string;
+  value: string;
+  stacktrace?: {
+    frames: SentryStackFrame[];
+  };
+}
+
+interface SentryBreadcrumb {
+  timestamp?: number;
+  category?: string;
+  message?: string;
+  data?: {
+    url?: string;
+    to?: string;
+    [key: string]: unknown;
+  };
+}
+
+interface SentryExceptionEntry {
+  type: 'exception';
+  data?: {
+    values?: SentryException[];
+  };
+}
+
+interface SentryBreadcrumbEntry {
+  type: 'breadcrumbs';
+  data?: {
+    values?: SentryBreadcrumb[];
+  };
+}
+
+interface SentryRequestEntry {
+  type: 'request';
+  data?: {
+    method?: string;
+    url?: string;
+    headers?: Record<string, string>;
+    [key: string]: unknown;
+  };
+}
+
+type SentryEntry = SentryExceptionEntry | SentryBreadcrumbEntry | SentryRequestEntry | {
+  type: string;
+  data?: unknown;
+};
+
+interface SentryEventData {
+  eventID: string;
+  dateCreated?: string;
+  entries?: SentryEntry[];
+  tags?: Array<{ key: string; value: string }>;
+  contexts?: Record<string, unknown>;
+}
 
 /**
  * Sentry trigger plugin
@@ -429,6 +497,179 @@ EOF
     }
 
     return true;
+  }
+
+  /**
+   * Pre-fetch Sentry data for inclusion in prompts
+   * Fetches the latest event with full stack trace and breadcrumbs
+   */
+  async prefetchData(event: TriggerEvent): Promise<PrefetchedData | undefined> {
+    const sentryToken = await getSecret('sentry', 'auth_token');
+    if (!sentryToken) {
+      console.warn('[SentryTrigger] Cannot prefetch data - Sentry auth token not configured');
+      return undefined;
+    }
+
+    const { triggerId, metadata } = event;
+    const sentryBaseUrl = (metadata.sentryInstanceUrl as string) || 'https://sentry.io';
+
+    try {
+      // Fetch the latest event for this issue
+      const eventsResponse = await fetch(
+        `${sentryBaseUrl}/api/0/issues/${triggerId}/events/`,
+        {
+          headers: {
+            'Authorization': `Bearer ${sentryToken}`,
+          },
+        }
+      );
+
+      if (!eventsResponse.ok) {
+        console.warn(`[SentryTrigger] Failed to fetch events: ${eventsResponse.statusText}`);
+        return undefined;
+      }
+
+      const events = await eventsResponse.json() as Array<{ eventID: string }>;
+      if (!events || events.length === 0) {
+        console.log('[SentryTrigger] No events found for issue');
+        return undefined;
+      }
+
+      // Get the latest event with full details
+      const latestEventId = events[0].eventID;
+      const eventResponse = await fetch(
+        `${sentryBaseUrl}/api/0/issues/${triggerId}/events/${latestEventId}/`,
+        {
+          headers: {
+            'Authorization': `Bearer ${sentryToken}`,
+          },
+        }
+      );
+
+      if (!eventResponse.ok) {
+        console.warn(`[SentryTrigger] Failed to fetch event details: ${eventResponse.statusText}`);
+        return undefined;
+      }
+
+      const eventData = await eventResponse.json() as SentryEventData;
+
+      // Build prefetched data
+      return this.formatPrefetchedData(event, eventData);
+    } catch (error) {
+      console.error('[SentryTrigger] Error prefetching data:', getErrorMessage(error));
+      return undefined;
+    }
+  }
+
+  /**
+   * Format Sentry event data into PrefetchedData structure
+   */
+  private formatPrefetchedData(event: TriggerEvent, eventData: SentryEventData): PrefetchedData {
+    const parts: string[] = [];
+
+    // Build summary
+    parts.push(`**Error:** ${event.title}`);
+    parts.push(`**Event ID:** ${eventData.eventID}`);
+    if (eventData.dateCreated) {
+      parts.push(`**Occurred:** ${eventData.dateCreated}`);
+    }
+    if (event.metadata.environment) {
+      parts.push(`**Environment:** ${event.metadata.environment}`);
+    }
+
+    // Extract stack trace
+    let stackTrace: string | undefined;
+    const exceptionEntry = eventData.entries?.find((e): e is SentryExceptionEntry => e.type === 'exception');
+    if (exceptionEntry?.data?.values) {
+      const stackTraceLines: string[] = [];
+      for (const exc of exceptionEntry.data.values) {
+        stackTraceLines.push(`${exc.type}: ${exc.value}`);
+        if (exc.stacktrace?.frames) {
+          // Frames are in reverse order (most recent last)
+          const frames = [...exc.stacktrace.frames].reverse();
+          for (const frame of frames) {
+            const filename = frame.filename || frame.absPath || '?';
+            const func = frame.function || '?';
+            const line = frame.lineNo || '?';
+            const col = frame.colNo ? `:${frame.colNo}` : '';
+            stackTraceLines.push(`  at ${func} (${filename}:${line}${col})`);
+            if (frame.context) {
+              // Include context lines if available
+              for (const [lineNum, code] of frame.context) {
+                const prefix = lineNum === frame.lineNo ? '>' : ' ';
+                stackTraceLines.push(`    ${prefix} ${lineNum}: ${code}`);
+              }
+            }
+          }
+        }
+        stackTraceLines.push('');
+      }
+      stackTrace = stackTraceLines.join('\n');
+    }
+
+    // Extract breadcrumbs
+    let breadcrumbs: string | undefined;
+    const breadcrumbEntry = eventData.entries?.find((e): e is SentryBreadcrumbEntry => e.type === 'breadcrumbs');
+    if (breadcrumbEntry?.data?.values) {
+      const breadcrumbLines: string[] = [];
+      // Show last 20 breadcrumbs
+      const recentBreadcrumbs = breadcrumbEntry.data.values.slice(-20);
+      for (const crumb of recentBreadcrumbs) {
+        const timestamp = crumb.timestamp ? new Date(crumb.timestamp * 1000).toISOString() : '?';
+        const category = crumb.category || 'unknown';
+        const message = crumb.message || crumb.data?.url || crumb.data?.to || '';
+        breadcrumbLines.push(`[${timestamp}] ${category}: ${message}`);
+      }
+      breadcrumbs = breadcrumbLines.join('\n');
+    }
+
+    // Extract additional context (request, user, tags)
+    const additionalParts: string[] = [];
+
+    // Request context
+    const requestEntry = eventData.entries?.find((e): e is SentryRequestEntry => e.type === 'request');
+    if (requestEntry?.data) {
+      additionalParts.push('**Request:**');
+      if (requestEntry.data.method && requestEntry.data.url) {
+        additionalParts.push(`- ${requestEntry.data.method} ${requestEntry.data.url}`);
+      }
+      if (requestEntry.data.headers) {
+        const userAgent = requestEntry.data.headers['User-Agent'] || requestEntry.data.headers['user-agent'];
+        if (userAgent) {
+          additionalParts.push(`- User-Agent: ${userAgent}`);
+        }
+      }
+      additionalParts.push('');
+    }
+
+    // Tags
+    if (eventData.tags && eventData.tags.length > 0) {
+      additionalParts.push('**Tags:**');
+      for (const tag of eventData.tags.slice(0, 10)) {
+        additionalParts.push(`- ${tag.key}: ${tag.value}`);
+      }
+      additionalParts.push('');
+    }
+
+    // Context (custom context)
+    if (eventData.contexts) {
+      const contextKeys = Object.keys(eventData.contexts).filter(
+        (k) => !['browser', 'os', 'device'].includes(k)
+      );
+      if (contextKeys.length > 0) {
+        additionalParts.push('**Context:**');
+        for (const key of contextKeys.slice(0, 5)) {
+          additionalParts.push(`- ${key}: ${JSON.stringify(eventData.contexts[key])}`);
+        }
+      }
+    }
+
+    return {
+      summary: parts.join('\n'),
+      stackTrace,
+      breadcrumbs,
+      additionalContext: additionalParts.length > 0 ? additionalParts.join('\n') : undefined,
+    };
   }
 
   /**

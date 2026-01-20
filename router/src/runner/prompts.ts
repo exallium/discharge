@@ -177,15 +177,21 @@ Create a file at \`.claude/analysis.json\` with your findings.
  * @param trigger - Trigger plugin
  * @param event - Normalized event
  * @param config - AiBugsConfig (v2)
+ * @param prefetchedData - Optional pre-fetched data from trigger (stack traces, breadcrumbs)
  * @returns Prompt string for triage agent
  */
 export function buildTriagePrompt(
   trigger: TriggerPlugin,
   event: TriggerEvent,
-  config: AiBugsConfig | undefined
+  config: AiBugsConfig | undefined,
+  prefetchedData?: PrefetchedData
 ): string {
   const context = trigger.getPromptContext(event);
   const availableAgents = getAvailableAgents(config);
+
+  // Build prefetched and MCP sections
+  const prefetchedSection = buildPrefetchedDataSection(prefetchedData);
+  const mcpToolsSection = buildMCPToolsSection(event.triggerType);
 
   // Build agent list for triage to consider
   const agentList = availableAgents
@@ -199,7 +205,7 @@ You are a triage agent analyzing an incoming issue to determine how to handle it
 ## Issue Details
 
 ${context}
-
+${prefetchedSection ? `\n${prefetchedSection}\n` : ''}${mcpToolsSection ? `\n${mcpToolsSection}\n` : ''}
 ## Available Agents
 
 ${agentList}
@@ -284,6 +290,7 @@ Begin your analysis now.
  * @param investigationContext - Optional context from prior investigation
  * @param mainRepoFullName - Optional main repo name for secondary repos section
  * @param secondaryRepos - Optional secondary repos
+ * @param prefetchedData - Optional pre-fetched data from trigger (stack traces, breadcrumbs)
  * @returns Prompt string for the agent
  */
 export function buildAgentPrompt(
@@ -294,7 +301,8 @@ export function buildAgentPrompt(
   tools: Tool[],
   investigationContext?: InvestigationContext,
   mainRepoFullName?: string,
-  secondaryRepos?: string[]
+  secondaryRepos?: string[],
+  prefetchedData?: PrefetchedData
 ): string {
   const parts: string[] = [];
 
@@ -314,6 +322,20 @@ export function buildAgentPrompt(
   parts.push('');
   parts.push(context);
   parts.push('');
+
+  // Pre-fetched data section (stack traces, breadcrumbs, etc.)
+  const prefetchedSection = buildPrefetchedDataSection(prefetchedData);
+  if (prefetchedSection) {
+    parts.push(prefetchedSection);
+    parts.push('');
+  }
+
+  // MCP tools documentation (for Sentry triggers)
+  const mcpToolsSection = buildMCPToolsSection(event.triggerType);
+  if (mcpToolsSection) {
+    parts.push(mcpToolsSection);
+    parts.push('');
+  }
 
   // Investigation context handoff (if provided)
   if (investigationContext) {
@@ -528,6 +550,99 @@ Stop after creating analysis.json. Do NOT make any code changes.
 `.trim();
 }
 
+// ============================================================================
+// MCP Tools and Prefetched Data
+// ============================================================================
+
+/**
+ * Build MCP tools documentation section for Sentry triggers
+ *
+ * Informs the agent about available MCP tools for fetching Sentry data
+ */
+export function buildMCPToolsSection(triggerType: string): string {
+  if (triggerType !== 'sentry') return '';
+
+  return `
+## MCP Tools Available
+
+You have access to MCP tools for fetching additional Sentry data:
+
+- \`sentry_get_issue\` - Get full issue details (metadata, tags, context)
+- \`sentry_get_events\` - Get recent events/occurrences for the issue
+- \`sentry_get_latest_event\` - Get most recent event with full stack trace and breadcrumbs
+- \`sentry_get_event_details\` - Get complete details for a specific event ID
+- \`sentry_search_issues\` - Search for related issues
+
+Use these when you need more stack trace details, breadcrumbs, request context, or to find related issues.
+`.trim();
+}
+
+/**
+ * Prefetched data that's included in prompts for immediate context
+ * This is a generic interface that any trigger can implement to provide
+ * pre-fetched data (error details, logs, stack traces, etc.)
+ */
+export interface PrefetchedData {
+  /** Formatted markdown with issue/error details */
+  summary: string;
+  /** Full stack trace if available (from any error tracking system) */
+  stackTrace?: string;
+  /** Breadcrumbs/event trail if available (Sentry, LogRocket, etc.) */
+  breadcrumbs?: string;
+  /** Additional context (request data, user info, logs, etc.) */
+  additionalContext?: string;
+}
+
+/**
+ * Build prefetched data section for prompts
+ *
+ * Includes pre-fetched data from the trigger so agents have immediate context
+ * without needing to fetch it themselves. Works with any trigger that
+ * implements the prefetchData() method.
+ */
+export function buildPrefetchedDataSection(data: PrefetchedData | undefined): string {
+  if (!data) return '';
+
+  const parts: string[] = [];
+
+  parts.push('## Pre-fetched Error Data');
+  parts.push('');
+  parts.push('The following data was fetched from the error tracking system:');
+  parts.push('');
+
+  if (data.summary) {
+    parts.push('### Summary');
+    parts.push('');
+    parts.push(data.summary);
+    parts.push('');
+  }
+
+  if (data.stackTrace) {
+    parts.push('### Stack Trace');
+    parts.push('');
+    parts.push('```');
+    parts.push(data.stackTrace);
+    parts.push('```');
+    parts.push('');
+  }
+
+  if (data.breadcrumbs) {
+    parts.push('### Breadcrumbs');
+    parts.push('');
+    parts.push(data.breadcrumbs);
+    parts.push('');
+  }
+
+  if (data.additionalContext) {
+    parts.push('### Additional Context');
+    parts.push('');
+    parts.push(data.additionalContext);
+    parts.push('');
+  }
+
+  return parts.join('\n').trim();
+}
+
 /**
  * Build prompt with config (agents/rules system)
  * This is the main entry point for prompt building
@@ -542,9 +657,10 @@ export function buildPromptWithConfig(
     agentName?: string;
     investigationContext?: InvestigationContext;
     mainRepoFullName?: string;
+    prefetchedData?: PrefetchedData;
   } = {}
 ): string {
-  const { agentName, investigationContext, mainRepoFullName } = options;
+  const { agentName, investigationContext, mainRepoFullName, prefetchedData } = options;
   const secondaryRepos = config?.config?.secondaryRepos;
 
   // If we have an agent name, use the agent-specific prompt
@@ -557,7 +673,8 @@ export function buildPromptWithConfig(
       tools,
       investigationContext,
       mainRepoFullName,
-      secondaryRepos
+      secondaryRepos,
+      prefetchedData
     );
   }
 
