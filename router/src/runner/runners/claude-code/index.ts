@@ -184,28 +184,30 @@ async function prepareClaudeConfig(workspacePath: string, projectId?: string): P
   await mkdir(join(claudeConfigPath, 'statsig'), { recursive: true });
 
   // Configure MCP server if enabled
-  // Config format: https://code.claude.com/docs/en/mcp
-  // Write to both ~/.claude/mcp.json AND workspace/.mcp.json for compatibility
+  // Config is in ~/.claude.json with mcpServers key
   if (ENABLE_MCP_SERVER && projectId) {
-    const mcpConfig = {
-      mcpServers: {
-        'ai-bug-fixer': {
-          type: 'sse',
-          url: `${MCP_SERVER_URL}/sse?projectId=${encodeURIComponent(projectId)}`,
-        },
+    const mcpServersConfig = {
+      'ai-bug-fixer': {
+        type: 'sse',
+        url: `${MCP_SERVER_URL}/sse?projectId=${encodeURIComponent(projectId)}`,
       },
     };
-    const mcpConfigJson = JSON.stringify(mcpConfig, null, 2);
 
-    // Write to ~/.claude/mcp.json (mounted config dir)
-    const homeMcpPath = join(claudeConfigPath, 'mcp.json');
-    await writeFile(homeMcpPath, mcpConfigJson);
+    // Read existing .claude.json and merge mcpServers
+    const claudeJsonPath = join(claudeConfigPath, '.claude.json');
+    let claudeConfig: Record<string, unknown> = { hasCompletedOnboarding: true };
+    try {
+      const existing = await readFile(claudeJsonPath, 'utf-8');
+      claudeConfig = JSON.parse(existing);
+    } catch {
+      // File doesn't exist or invalid, use default
+    }
 
-    // Also write to workspace/.mcp.json (project-level config)
-    const workspaceMcpPath = join(workspacePath, '.mcp.json');
-    await writeFile(workspaceMcpPath, mcpConfigJson);
+    // Add/update mcpServers
+    claudeConfig.mcpServers = mcpServersConfig;
+    await writeFile(claudeJsonPath, JSON.stringify(claudeConfig, null, 2));
 
-    console.log(`[ClaudeCode] MCP config written to ${homeMcpPath} and ${workspaceMcpPath}`);
+    console.log(`[ClaudeCode] MCP servers configured in ${claudeJsonPath}`);
   }
 
   return claudeConfigPath;
