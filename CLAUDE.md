@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Important Rules
+
+- **Never make changes that will result in data loss without explicit permission.** This includes changing database credentials, dropping tables, modifying Docker volume configurations, or any other change that could destroy or make existing data inaccessible.
+
 ## Build & Development Commands
 
 All commands run from the `router/` directory:
