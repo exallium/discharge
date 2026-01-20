@@ -46,6 +46,65 @@ export function getCurrentProjectId(): string | null {
 }
 
 /**
+ * Tool call log entry
+ */
+interface ToolCallLog {
+  timestamp: string;
+  projectId: string;
+  tool: string;
+  args: Record<string, unknown>;
+  success: boolean;
+  durationMs: number;
+  error?: string;
+}
+
+/**
+ * In-memory tool call log (limited to last 1000 entries)
+ * Keyed by projectId for easy lookup
+ */
+const toolCallLogs = new Map<string, ToolCallLog[]>();
+const MAX_LOGS_PER_PROJECT = 100;
+
+/**
+ * Log a tool call
+ */
+function logToolCall(log: ToolCallLog): void {
+  const projectLogs = toolCallLogs.get(log.projectId) || [];
+  projectLogs.push(log);
+
+  // Keep only the most recent logs
+  if (projectLogs.length > MAX_LOGS_PER_PROJECT) {
+    projectLogs.shift();
+  }
+
+  toolCallLogs.set(log.projectId, projectLogs);
+
+  // Also log to console for docker logs
+  console.error(`[MCP] Tool call: ${log.tool} (project: ${log.projectId}, success: ${log.success}, ${log.durationMs}ms)`);
+}
+
+/**
+ * Get tool call logs for a project since a given time
+ */
+function getToolCallLogs(projectId: string, since?: string): ToolCallLog[] {
+  const projectLogs = toolCallLogs.get(projectId) || [];
+
+  if (!since) {
+    return projectLogs;
+  }
+
+  const sinceTime = new Date(since).getTime();
+  return projectLogs.filter(log => new Date(log.timestamp).getTime() >= sinceTime);
+}
+
+/**
+ * Clear tool call logs for a project
+ */
+function clearToolCallLogs(projectId: string): void {
+  toolCallLogs.delete(projectId);
+}
+
+/**
  * Tool registry for pluggable tool providers
  *
  * To add a new tool provider:
@@ -113,10 +172,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 // Handle tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+  const startTime = Date.now();
+  const projectId = currentProjectId || 'unknown';
 
   // Find the tool
   const tool = enabledTools.find((t) => t.name === name);
   if (!tool) {
+    logToolCall({
+      timestamp: new Date().toISOString(),
+      projectId,
+      tool: name,
+      args: (args || {}) as Record<string, unknown>,
+      success: false,
+      durationMs: Date.now() - startTime,
+      error: `Unknown tool: ${name}`,
+    });
+
     return {
       content: [
         {
@@ -132,6 +203,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // Call the tool handler with the arguments as a record
     const result = await tool.handler(args as Record<string, unknown>);
 
+    logToolCall({
+      timestamp: new Date().toISOString(),
+      projectId,
+      tool: name,
+      args: (args || {}) as Record<string, unknown>,
+      success: true,
+      durationMs: Date.now() - startTime,
+    });
+
     return {
       content: [
         {
@@ -141,14 +221,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       ],
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`[MCP] Tool ${name} failed:`, error);
+
+    logToolCall({
+      timestamp: new Date().toISOString(),
+      projectId,
+      tool: name,
+      args: (args || {}) as Record<string, unknown>,
+      success: false,
+      durationMs: Date.now() - startTime,
+      error: errorMessage,
+    });
 
     return {
       content: [
         {
           type: 'text',
           text: JSON.stringify({
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage,
           }),
         },
       ],
@@ -190,6 +281,43 @@ async function main() {
       if (req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'ok', tools: enabledTools.length }));
+        return;
+      }
+
+      // Tool call logs endpoint
+      // GET /logs?projectId=xxx&since=2024-01-01T00:00:00Z
+      if (req.url?.startsWith('/logs') && req.method === 'GET') {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`);
+        const projectId = urlObj.searchParams.get('projectId');
+        const since = urlObj.searchParams.get('since') || undefined;
+
+        if (!projectId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'projectId is required' }));
+          return;
+        }
+
+        const logs = getToolCallLogs(projectId, since);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ logs }));
+        return;
+      }
+
+      // Clear logs endpoint (for cleanup after conversation)
+      // DELETE /logs?projectId=xxx
+      if (req.url?.startsWith('/logs') && req.method === 'DELETE') {
+        const urlObj = new URL(req.url, `http://${req.headers.host}`);
+        const projectId = urlObj.searchParams.get('projectId');
+
+        if (!projectId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'projectId is required' }));
+          return;
+        }
+
+        clearToolCallLogs(projectId);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ cleared: true }));
         return;
       }
 

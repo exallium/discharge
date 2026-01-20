@@ -90,3 +90,79 @@ export async function requireMCPForSentry(): Promise<void> {
 
   console.log(`[MCP] Health check passed: ${health.toolCount} tools available`);
 }
+
+/**
+ * MCP tool call log entry
+ */
+export interface MCPToolCallLog {
+  timestamp: string;
+  projectId: string;
+  tool: string;
+  args: Record<string, unknown>;
+  success: boolean;
+  durationMs: number;
+  error?: string;
+}
+
+/**
+ * Fetch MCP tool call logs for a project
+ *
+ * @param projectId - Project ID to get logs for
+ * @param since - Optional ISO timestamp to filter logs from
+ * @returns Array of tool call logs
+ */
+export async function getMCPToolCallLogs(
+  projectId: string,
+  since?: string
+): Promise<MCPToolCallLog[]> {
+  if (!MCP_ENABLED) {
+    return [];
+  }
+
+  try {
+    const url = new URL(`${MCP_SERVER_URL}/logs`);
+    url.searchParams.set('projectId', projectId);
+    if (since) {
+      url.searchParams.set('since', since);
+    }
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) {
+      console.warn(`[MCP] Failed to fetch tool logs: ${response.status}`);
+      return [];
+    }
+
+    const data = await response.json() as { logs: MCPToolCallLog[] };
+    return data.logs || [];
+  } catch (error) {
+    console.warn(`[MCP] Error fetching tool logs: ${getErrorMessage(error)}`);
+    return [];
+  }
+}
+
+/**
+ * Clear MCP tool call logs for a project
+ *
+ * @param projectId - Project ID to clear logs for
+ */
+export async function clearMCPToolCallLogs(projectId: string): Promise<void> {
+  if (!MCP_ENABLED) {
+    return;
+  }
+
+  try {
+    const url = new URL(`${MCP_SERVER_URL}/logs`);
+    url.searchParams.set('projectId', projectId);
+
+    await fetch(url.toString(), {
+      method: 'DELETE',
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch (error) {
+    console.warn(`[MCP] Error clearing tool logs: ${getErrorMessage(error)}`);
+  }
+}

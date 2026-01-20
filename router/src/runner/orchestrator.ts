@@ -1,5 +1,5 @@
 import { TriggerPlugin, TriggerEvent, FixStatus, AnalysisResult, PrefetchedData } from '../triggers/base';
-import { requireMCPForSentry } from './mcp';
+import { requireMCPForSentry, getMCPToolCallLogs } from './mcp';
 import { findProjectById, ProjectConfig } from '../config/projects';
 import { validateTools } from './tools';
 import {
@@ -1063,7 +1063,7 @@ export async function orchestrateConversation(
       existingPrNumber = typeof targetNumber === 'string' ? parseInt(targetNumber, 10) : targetNumber;
     }
 
-    // If we have a PR, try to get the branch name
+    // If we have a PR, try to get the branch name and check if it's still open
     if (existingPrNumber && !existingPrBranch) {
       // Try to get branch from VCS
       const vcs = await getVCSForProject(project.vcs.type, project.repoFullName);
@@ -1074,7 +1074,20 @@ export async function orchestrateConversation(
           existingPrNumber
         );
         if (prInfo) {
-          existingPrBranch = prInfo.head.ref;
+          // Check if PR is closed/merged - if so, we need a new PR
+          if (prInfo.state === 'closed') {
+            logger.info('Existing PR is closed, will create a new one', {
+              conversationId,
+              closedPrNumber: existingPrNumber,
+            });
+            existingPrNumber = undefined;
+            // Clear PR number from conversation so we create a new one
+            await conversationService.updateStatus(conversation.id, {
+              prNumber: undefined,
+            });
+          } else {
+            existingPrBranch = prInfo.head.ref;
+          }
         }
       }
     }
@@ -1200,6 +1213,27 @@ export async function orchestrateConversation(
       existingPrNumber,
       existingPrBranch,
     });
+
+    // Fetch and log MCP tool calls made during the conversation
+    if (triggerEvent.triggerType === 'sentry') {
+      const mcpLogs = await getMCPToolCallLogs(projectId);
+      if (mcpLogs.length > 0) {
+        logger.info('MCP tool calls during conversation', {
+          conversationId,
+          toolCalls: mcpLogs.map(log => ({
+            tool: log.tool,
+            success: log.success,
+            durationMs: log.durationMs,
+            error: log.error,
+          })),
+        });
+      } else {
+        logger.warn('No MCP tool calls recorded during Sentry investigation', {
+          conversationId,
+          projectId,
+        });
+      }
+    }
 
     // Store assistant response
     await conversationService.addMessage(

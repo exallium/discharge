@@ -622,7 +622,7 @@ export class GitHubVCS implements VCSPlugin {
     owner: string,
     repo: string,
     prNumber: number
-  ): Promise<{ head: { ref: string; sha: string }; base: { ref: string } } | null> {
+  ): Promise<{ head: { ref: string; sha: string }; base: { ref: string }; state: string } | null> {
     try {
       const { data: pr } = await this.octokit.pulls.get({
         owner,
@@ -638,6 +638,7 @@ export class GitHubVCS implements VCSPlugin {
         base: {
           ref: pr.base.ref,
         },
+        state: pr.state,
       };
     } catch (error) {
       logger.warn('Failed to get PR info', {
