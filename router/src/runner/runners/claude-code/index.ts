@@ -184,12 +184,13 @@ async function prepareClaudeConfig(workspacePath: string, projectId?: string): P
   await mkdir(join(claudeConfigPath, 'statsig'), { recursive: true });
 
   // Configure MCP server if enabled
+  // Config format: https://code.claude.com/docs/en/mcp
   if (ENABLE_MCP_SERVER && projectId) {
     const mcpConfigPath = join(claudeConfigPath, 'mcp.json');
     const mcpConfig = {
       mcpServers: {
         'ai-bug-fixer': {
-          transport: 'sse',
+          type: 'sse',
           url: `${MCP_SERVER_URL}/sse?projectId=${encodeURIComponent(projectId)}`,
         },
       },
