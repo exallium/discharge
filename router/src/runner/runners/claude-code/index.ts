@@ -671,7 +671,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
           jobId,
           options.existingPrBranch || options.branch, // Use PR branch if updating existing PR
           options.repoUrl,
-          options.existingPrBranch ? options.branch : undefined // Fallback to main branch if PR branch is gone
+          options.existingPrBranch ? (options.defaultBranch || 'main') : undefined // Fallback to default branch if PR branch is gone
         );
         fixBranch = options.existingPrBranch || `fix/auto-${jobId.slice(0, 8)}`;
         console.log(`[ClaudeCode:${jobId}] Worktree created at ${workspacePath}`);
@@ -697,18 +697,20 @@ export class ClaudeCodeRunner implements RunnerPlugin {
           // Check if the error is because the branch doesn't exist
           if (errorMsg.includes('Remote branch') && errorMsg.includes('not found')) {
             branchNotFound = true;
-            console.log(`[ClaudeCode:${jobId}] Branch ${cloneBranch} not found, falling back to ${options.branch}`);
+            const fallbackBranch = options.defaultBranch || 'main';
+            console.log(`[ClaudeCode:${jobId}] Branch ${cloneBranch} not found, falling back to ${fallbackBranch}`);
           } else {
             // Re-throw other clone errors
             throw cloneError;
           }
         }
 
-        // If the target branch doesn't exist, clone the main branch and create a new one
+        // If the target branch doesn't exist, clone the default branch and create a new one
         if (branchNotFound) {
-          console.log(`[ClaudeCode:${jobId}] Cloning main branch ${options.branch} instead...`);
+          const fallbackBranch = options.defaultBranch || 'main';
+          console.log(`[ClaudeCode:${jobId}] Cloning default branch ${fallbackBranch} instead...`);
           await execAsync(
-            `git clone --depth 1 -b ${options.branch} ${authUrl} ${workspacePath}`,
+            `git clone --depth 1 -b ${fallbackBranch} ${authUrl} ${workspacePath}`,
             { timeout: 60000 }
           );
 

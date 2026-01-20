@@ -1186,6 +1186,7 @@ export async function orchestrateConversation(
     const result = await runner.runConversation({
       repoUrl: project.repo,
       branch: existingPrBranch || project.branch, // Use PR branch if updating existing PR
+      defaultBranch: project.branch,              // For fallback if PR branch is deleted
       prompt: userMessage,
       tools,
       timeoutMs: project.runner?.timeout || 600000,

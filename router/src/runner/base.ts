@@ -61,6 +61,7 @@ export interface ConversationRunOptions extends RunOptions {
   workspacePath?: string;                      // Pre-prepared workspace (from RepoManager)
   existingPrNumber?: number;                   // Existing PR number (for PR review responses)
   existingPrBranch?: string;                   // Existing PR branch name (for pushing updates)
+  defaultBranch?: string;                      // Default branch to fall back to if existingPrBranch is gone
 }
 
 /**
