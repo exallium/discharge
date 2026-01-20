@@ -223,6 +223,43 @@ export async function find(
 }
 
 /**
+ * Find API log by ID - returns only detail fields for lazy loading
+ */
+export async function findById(id: string): Promise<{
+  details: ApiLogDetails | null;
+  payloadSummary: Record<string, unknown> | null;
+  error: string | null;
+  outcomeReason: string | null;
+  userAgent: string | null;
+} | null> {
+  const db = getDatabase();
+
+  const result = await db
+    .select({
+      details: apiLogs.details,
+      payloadSummary: apiLogs.payloadSummary,
+      error: apiLogs.error,
+      outcomeReason: apiLogs.outcomeReason,
+      userAgent: apiLogs.userAgent,
+    })
+    .from(apiLogs)
+    .where(eq(apiLogs.id, id))
+    .limit(1);
+
+  if (result.length === 0) {
+    return null;
+  }
+
+  return {
+    details: result[0].details as ApiLogDetails | null,
+    payloadSummary: result[0].payloadSummary as Record<string, unknown> | null,
+    error: result[0].error,
+    outcomeReason: result[0].outcomeReason,
+    userAgent: result[0].userAgent,
+  };
+}
+
+/**
  * Find recent API logs
  */
 export async function findRecent(limit = 50): Promise<ApiLogEntry[]> {

@@ -5,10 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 interface JobsFiltersProps {
   projects: Array<{ id: string; repoFullName: string }>;
   currentProject?: string;
-  currentTab: string;
 }
 
-export function JobsFilters({ projects, currentProject, currentTab }: JobsFiltersProps) {
+export function JobsFilters({ projects, currentProject }: JobsFiltersProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -19,7 +18,6 @@ export function JobsFilters({ projects, currentProject, currentTab }: JobsFilter
     } else {
       params.delete('project');
     }
-    params.set('tab', currentTab);
     params.delete('page'); // Reset to page 1 when filter changes
     router.push(`/jobs?${params.toString()}`);
   };

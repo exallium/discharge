@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
-import { History, MessageSquare, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { MessageSquare, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardContent } from '@/components/ui/card';
@@ -18,36 +18,26 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { formatRelativeTime, formatDuration } from '@/lib/utils';
-import { jobHistoryRepo, projectsRepo, conversationsRepo } from '@/src/db/repositories';
+import { formatRelativeTime } from '@/lib/utils';
+import { projectsRepo, conversationsRepo } from '@/src/db/repositories';
 import { ConversationActions } from './conversation-actions';
 import { JobsFilters } from './jobs-filters';
 
 interface JobsPageProps {
-  searchParams: Promise<{ page?: string; project?: string; tab?: string }>;
+  searchParams: Promise<{ page?: string; project?: string }>;
 }
 
 export default async function JobsPage({ searchParams }: JobsPageProps) {
-  const { page: pageParam, project: projectFilter, tab = 'conversations' } = await searchParams;
+  const { page: pageParam, project: projectFilter } = await searchParams;
   const page = parseInt(pageParam || '1', 10);
   const limit = 20;
   const offset = (page - 1) * limit;
 
-  const [jobsData, jobStats, projects, conversationsData, conversationStats] = await Promise.all([
-    jobHistoryRepo.findAll({ limit: 1000 }),
-    jobHistoryRepo.getStats(),
+  const [projects, conversationsData, conversationStats] = await Promise.all([
     projectsRepo.findAll(true),
     conversationsRepo.findAll({ projectId: projectFilter, limit, offset }),
     conversationsRepo.getStats(projectFilter),
   ]);
-
-  // Filter jobs by project if specified
-  const filteredJobs = projectFilter
-    ? jobsData.filter((job) => job.projectId === projectFilter)
-    : jobsData;
-  const jobs = filteredJobs.slice(offset, offset + limit);
-  const jobTotalPages = Math.ceil(filteredJobs.length / limit);
 
   const { conversations, total: conversationTotal } = conversationsData;
   const conversationTotalPages = Math.ceil(conversationTotal / limit);
@@ -56,11 +46,11 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
     <div className="space-y-6">
       <PageHeader
         title="Activity"
-        description="Monitor jobs and conversations"
+        description="Monitor conversations and job progress"
       />
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3">
         <StatCard
           title="Conversations"
           value={conversationStats.total}
@@ -68,18 +58,13 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
           description={`${conversationStats.running} running`}
         />
         <StatCard
-          title="Total Jobs"
-          value={jobStats.total || 0}
-          icon={History}
-        />
-        <StatCard
-          title="Fixed"
-          value={jobStats.fixedCount || 0}
+          title="Completed"
+          value={conversationStats.byStatus.completed || 0}
           icon={CheckCircle2}
         />
         <StatCard
           title="Failed"
-          value={jobStats.failed || 0}
+          value={conversationStats.byStatus.failed || 0}
           icon={XCircle}
         />
       </div>
@@ -90,204 +75,104 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
           <JobsFilters
             projects={projects.map(p => ({ id: p.id, repoFullName: p.repoFullName }))}
             currentProject={projectFilter}
-            currentTab={tab}
           />
 
-          <Tabs defaultValue={tab}>
-            <TabsList>
-              <TabsTrigger value="conversations" asChild>
-                <Link href={`/jobs?tab=conversations${projectFilter ? `&project=${projectFilter}` : ''}`}>
-                  Conversations ({conversationTotal})
-                </Link>
-              </TabsTrigger>
-              <TabsTrigger value="jobs" asChild>
-                <Link href={`/jobs?tab=jobs${projectFilter ? `&project=${projectFilter}` : ''}`}>
-                  Job History ({filteredJobs.length})
-                </Link>
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="conversations" className="mt-4">
-              {conversations.length === 0 ? (
-                <EmptyState
-                  title="No conversations yet"
-                  description="Conversations will appear here when triggers fire and processing begins."
-                />
-              ) : (
-                <>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Issue</TableHead>
-                        <TableHead>Project</TableHead>
-                        <TableHead>State</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Mode</TableHead>
-                        <TableHead>Iterations</TableHead>
-                        <TableHead>Last Activity</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {conversations.map((conv) => (
-                        <TableRow key={conv.id}>
-                          <TableCell>
-                            <Link
-                              href={`/jobs/${conv.id}`}
-                              className="font-medium hover:underline"
-                            >
-                              {conv.externalId}
-                            </Link>
-                            <div className="text-xs text-muted-foreground">
-                              {conv.triggerType}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {conv.projectId}
-                          </TableCell>
-                          <TableCell>
-                            <ConversationStateBadge state={conv.state} />
-                          </TableCell>
-                          <TableCell>
-                            <ConversationStatusBadge status={conv.status} />
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="text-xs">
-                              {conv.routeMode.replace('_', ' ')}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {conv.iteration}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {formatRelativeTime(conv.lastActivityAt)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <ConversationActions
-                              id={conv.id}
-                              state={conv.state}
-                              externalId={conv.externalId}
-                            />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-
-                  {/* Pagination */}
-                  {conversationTotalPages > 1 && (
-                    <div className="mt-4 flex items-center justify-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={page <= 1}
-                        asChild
-                      >
-                        <Link href={`/jobs?tab=conversations&page=${page - 1}${projectFilter ? `&project=${projectFilter}` : ''}`}>
-                          Previous
+          {conversations.length === 0 ? (
+            <EmptyState
+              title="No conversations yet"
+              description="Conversations will appear here when triggers fire and processing begins."
+            />
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Issue</TableHead>
+                    <TableHead>Project</TableHead>
+                    <TableHead>State</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Mode</TableHead>
+                    <TableHead>Iterations</TableHead>
+                    <TableHead>Last Activity</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {conversations.map((conv) => (
+                    <TableRow key={conv.id}>
+                      <TableCell>
+                        <Link
+                          href={`/jobs/${conv.id}`}
+                          className="font-medium hover:underline"
+                        >
+                          {conv.externalId}
                         </Link>
-                      </Button>
-                      <span className="text-sm text-muted-foreground">
-                        Page {page} of {conversationTotalPages}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={page >= conversationTotalPages}
-                        asChild
-                      >
-                        <Link href={`/jobs?tab=conversations&page=${page + 1}${projectFilter ? `&project=${projectFilter}` : ''}`}>
-                          Next
-                        </Link>
-                      </Button>
-                    </div>
-                  )}
-                </>
+                        <div className="text-xs text-muted-foreground">
+                          {conv.triggerType}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {conv.projectId}
+                      </TableCell>
+                      <TableCell>
+                        <ConversationStateBadge state={conv.state} />
+                      </TableCell>
+                      <TableCell>
+                        <ConversationStatusBadge status={conv.status} />
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">
+                          {conv.routeMode.replace('_', ' ')}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {conv.iteration}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {formatRelativeTime(conv.lastActivityAt)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <ConversationActions
+                          id={conv.id}
+                          state={conv.state}
+                          externalId={conv.externalId}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              {conversationTotalPages > 1 && (
+                <div className="mt-4 flex items-center justify-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page <= 1}
+                    asChild
+                  >
+                    <Link href={`/jobs?page=${page - 1}${projectFilter ? `&project=${projectFilter}` : ''}`}>
+                      Previous
+                    </Link>
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    Page {page} of {conversationTotalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= conversationTotalPages}
+                    asChild
+                  >
+                    <Link href={`/jobs?page=${page + 1}${projectFilter ? `&project=${projectFilter}` : ''}`}>
+                      Next
+                    </Link>
+                  </Button>
+                </div>
               )}
-            </TabsContent>
-
-            <TabsContent value="jobs" className="mt-4">
-              {jobs.length === 0 ? (
-                <EmptyState
-                  title="No jobs yet"
-                  description="Jobs will appear here when processing begins."
-                />
-              ) : (
-                <>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Job ID</TableHead>
-                        <TableHead>Project</TableHead>
-                        <TableHead>Trigger</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Duration</TableHead>
-                        <TableHead>Started</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {jobs.map((job) => (
-                        <TableRow key={job.jobId}>
-                          <TableCell className="font-mono text-sm">
-                            {job.jobId.slice(0, 8)}...
-                          </TableCell>
-                          <TableCell>{job.projectId}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{job.triggerType}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            <JobStatusBadge status={job.status} fixed={job.fixed} />
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {job.startedAt && job.completedAt
-                              ? formatDuration(
-                                  new Date(job.completedAt).getTime() -
-                                    new Date(job.startedAt).getTime()
-                                )
-                              : '-'}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {job.startedAt
-                              ? formatRelativeTime(job.startedAt)
-                              : 'Queued'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-
-                  {/* Pagination */}
-                  {jobTotalPages > 1 && (
-                    <div className="mt-4 flex items-center justify-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={page <= 1}
-                        asChild
-                      >
-                        <Link href={`/jobs?tab=jobs&page=${page - 1}${projectFilter ? `&project=${projectFilter}` : ''}`}>
-                          Previous
-                        </Link>
-                      </Button>
-                      <span className="text-sm text-muted-foreground">
-                        Page {page} of {jobTotalPages}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={page >= jobTotalPages}
-                        asChild
-                      >
-                        <Link href={`/jobs?tab=jobs&page=${page + 1}${projectFilter ? `&project=${projectFilter}` : ''}`}>
-                          Next
-                        </Link>
-                      </Button>
-                    </div>
-                  )}
-                </>
-              )}
-            </TabsContent>
-          </Tabs>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -327,27 +212,4 @@ function ConversationStatusBadge({ status }: { status: string }) {
     default:
       return <Badge variant="outline">{status}</Badge>;
   }
-}
-
-function JobStatusBadge({
-  status,
-  fixed,
-}: {
-  status: string;
-  fixed: boolean | null;
-}) {
-  if (status === 'success') {
-    return fixed ? (
-      <StatusBadge status="success" label="Fixed" />
-    ) : (
-      <Badge variant="secondary">Analyzed</Badge>
-    );
-  }
-  if (status === 'failed') {
-    return <StatusBadge status="error" label="Failed" />;
-  }
-  if (status === 'running') {
-    return <StatusBadge status="running" />;
-  }
-  return <Badge variant="outline">{status}</Badge>;
 }

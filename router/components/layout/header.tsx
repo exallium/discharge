@@ -7,7 +7,6 @@ import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
-  LayoutDashboard,
   FolderKanban,
   Settings,
   History,
@@ -19,7 +18,6 @@ import {
 } from 'lucide-react';
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Projects', href: '/projects', icon: FolderKanban },
   { name: 'Jobs', href: '/jobs', icon: History },
   { name: 'Logs', href: '/logs', icon: FileText },
@@ -41,7 +39,7 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto max-w-7xl px-6 flex h-14 items-center">
         {/* Logo */}
-        <Link href="/dashboard" className="mr-6 flex items-center space-x-2">
+        <Link href="/jobs" className="mr-6 flex items-center space-x-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Bug className="h-5 w-5 text-primary-foreground" />
           </div>
