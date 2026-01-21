@@ -8,7 +8,7 @@ import { setSecret, deleteSecret } from '@/src/secrets';
 import { getProjectSecretRequirements, formatUsedBy } from '@/src/secrets/requirements';
 import type { ProjectConfig } from '@/src/config/projects';
 // Ensure runner plugins are registered before fetching secret requirements
-import { initializeRunners } from '@/src/runner/runners';
+import { initializeRunners } from '@/src/runner';
 initializeRunners();
 
 interface RouteParams {

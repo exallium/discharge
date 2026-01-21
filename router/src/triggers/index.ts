@@ -1,42 +1,57 @@
-import { TriggerPlugin } from './base';
-import { SentryTrigger } from './sentry';
-import { CircleCITrigger } from './circleci';
-import { GitHubIssuesTrigger } from './github-issues';
-
 /**
- * Registry of all available trigger plugins
- * Add new triggers here as they are implemented
+ * Trigger Plugin Registry
+ *
+ * This module bridges between the legacy import-based trigger system
+ * and the new service-based architecture.
+ *
+ * All trigger lookups now go through the service registry.
  */
-export const triggers: TriggerPlugin[] = [
-  new SentryTrigger(),
-  new CircleCITrigger(),
-  new GitHubIssuesTrigger(),
-];
+
+import { registry } from '@ai-bug-fixer/service-locator';
+import type { TriggerPlugin } from '@ai-bug-fixer/service-sdk';
+
+// Re-export TriggerPlugin type from SDK for backward compatibility
+export type { TriggerPlugin } from '@ai-bug-fixer/service-sdk';
+
+// Re-export from base for backward compatibility
+export * from './base';
 
 /**
  * Get a trigger plugin by its ID
+ * Triggers are identified by ID (e.g., 'github-issues', 'sentry', 'circleci')
  */
 export function getTriggerById(id: string): TriggerPlugin | undefined {
-  return triggers.find(t => t.id === id);
+  return registry.getTriggerByType(id);
 }
 
 /**
  * Get a trigger plugin by its type
+ * Note: In the service architecture, type and ID are typically the same
  */
 export function getTriggerByType(type: string): TriggerPlugin | undefined {
-  return triggers.find(t => t.type === type);
+  return registry.getTriggerByType(type);
 }
 
 /**
  * List all registered trigger IDs
  */
 export function listTriggerIds(): string[] {
-  return triggers.map(t => t.id);
+  return registry.getAllTriggers().map(t => t.id);
 }
 
 /**
  * List all registered triggers
  */
 export function listTriggers(): TriggerPlugin[] {
-  return triggers;
+  return registry.getAllTriggers();
 }
+
+/**
+ * @deprecated Use the registry directly instead
+ * Kept for backward compatibility
+ */
+export const triggers: TriggerPlugin[] = [];
+
+// Note: The triggers array is empty at module load time.
+// Use listTriggers() or registry.getAllTriggers() instead
+// after services are initialized.

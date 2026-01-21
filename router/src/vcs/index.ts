@@ -1,8 +1,27 @@
-import { VCSPlugin } from './base';
-import { GitHubVCS } from './github';
+/**
+ * VCS Plugin Registry
+ *
+ * This module bridges between the legacy VCS system and the new service-based architecture.
+ * VCS lookups now go through the service registry.
+ */
+
+import { registry } from '@ai-bug-fixer/service-locator';
+import type { VCSPlugin } from '@ai-bug-fixer/service-sdk';
+import { GitHubVCS } from '@ai-bug-fixer/service-github';
+import { Octokit } from '@octokit/rest';
 import { getSecret } from '../secrets';
 import { registerPRProvider, getGitHubPRProvider } from '../pr';
 import * as githubApp from '../github/app-service';
+
+// Re-export types from SDK for backward compatibility
+export type { VCSPlugin } from '@ai-bug-fixer/service-sdk';
+export { formatPRBody } from '@ai-bug-fixer/service-sdk';
+
+// Re-export VCS types from SDK
+export type { VCSProjectConfig, PlanFileResult, PullRequest } from '@ai-bug-fixer/service-sdk';
+
+// Re-export GitHubVCS from service-github for consumers that need it
+export { GitHubVCS } from '@ai-bug-fixer/service-github';
 
 /**
  * Get GitHub webhook secret for a project (or global default)
@@ -90,12 +109,19 @@ export async function getGitHubToken(repoFullName: string): Promise<string | nul
 
 /**
  * Get a VCS plugin for a specific project
- * Creates a new instance with project-specific credentials
+ * Uses the service registry for lookups, falling back to direct methods
  */
 export async function getVCSForProject(
   vcsType: 'github' | 'gitlab' | 'bitbucket' | 'self-hosted',
   repoFullName: string
 ): Promise<VCSPlugin | null> {
+  // First try the service registry
+  const fromRegistry = await registry.getVCSForRepo(repoFullName);
+  if (fromRegistry) {
+    return fromRegistry;
+  }
+
+  // Fall back to direct methods for backward compatibility
   switch (vcsType) {
     case 'github':
       return getGitHubVCS(repoFullName);

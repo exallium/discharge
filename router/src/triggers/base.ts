@@ -1,150 +1,44 @@
+/**
+ * Trigger Plugin System - Pluggable bug tracking integrations
+ *
+ * This module bridges between the legacy trigger system and the new service-based architecture.
+ * Core types are now defined in @ai-bug-fixer/service-sdk and re-exported here for
+ * backward compatibility.
+ */
+
 import type { ConversationEvent } from '../types/conversation';
 import type { ProjectConfig } from '../db/repositories/projects';
 
-/**
- * Generic webhook headers interface
- * Works with both Express headers (object) and Next.js Headers (class)
- */
-export interface WebhookHeaders {
-  get(name: string): string | null;
-}
+// Re-export all trigger types from the SDK - this is the single source of truth
+export type {
+  WebhookHeaders,
+  WebhookRequest,
+  TriggerEvent,
+  Tool,
+  AnalysisResult,
+  FixStatus,
+  WebhookConfig,
+  PrefetchedData,
+  SecretRequirement,
+} from '@ai-bug-fixer/service-sdk';
 
-/**
- * Generic webhook request interface
- * Works with both Express Request and Next.js NextRequest
- */
-export interface WebhookRequest {
-  headers: WebhookHeaders;
-  body: unknown;
-  rawBody?: string; // Raw body string for signature verification
-}
-
-/**
- * Normalized event from any bug tracking trigger
- */
-export interface TriggerEvent {
-  // Core identification
-  triggerType: string;           // 'sentry', 'github-issues', etc.
-  triggerId: string;             // Issue ID, event ID, job ID, etc.
-  projectId: string;             // Which project config to use
-
-  // Display info
-  title: string;
-  description: string;
-
-  // Structured metadata
-  metadata: {
-    severity?: 'low' | 'medium' | 'high' | 'critical';
-    tags?: string[];
-    environment?: string;
-    [key: string]: unknown;
-  };
-
-  // Links
-  links?: {
-    web?: string;
-    api?: string;
-  };
-
-  // Raw payload (for tool use)
-  raw: unknown;
-}
-
-/**
- * Tool definition for bash scripts dynamically generated per trigger
- */
-export interface Tool {
-  name: string;                  // CLI command name
-  script: string;                // Bash script content
-  description: string;           // Usage instructions
-  env?: Record<string, string>;  // Additional env vars needed
-}
-
-/**
- * Result of Claude's analysis
- */
-export interface AnalysisResult {
-  canAutoFix: boolean;
-  confidence: 'high' | 'medium' | 'low';
-  summary: string;
-  rootCause: string;
-  proposedFix?: string;
-  reason?: string;
-  filesInvolved: string[];
-  complexity: 'trivial' | 'simple' | 'moderate' | 'complex';
-  /** Target repo for PR ('main' or 'owner/repo' from secondaryRepos) */
-  targetRepo?: string;
-}
-
-/**
- * Status of a fix attempt
- */
-export interface FixStatus {
-  fixed: boolean;
-  reason?: string;
-  analysis?: AnalysisResult;
-  prUrl?: string;
-  /** Investigation context when running in investigate or investigate_and_fix mode */
-  investigationContext?: {
-    rootCause: string;
-    filesInvolved: string[];
-    suggestedApproach: string;
-    summary?: string;
-  };
-}
-
-/**
- * Webhook configuration info for setup documentation
- */
-export interface WebhookConfig {
-  /** Events to subscribe to in the external service */
-  events: string[];
-  /** URL to setup documentation */
-  docsUrl: string;
-  /** Content type expected (usually application/json) */
-  contentType?: string;
-}
-
-/**
- * Prefetched data from triggers for inclusion in prompts
- * Provides immediate context so agents don't need to fetch it themselves.
- *
- * This is a generic interface - any trigger can implement prefetchData() to
- * provide pre-fetched data from their respective systems (Sentry, Datadog,
- * CircleCI, GitHub Actions, etc.)
- */
-export interface PrefetchedData {
-  /** Formatted markdown with issue/error details */
-  summary: string;
-  /** Full stack trace if available (from any error tracking system) */
-  stackTrace?: string;
-  /** Breadcrumbs/event trail if available (Sentry, LogRocket, etc.) */
-  breadcrumbs?: string;
-  /** Additional context (request data, user info, logs, etc.) */
-  additionalContext?: string;
-}
-
-/**
- * Secret requirement declaration for plugins
- * Allows multiple plugins to share the same secret
- */
-export interface SecretRequirement {
-  /** Shared secret identifier (e.g., 'github_token') - used for display/deduplication */
-  id: string;
-  /** Display label for UI (e.g., 'GitHub Token') */
-  label: string;
-  /** Help text describing what this secret is used for */
-  description: string;
-  /** Whether this secret is required for the plugin to function */
-  required: boolean;
-  /** Plugin namespace for storage (e.g., 'github', 'claude') */
-  plugin: string;
-  /** Key within plugin namespace (e.g., 'token', 'oauth_token') */
-  key: string;
-}
+// Import types for use in this file
+import type {
+  WebhookRequest,
+  TriggerEvent,
+  Tool,
+  FixStatus,
+  WebhookConfig,
+  PrefetchedData,
+  SecretRequirement,
+} from '@ai-bug-fixer/service-sdk';
 
 /**
  * Trigger plugin interface - all bug tracking systems implement this
+ *
+ * Note: This interface is kept in the router because it references the full
+ * ProjectConfig type from the database. The SDK has a minimal TriggerProjectConfig
+ * for use in standalone service packages.
  */
 export interface TriggerPlugin {
   // Identification

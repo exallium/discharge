@@ -22,9 +22,6 @@ export {
   initializeRunners,
 } from './base';
 
-// Re-export runners
-export { initializeRunners as initRunners } from './runners';
-
 // Re-export legacy Claude runner (for backwards compatibility)
 export type { RunClaudeOptions, RunClaudeResult } from './claude';
 export {

@@ -1,4 +1,4 @@
-import { CircleCITrigger } from '../../../src/triggers/circleci';
+import { CircleCITrigger } from '@ai-bug-fixer/service-circleci';
 import { createMockWebhookRequest } from '../../mocks/webhook-request';
 import * as projectsModule from '../../../src/config/projects';
 

@@ -1,6 +1,6 @@
-import { SentryTrigger } from '../../../src/triggers/sentry';
+import { SentryTrigger } from '@ai-bug-fixer/service-sentry';
+import type { TriggerEvent } from '@ai-bug-fixer/service-sdk';
 import { mockWebhookPayloads } from '../../fixtures/webhook-payloads';
-import { TriggerEvent } from '../../../src/triggers/base';
 import { createMockWebhookRequest } from '../../mocks/webhook-request';
 import * as projectsModule from '../../../src/config/projects';
 

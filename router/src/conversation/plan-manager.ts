@@ -6,7 +6,7 @@
  */
 
 import type { PlanFile, PlanStep } from '../types/conversation';
-import type { VCSPlugin, PlanFileResult, VCSProjectConfig } from '../vcs/base';
+import type { VCSPlugin, PlanFileResult, VCSProjectConfig } from '@ai-bug-fixer/service-sdk';
 import { logger } from '../logger';
 
 /**

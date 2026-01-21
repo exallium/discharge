@@ -10,8 +10,8 @@ import { Worker } from 'bullmq';
 import { initializeDatabase, closeDatabase } from './db';
 import { initializeQueue, closeQueue } from './queue';
 import { createWorker, shutdownWorker } from './queue/worker';
+import { initializeServices } from './config/services';
 import { initializeVCS } from './vcs';
-import { initRunners } from './runner';
 import { logger, logUnhandledErrors } from './logger';
 import { validateEnvOrExit } from './env-validator';
 
@@ -29,17 +29,17 @@ let worker: Worker;
 async function main() {
   logger.info('Starting AI Bug Fixer Worker Process');
 
-  // Initialize database
+  // Initialize database (required for services that access settings/secrets)
   await initializeDatabase();
   logger.info('Database initialized');
 
-  // Initialize VCS plugins
-  initializeVCS();
-  logger.info('VCS plugins initialized');
+  // Initialize all services (triggers, runners, VCS) via the service registry
+  await initializeServices();
+  logger.info('Services initialized');
 
-  // Initialize runner plugins
-  initRunners();
-  logger.info('Runner plugins initialized');
+  // Initialize VCS-specific setup (PR providers, app status logging)
+  initializeVCS();
+  logger.info('VCS setup complete');
 
   // Initialize queue
   await initializeQueue();

@@ -1,4 +1,4 @@
-import { GitHubIssuesTrigger } from '../../../src/triggers/github-issues';
+import { GitHubIssuesTrigger } from '@ai-bug-fixer/service-github';
 import { mockWebhookPayloads } from '../../fixtures/webhook-payloads';
 import { createMockWebhookRequest } from '../../mocks/webhook-request';
 import crypto from 'crypto';

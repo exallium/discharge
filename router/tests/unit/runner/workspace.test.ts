@@ -38,8 +38,10 @@ jest.mock('../../../src/logger', () => ({
   },
 }));
 
-jest.mock('../../../src/vcs', () => ({
-  getGitHubToken: jest.fn().mockResolvedValue('ghp_test_token'),
+jest.mock('@ai-bug-fixer/service-sdk', () => ({
+  getGitHubAuthProvider: jest.fn(() => ({
+    getToken: jest.fn().mockResolvedValue('ghp_test_token'),
+  })),
 }));
 
 // Now import the module and fs/promises

@@ -10,7 +10,7 @@ import { ConversationService, getConversationService } from './index';
 import { queueFixJob } from '../queue';
 import type { ConversationJobData } from '../queue/types';
 import type { ConversationEvent, RouteMode } from '../types/conversation';
-import type { TriggerPlugin, TriggerEvent } from '../triggers/base';
+import type { TriggerPlugin, TriggerEvent } from '@ai-bug-fixer/service-sdk';
 import { logger } from '../logger';
 
 // Re-export ConversationJobData for consumers

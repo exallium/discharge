@@ -1,4 +1,7 @@
-import { TriggerPlugin, TriggerEvent, FixStatus, AnalysisResult, PrefetchedData } from '../triggers/base';
+import type { TriggerPlugin, TriggerEvent, FixStatus, AnalysisResult, PrefetchedData } from '@ai-bug-fixer/service-sdk';
+import type { TriageResult, InvestigationContext, RunnerPlugin } from '@ai-bug-fixer/service-sdk';
+import { formatPRBody } from '@ai-bug-fixer/service-sdk';
+import { GitHubVCS } from '@ai-bug-fixer/service-github';
 import { requireMCPForSentry, getMCPToolCallLogs } from './mcp';
 import { findProjectById, ProjectConfig } from '../config/projects';
 import { validateTools } from './tools';
@@ -7,10 +10,8 @@ import {
   buildTriagePrompt,
   buildAgentPrompt,
 } from './prompts';
-import { getRunner, RunnerPlugin, TriageResult, InvestigationContext } from './base';
+import { getRunner } from './base';
 import { getVCSForProject } from '../vcs';
-import { formatPRBody } from '../vcs/base';
-import { GitHubVCS } from '../vcs/github';
 import { findPRProvider, PRResult } from '../pr';
 import { getErrorMessage } from '../types/errors';
 import type {

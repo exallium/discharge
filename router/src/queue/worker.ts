@@ -1,7 +1,8 @@
 import { Worker, Job } from 'bullmq';
+import { registry } from '@ai-bug-fixer/service-locator';
+import type { TriggerEvent } from '@ai-bug-fixer/service-sdk';
 import { getConnection } from './index';
 import { FixJobData, FixJobResult } from './types';
-import { getTriggerByType } from '../triggers';
 import { orchestrateFix, orchestrateConversation } from '../runner/orchestrator';
 import { getErrorMessage } from '../types/errors';
 import {
@@ -14,7 +15,6 @@ import { findProjectById } from '../config/projects';
 import { logger } from '../logger';
 import * as jobHistoryRepo from '../db/repositories/job-history';
 import { cleanupStaleWorktrees } from '../runner/workspace';
-import type { TriggerEvent } from '../triggers/base';
 
 /**
  * Whether git workspaces feature is enabled
@@ -53,7 +53,7 @@ async function processFixJob(job: Job<FixJobData>): Promise<FixJobResult> {
 
   try {
     // Get the trigger plugin
-    const trigger = getTriggerByType(triggerType);
+    const trigger = registry.getTriggerByType(triggerType);
     if (!trigger) {
       throw new Error(`Unknown trigger type: ${triggerType}`);
     }
@@ -144,7 +144,7 @@ async function processConversationJob(
 
   try {
     // Get the trigger plugin
-    const trigger = getTriggerByType(triggerType);
+    const trigger = registry.getTriggerByType(triggerType);
     if (!trigger) {
       throw new Error(`Unknown trigger type: ${triggerType}`);
     }

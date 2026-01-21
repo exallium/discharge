@@ -1,4 +1,4 @@
-import { GitHubVCS } from '../../../src/vcs/github';
+import { GitHubVCS } from '@ai-bug-fixer/service-github';
 import { Octokit } from '@octokit/rest';
 
 // Mock Octokit methods

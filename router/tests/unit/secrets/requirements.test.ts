@@ -14,49 +14,51 @@ import {
 } from '../../../src/secrets/requirements';
 import { ProjectConfig } from '../../../src/config/projects';
 
-// Mock the triggers module
-jest.mock('../../../src/triggers', () => ({
-  getTriggerById: jest.fn((id: string) => {
-    const triggers: Record<string, { getRequiredSecrets: () => Array<{ id: string; label: string; description: string; required: boolean }> }> = {
-      // github-issues no longer requires github_token - uses GitHub App authentication
-      'github-issues': {
-        getRequiredSecrets: () => [],
-      },
-      sentry: {
-        getRequiredSecrets: () => [
-          {
-            id: 'sentry_token',
-            label: 'Sentry Auth Token',
-            description: 'Token for Sentry API',
-            required: true,
-          },
-          {
-            id: 'sentry_webhook_secret',
-            label: 'Sentry Client Secret',
-            description: 'Client Secret from Internal Integration',
-            required: true,
-          },
-        ],
-      },
-      circleci: {
-        getRequiredSecrets: () => [
-          {
-            id: 'circleci_token',
-            label: 'CircleCI Token',
-            description: 'Token for CircleCI API',
-            required: true,
-          },
-          {
-            id: 'circleci_webhook_secret',
-            label: 'CircleCI Webhook Secret',
-            description: 'Secret for webhook validation',
-            required: false,
-          },
-        ],
-      },
-    };
-    return triggers[id] || null;
-  }),
+// Mock the service-locator registry
+jest.mock('@ai-bug-fixer/service-locator', () => ({
+  registry: {
+    getTriggerByType: jest.fn((id: string) => {
+      const triggers: Record<string, { getRequiredSecrets: () => Array<{ id: string; label: string; description: string; required: boolean }> }> = {
+        // github-issues no longer requires github_token - uses GitHub App authentication
+        'github-issues': {
+          getRequiredSecrets: () => [],
+        },
+        sentry: {
+          getRequiredSecrets: () => [
+            {
+              id: 'sentry_token',
+              label: 'Sentry Auth Token',
+              description: 'Token for Sentry API',
+              required: true,
+            },
+            {
+              id: 'sentry_webhook_secret',
+              label: 'Sentry Client Secret',
+              description: 'Client Secret from Internal Integration',
+              required: true,
+            },
+          ],
+        },
+        circleci: {
+          getRequiredSecrets: () => [
+            {
+              id: 'circleci_token',
+              label: 'CircleCI Token',
+              description: 'Token for CircleCI API',
+              required: true,
+            },
+            {
+              id: 'circleci_webhook_secret',
+              label: 'CircleCI Webhook Secret',
+              description: 'Secret for webhook validation',
+              required: false,
+            },
+          ],
+        },
+      };
+      return triggers[id] || null;
+    }),
+  },
 }));
 
 describe('Secret Requirements Aggregation', () => {

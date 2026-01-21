@@ -3,7 +3,7 @@ import { promisify } from 'util';
 import { randomUUID } from 'crypto';
 import { rm, readFile } from 'fs/promises';
 import { join } from 'path';
-import { AnalysisResult } from '../triggers/base';
+import type { AnalysisResult } from '@ai-bug-fixer/service-sdk';
 import { getErrorMessage, isExecError } from '../types/errors';
 import { getSecret } from '../secrets';
 

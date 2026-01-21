@@ -1,0 +1,255 @@
+/**
+ * Trigger Plugin Interface
+ *
+ * Triggers receive webhooks from external bug tracking systems (Sentry, GitHub, CircleCI, etc.)
+ * and normalize them into TriggerEvents for processing.
+ */
+
+import type { ConversationEvent } from '../types/conversation';
+
+/**
+ * Generic webhook headers interface
+ * Works with both Express headers (object) and Next.js Headers (class)
+ */
+export interface WebhookHeaders {
+  get(name: string): string | null;
+}
+
+/**
+ * Generic webhook request interface
+ * Works with both Express Request and Next.js NextRequest
+ */
+export interface WebhookRequest {
+  headers: WebhookHeaders;
+  body: unknown;
+  rawBody?: string; // Raw body string for signature verification
+}
+
+/**
+ * Normalized event from any bug tracking trigger
+ */
+export interface TriggerEvent {
+  // Core identification
+  triggerType: string;           // 'sentry', 'github-issues', etc.
+  triggerId: string;             // Issue ID, event ID, job ID, etc.
+  projectId: string;             // Which project config to use
+
+  // Display info
+  title: string;
+  description: string;
+
+  // Structured metadata
+  metadata: {
+    severity?: 'low' | 'medium' | 'high' | 'critical';
+    tags?: string[];
+    environment?: string;
+    [key: string]: unknown;
+  };
+
+  // Links
+  links?: {
+    web?: string;
+    api?: string;
+  };
+
+  // Raw payload (for tool use)
+  raw: unknown;
+}
+
+/**
+ * Tool definition for bash scripts dynamically generated per trigger
+ */
+export interface Tool {
+  name: string;                  // CLI command name
+  script: string;                // Bash script content
+  description: string;           // Usage instructions
+  env?: Record<string, string>;  // Additional env vars needed
+}
+
+/**
+ * Result of Claude's analysis
+ */
+export interface AnalysisResult {
+  canAutoFix: boolean;
+  confidence: 'high' | 'medium' | 'low';
+  summary: string;
+  rootCause: string;
+  proposedFix?: string;
+  reason?: string;
+  filesInvolved: string[];
+  complexity: 'trivial' | 'simple' | 'moderate' | 'complex';
+  /** Target repo for PR ('main' or 'owner/repo' from secondaryRepos) */
+  targetRepo?: string;
+}
+
+/**
+ * Status of a fix attempt
+ */
+export interface FixStatus {
+  fixed: boolean;
+  reason?: string;
+  analysis?: AnalysisResult;
+  prUrl?: string;
+  /** Investigation context when running in investigate or investigate_and_fix mode */
+  investigationContext?: {
+    rootCause: string;
+    filesInvolved: string[];
+    suggestedApproach: string;
+    summary?: string;
+  };
+}
+
+/**
+ * Webhook configuration info for setup documentation
+ */
+export interface WebhookConfig {
+  /** Events to subscribe to in the external service */
+  events: string[];
+  /** URL to setup documentation */
+  docsUrl: string;
+  /** Content type expected (usually application/json) */
+  contentType?: string;
+}
+
+/**
+ * Prefetched data from triggers for inclusion in prompts
+ * Provides immediate context so agents don't need to fetch it themselves.
+ */
+export interface PrefetchedData {
+  /** Formatted markdown with issue/error details */
+  summary: string;
+  /** Full stack trace if available (from any error tracking system) */
+  stackTrace?: string;
+  /** Breadcrumbs/event trail if available (Sentry, LogRocket, etc.) */
+  breadcrumbs?: string;
+  /** Additional context (request data, user info, logs, etc.) */
+  additionalContext?: string;
+}
+
+/**
+ * Secret requirement declaration for plugins
+ * Allows multiple plugins to share the same secret
+ */
+export interface SecretRequirement {
+  /** Shared secret identifier (e.g., 'github_token') - used for display/deduplication */
+  id: string;
+  /** Display label for UI (e.g., 'GitHub Token') */
+  label: string;
+  /** Help text describing what this secret is used for */
+  description: string;
+  /** Whether this secret is required for the plugin to function */
+  required: boolean;
+  /** Plugin namespace for storage (e.g., 'github', 'claude') */
+  plugin: string;
+  /** Key within plugin namespace (e.g., 'token', 'oauth_token') */
+  key: string;
+}
+
+/**
+ * Project configuration interface (minimal for trigger use)
+ */
+export interface TriggerProjectConfig {
+  id: string;
+  repoFullName: string;
+  branch: string;
+  triggers: {
+    github?: {
+      issues?: boolean;
+      requireLabel?: boolean;
+      labels?: string[];
+      commentTrigger?: string;
+      allowedUsers?: string[];
+    };
+    sentry?: {
+      enabled?: boolean;
+      projectSlug?: string;
+      organization?: string;
+      instanceUrl?: string;
+    };
+    circleci?: {
+      enabled?: boolean;
+      projectSlug?: string;
+    };
+    [key: string]: unknown;
+  };
+}
+
+/**
+ * Trigger plugin interface - all bug tracking systems implement this
+ */
+export interface TriggerPlugin {
+  // Identification
+  id: string;
+  type: string;
+
+  // Webhook setup info
+  webhookConfig: WebhookConfig;
+
+  // Webhook handling
+  validateWebhook(req: WebhookRequest): Promise<boolean>;
+  parseWebhook(payload: unknown): Promise<TriggerEvent | null>;
+
+  // Tool generation (async to support secret retrieval)
+  getTools(event: TriggerEvent): Promise<Tool[]>;
+
+  // Context generation for prompts
+  getPromptContext(event: TriggerEvent): string;
+
+  // Post-processing
+  updateStatus(event: TriggerEvent, status: FixStatus): Promise<void>;
+  addComment(event: TriggerEvent, comment: string): Promise<void>;
+  getLink(event: TriggerEvent): string;
+
+  // Optional: Pre-filtering
+  shouldProcess?(event: TriggerEvent): Promise<boolean>;
+
+  // Optional: Pre-fetch additional data for prompts
+  prefetchData?(event: TriggerEvent): Promise<PrefetchedData | undefined>;
+
+  // ========================================
+  // Conversation Support (Optional)
+  // ========================================
+
+  /** Whether this trigger supports conversation mode */
+  supportsConversation?: boolean;
+
+  /**
+   * Parse incoming webhook into a ConversationEvent
+   * Used for conversation-mode triggers to normalize platform events
+   */
+  parseConversationEvent?(
+    payload: unknown,
+    project?: TriggerProjectConfig
+  ): Promise<ConversationEvent | null>;
+
+  /**
+   * Get unique conversation identifier from trigger event
+   * Example: 'owner/repo#123' for GitHub issues
+   */
+  getConversationId?(event: TriggerEvent): string;
+
+  /**
+   * Get routing tags from trigger event
+   * Used to determine route mode (ai:plan, ai:auto, ai:assist)
+   */
+  getRoutingTags?(event: TriggerEvent): string[];
+
+  /**
+   * Post feedback/reply to the trigger's platform
+   * Example: Post a comment on the GitHub issue
+   */
+  postFeedback?(
+    event: TriggerEvent,
+    message: string,
+    project?: TriggerProjectConfig
+  ): Promise<void>;
+
+  // ========================================
+  // Secret Requirements
+  // ========================================
+
+  /**
+   * Get the secrets required by this trigger
+   */
+  getRequiredSecrets(): SecretRequirement[];
+}

@@ -1,14 +1,32 @@
 {
   "name": "ai-bug-fixer",
+  "version": "1.0.0",
   "private": true,
-  "description": "AI-powered bug fixing system",
+  "description": "AI-powered bug fixing system with service-oriented plugin architecture",
+  "workspaces": [
+    "packages/service-sdk",
+    "packages/service-locator",
+    "packages/services/*",
+    "router"
+  ],
   "scripts": {
-    "test:unit": "npm run test:unit --prefix router",
-    "typecheck": "npm run typecheck --prefix router",
-    "lint": "npm run lint --prefix router",
+    "build": "npm run build --workspaces --if-present",
+    "build:packages": "npm run build -w @ai-bug-fixer/service-sdk && npm run build -w @ai-bug-fixer/service-locator && npm run build -w @ai-bug-fixer/service-github && npm run build -w @ai-bug-fixer/service-sentry && npm run build -w @ai-bug-fixer/service-circleci && npm run build -w @ai-bug-fixer/service-claude-code",
+    "dev": "npm run dev -w router",
+    "dev:up": "npm run dev:up -w router",
+    "dev:setup": "npm run dev:setup -w router",
+    "test": "npm run test --workspaces --if-present",
+    "test:unit": "npm run test:unit -w router",
+    "test:router": "npm run test -w router",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present && rm -rf node_modules",
     "prepare": "husky"
   },
   "devDependencies": {
     "husky": "^9.1.7"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

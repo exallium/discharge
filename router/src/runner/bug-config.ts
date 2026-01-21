@@ -12,6 +12,9 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 
+// Re-export types from SDK - this is the single source of truth
+export type { TriageResult, InvestigationContext } from '@ai-bug-fixer/service-sdk';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -111,35 +114,6 @@ export interface ResolvedRule {
 }
 
 /**
- * Triage result from the triage agent
- */
-export interface TriageResult {
-  /** Whether this issue is actionable */
-  actionable: boolean;
-
-  /** True for obvious fixes (null pointer, typos, etc.) - skips investigation */
-  trivial?: boolean;
-
-  /** Complexity assessment */
-  complexity?: 'simple' | 'complex';
-
-  /** Reasoning for the assessment */
-  reasoning: string;
-
-  /** Suggested agent to handle this issue */
-  suggestedAgent?: string;
-
-  /** For non-actionable issues: the reason */
-  reason?: 'duplicate' | 'needs-info' | 'out-of-scope' | 'wont-fix';
-
-  /** Comment to post for non-actionable issues */
-  comment?: string;
-
-  /** Labels to add to the issue */
-  labels?: string[];
-}
-
-/**
  * Escalation request (returned by agents)
  */
 export interface EscalationRequest {
@@ -148,29 +122,6 @@ export interface EscalationRequest {
 
   /** Reason for escalation */
   reason: string;
-}
-
-/**
- * Investigation result stored for handoff to fix agents
- */
-export interface InvestigationContext {
-  /** Root cause analysis from investigation */
-  rootCause: string;
-
-  /** Files identified during investigation */
-  filesInvolved: string[];
-
-  /** Suggested approach for fixing */
-  suggestedApproach: string;
-
-  /** Full investigation summary */
-  summary?: string;
-
-  /** Complexity assessment from investigation */
-  complexity?: 'simple' | 'complex';
-
-  /** Recommended agent for the fix */
-  recommendedAgent?: string;
 }
 
 // ============================================================================

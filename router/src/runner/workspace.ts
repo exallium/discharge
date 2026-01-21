@@ -19,7 +19,7 @@ import { mkdir, rm, readFile, writeFile, readdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { getErrorMessage } from '../types/errors';
-import { getGitHubToken } from '../vcs';
+import { getGitHubAuthProvider } from '@ai-bug-fixer/service-sdk';
 import { logger } from '../logger';
 
 const execAsync = promisify(exec);
@@ -71,7 +71,11 @@ async function getAuthenticatedRepoUrl(repoUrl: string): Promise<string> {
   }
   const repoFullName = match[1];
 
-  const token = await getGitHubToken(repoFullName);
+  const githubAuth = getGitHubAuthProvider();
+  if (!githubAuth) {
+    return repoUrl;
+  }
+  const token = await githubAuth.getToken(repoFullName);
   if (!token) {
     return repoUrl;
   }

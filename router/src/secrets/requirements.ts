@@ -5,9 +5,9 @@
  * Shared secrets (same ID used by multiple plugins) appear once with "usedBy" metadata.
  */
 
-import { SecretRequirement } from '../triggers/base';
+import { registry } from '@ai-bug-fixer/service-locator';
+import type { SecretRequirement } from '@ai-bug-fixer/service-sdk';
 import { ProjectConfig } from '../config/projects';
-import { getTriggerById } from '../triggers';
 import { getRunner, getAllRunners } from '../runner/base';
 
 /**
@@ -144,7 +144,7 @@ export function getProjectSecretRequirements(
   // 3. Enabled trigger requirements
   const enabledTriggers = getEnabledTriggerIds(project);
   for (const triggerId of enabledTriggers) {
-    const trigger = getTriggerById(triggerId);
+    const trigger = registry.getTriggerByType(triggerId);
     if (!trigger) continue;
 
     const secrets = trigger.getRequiredSecrets();
@@ -200,7 +200,7 @@ export function getAllSecretRequirements(): AggregatedSecretRequirement[] {
   // All registered triggers
   const triggerIds = ['sentry', 'github-issues', 'circleci'];
   for (const triggerId of triggerIds) {
-    const trigger = getTriggerById(triggerId);
+    const trigger = registry.getTriggerByType(triggerId);
     if (!trigger) continue;
 
     const secrets = trigger.getRequiredSecrets();
