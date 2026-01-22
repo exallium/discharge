@@ -70,26 +70,41 @@ export function ResourceLinks({
 
 /**
  * Extract issue URL from trigger event data
+ * Falls back to constructing URL from externalId for GitHub issues
  */
-export function extractIssueUrl(triggerEvent: Record<string, unknown> | null): string | null {
-  if (!triggerEvent) return null;
+export function extractIssueUrl(
+  triggerEvent: Record<string, unknown> | null,
+  externalId?: string,
+  triggerType?: string
+): string | null {
+  if (triggerEvent) {
+    // Try common paths for issue URLs
+    // GitHub/GitLab: triggerEvent.links.web
+    // Sentry: triggerEvent.url or triggerEvent.links.web
+    const links = triggerEvent.links as Record<string, unknown> | undefined;
+    if (links?.web && typeof links.web === 'string') {
+      return links.web;
+    }
 
-  // Try common paths for issue URLs
-  // GitHub/GitLab: triggerEvent.links.web
-  // Sentry: triggerEvent.url or triggerEvent.links.web
-  const links = triggerEvent.links as Record<string, unknown> | undefined;
-  if (links?.web && typeof links.web === 'string') {
-    return links.web;
+    // Direct url field (Sentry)
+    if (triggerEvent.url && typeof triggerEvent.url === 'string') {
+      return triggerEvent.url;
+    }
+
+    // HTML URL (GitHub API response)
+    if (triggerEvent.html_url && typeof triggerEvent.html_url === 'string') {
+      return triggerEvent.html_url;
+    }
   }
 
-  // Direct url field (Sentry)
-  if (triggerEvent.url && typeof triggerEvent.url === 'string') {
-    return triggerEvent.url;
-  }
-
-  // HTML URL (GitHub API response)
-  if (triggerEvent.html_url && typeof triggerEvent.html_url === 'string') {
-    return triggerEvent.html_url;
+  // Fallback: construct URL from externalId for GitHub issues
+  // Format: "owner/repo#123" -> "https://github.com/owner/repo/issues/123"
+  if (externalId && triggerType === 'github-issues') {
+    const match = externalId.match(/^([^#]+)#(\d+)$/);
+    if (match) {
+      const [, repo, number] = match;
+      return `https://github.com/${repo}/issues/${number}`;
+    }
   }
 
   return null;

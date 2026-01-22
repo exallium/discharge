@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { TimelineLive, buildTimelineEvents } from '@/components/timeline';
+import { extractIssueUrl } from '@/components/ui/resource-links';
 import { formatRelativeTime } from '@/lib/utils';
 import { conversationsRepo, jobHistoryRepo } from '@/src/db/repositories';
 import { ConversationActions } from '../conversation-actions';
@@ -67,13 +68,34 @@ export default async function ConversationDetailPage({ params }: ConversationDet
     }))
   );
 
-  // Parse issue URL from trigger event if available
-  const triggerLinks = conversation.triggerEvent?.links as Record<string, string> | undefined;
-  const issueUrl = triggerLinks?.web;
+  // Parse issue URL from trigger event (with fallback to constructing from externalId)
+  const issueUrl = extractIssueUrl(
+    conversation.triggerEvent,
+    conversation.externalId,
+    conversation.triggerType
+  );
 
-  // Find the most recent PR URL from jobs
+  // Get PR URL - prefer conversation.prUrl, fallback to most recent job
   const latestPrJob = jobs.find(j => j.prUrl);
-  const prUrl = latestPrJob?.prUrl;
+  const prUrl = conversation.prUrl || latestPrJob?.prUrl;
+
+  // Get display title - prefer triggerEvent.title, then externalId if it looks valid,
+  // then construct from prNumber, finally truncated ID
+  const getDisplayTitle = () => {
+    if (conversation.triggerEvent?.title) {
+      return conversation.triggerEvent.title as string;
+    }
+    // externalId like "owner/repo#123" is valid
+    if (conversation.externalId.includes('#') || conversation.externalId.includes('/')) {
+      return conversation.externalId;
+    }
+    // If we have a PR number, show that
+    if (conversation.prNumber) {
+      return `PR #${conversation.prNumber}`;
+    }
+    // Fallback to truncated conversation ID
+    return `Conversation ${conversation.id.slice(0, 8)}...`;
+  };
 
   return (
     <div className="space-y-6">
@@ -89,8 +111,8 @@ export default async function ConversationDetailPage({ params }: ConversationDet
             </Button>
           </div>
           <PageHeader
-            title={conversation.externalId}
-            description={`${conversation.triggerType} conversation`}
+            title={getDisplayTitle()}
+            description={`${conversation.triggerType} · ${conversation.externalId}`}
           />
         </div>
         <div className="flex items-center gap-2">
@@ -116,42 +138,6 @@ export default async function ConversationDetailPage({ params }: ConversationDet
             externalId={conversation.externalId}
           />
         </div>
-      </div>
-
-      {/* Status Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">State</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <StateBadge state={conversation.state} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <StatusBadge status={conversation.status} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Route Mode</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Badge variant="outline">{conversation.routeMode.replace('_', ' ')}</Badge>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Iterations</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{conversation.iteration}</div>
-          </CardContent>
-        </Card>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -214,9 +200,24 @@ export default async function ConversationDetailPage({ params }: ConversationDet
               <CardTitle>Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <div className="text-sm font-medium text-muted-foreground">Conversation ID</div>
-                <div className="font-mono text-sm break-all">{conversation.id}</div>
+              {/* Status indicators */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">State</div>
+                  <StateBadge state={conversation.state} />
+                </div>
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">Status</div>
+                  <StatusBadge status={conversation.status} />
+                </div>
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">Mode</div>
+                  <Badge variant="outline" className="text-xs">{conversation.routeMode.replace('_', ' ')}</Badge>
+                </div>
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">Iterations</div>
+                  <div className="text-lg font-bold">{conversation.iteration}</div>
+                </div>
               </div>
               <Separator />
               <div>

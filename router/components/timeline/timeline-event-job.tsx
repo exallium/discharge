@@ -93,57 +93,56 @@ export function TimelineEventJob({ event, isLast }: TimelineEventJobProps) {
           </span>
         </div>
 
-        <div className={`p-3 rounded-lg border ${getBorderColor()}`}>
-          <div className="flex flex-wrap items-center gap-4 text-sm">
-            {/* Duration */}
-            {(type === 'job_completed' || type === 'job_failed') && (
-              <>
-                {((data as JobCompletedEventData | JobFailedEventData).durationMs != null) && (
-                  <div className="flex items-center gap-1 text-muted-foreground">
-                    <Clock className="h-3 w-3" />
-                    {formatDuration((data as JobCompletedEventData | JobFailedEventData).durationMs!)}
-                  </div>
-                )}
-              </>
+        {/* Only render content box for completed/failed events - job_started just shows header */}
+        {(type === 'job_completed' || type === 'job_failed') && (
+          <div className={`p-3 rounded-lg border ${getBorderColor()}`}>
+            <div className="flex flex-wrap items-center gap-4 text-sm">
+              {/* Duration */}
+              {((data as JobCompletedEventData | JobFailedEventData).durationMs != null) && (
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <Clock className="h-3 w-3" />
+                  {formatDuration((data as JobCompletedEventData | JobFailedEventData).durationMs!)}
+                </div>
+              )}
+
+              {/* Fix status for completed jobs */}
+              {type === 'job_completed' && (
+                <div className="flex items-center gap-1">
+                  {(data as JobCompletedEventData).fixed ? (
+                    <>
+                      <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      <span className="text-green-600">Fix created</span>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">No fix needed</span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* PR Link */}
+            {type === 'job_completed' && (data as JobCompletedEventData).prUrl && (
+              <div className="mt-2">
+                <a
+                  href={(data as JobCompletedEventData).prUrl!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-primary hover:underline text-sm"
+                >
+                  <GitPullRequest className="h-3 w-3" />
+                  View Pull Request
+                </a>
+              </div>
             )}
 
-            {/* Fix status for completed jobs */}
-            {type === 'job_completed' && (
-              <div className="flex items-center gap-1">
-                {(data as JobCompletedEventData).fixed ? (
-                  <>
-                    <CheckCircle2 className="h-3 w-3 text-green-500" />
-                    <span className="text-green-600">Fix created</span>
-                  </>
-                ) : (
-                  <span className="text-muted-foreground">No fix needed</span>
-                )}
+            {/* Error for failed jobs */}
+            {type === 'job_failed' && (data as JobFailedEventData).error && (
+              <div className="mt-2 p-2 rounded bg-destructive/10 text-destructive text-xs">
+                {(data as JobFailedEventData).error}
               </div>
             )}
           </div>
-
-          {/* PR Link */}
-          {type === 'job_completed' && (data as JobCompletedEventData).prUrl && (
-            <div className="mt-2">
-              <a
-                href={(data as JobCompletedEventData).prUrl!}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-primary hover:underline text-sm"
-              >
-                <GitPullRequest className="h-3 w-3" />
-                View Pull Request
-              </a>
-            </div>
-          )}
-
-          {/* Error for failed jobs */}
-          {type === 'job_failed' && (data as JobFailedEventData).error && (
-            <div className="mt-2 p-2 rounded bg-destructive/10 text-destructive text-xs">
-              {(data as JobFailedEventData).error}
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

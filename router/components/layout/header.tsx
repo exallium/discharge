@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 const navigation = [
-  { name: 'Jobs', href: '/jobs', icon: History },
+  { name: 'Activity', href: '/jobs', icon: History },
   { name: 'Projects', href: '/projects', icon: FolderKanban },
   { name: 'Logs', href: '/logs', icon: FileText },
   { name: 'Docs', href: '/docs', icon: BookOpen },

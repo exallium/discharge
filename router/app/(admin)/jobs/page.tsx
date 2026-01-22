@@ -23,6 +23,7 @@ import { formatRelativeTime } from '@/lib/utils';
 import { projectsRepo, conversationsRepo } from '@/src/db/repositories';
 import { ConversationActions } from './conversation-actions';
 import { JobsFilters } from './jobs-filters';
+import { JobsListLive } from '@/components/jobs-list-live';
 
 interface JobsPageProps {
   searchParams: Promise<{ page?: string; project?: string }>;
@@ -44,11 +45,12 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
   const conversationTotalPages = Math.ceil(conversationTotal / limit);
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Activity"
-        description="Monitor conversations and job progress"
-      />
+    <JobsListLive>
+      <div className="space-y-6">
+        <PageHeader
+          title="Activity"
+          description="Monitor conversations and job progress"
+        />
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-3">
@@ -103,19 +105,22 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
                     <TableRow key={conv.id}>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <div>
+                          <div className="min-w-0 flex-1">
                             <Link
                               href={`/jobs/${conv.id}`}
-                              className="font-medium hover:underline"
+                              className="font-medium hover:underline truncate block"
                             >
-                              {conv.externalId}
+                              {(conv.triggerEvent?.title as string)
+                                || (conv.externalId.includes('#') || conv.externalId.includes('/') ? conv.externalId : null)
+                                || (conv.prNumber ? `PR #${conv.prNumber}` : null)
+                                || `Conversation ${conv.id.slice(0, 8)}...`}
                             </Link>
                             <div className="text-xs text-muted-foreground">
-                              {conv.triggerType}
+                              {conv.triggerType} · {conv.externalId}
                             </div>
                           </div>
                           <ResourceLinks
-                            issueUrl={extractIssueUrl(conv.triggerEvent)}
+                            issueUrl={extractIssueUrl(conv.triggerEvent, conv.externalId, conv.triggerType)}
                             prUrl={conv.prUrl}
                             prNumber={conv.prNumber}
                           />
@@ -185,7 +190,8 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
           )}
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </JobsListLive>
   );
 }
 

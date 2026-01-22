@@ -1202,6 +1202,13 @@ export async function orchestrateConversation(
       // Update plan status to approved
       existingPlan.metadata.status = 'approved';
 
+      // Ensure conversation has PR info stored - this prevents creating a new PR
+      if (existingPrNumber) {
+        await conversationService.updateStatus(conversation.id, {
+          prNumber: existingPrNumber,
+        });
+      }
+
       // Post acknowledgment
       if (trigger.postFeedback) {
         await trigger.postFeedback(

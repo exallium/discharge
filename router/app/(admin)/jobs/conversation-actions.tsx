@@ -66,11 +66,11 @@ export function ConversationActions({ id, state, externalId }: ConversationActio
         throw new Error('Failed to delete conversation');
       }
 
-      router.refresh();
+      // Redirect to list page after successful deletion
+      router.push('/jobs');
     } catch (error) {
       console.error('Failed to delete conversation:', error);
       alert('Failed to delete conversation. Please try again.');
-    } finally {
       setIsLoading(false);
       setIsDeleteDialogOpen(false);
     }
