@@ -8,7 +8,6 @@
 import { registry } from '@ai-bug-fixer/service-locator';
 import type { VCSPlugin } from '@ai-bug-fixer/service-sdk';
 import { GitHubVCS } from '@ai-bug-fixer/service-github';
-import { Octokit } from '@octokit/rest';
 import { getSecret } from '../secrets';
 import { registerPRProvider, getGitHubPRProvider } from '../pr';
 import * as githubApp from '../github/app-service';

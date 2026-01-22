@@ -1,4 +1,4 @@
-import type { TriggerPlugin, TriggerEvent, FixStatus, AnalysisResult, PrefetchedData, VCSPlugin } from '@ai-bug-fixer/service-sdk';
+import type { TriggerPlugin, TriggerEvent, FixStatus, AnalysisResult, PrefetchedData } from '@ai-bug-fixer/service-sdk';
 import type { TriageResult, InvestigationContext, RunnerPlugin } from '@ai-bug-fixer/service-sdk';
 import { formatPRBody } from '@ai-bug-fixer/service-sdk';
 import { requireMCPForSentry, getMCPToolCallLogs } from './mcp';
@@ -1040,9 +1040,148 @@ export async function orchestrateConversation(
     );
     const messageHistory = await conversationService.getMessageHistory(conversation.id);
 
-    // Get existing plan if applicable
+    // Check for plan approval event first - this determines how we load plan and PR info
+    const planApprovedEvent = events.find(e => e.type === 'plan_approved');
+
+    // Determine existing PR info
+    // IMPORTANT: For plan_approved events, ALWAYS use the PR that was labeled (from the event)
+    // This ensures we implement in the SAME PR, not create a new one
+    let existingPrNumber: number | undefined;
+    let existingPrBranch: string | undefined;
+
+    if (planApprovedEvent) {
+      // For plan_approved, the PR info comes from the event itself - this is the PR we MUST use
+      const targetNumber = planApprovedEvent.target.number;
+      existingPrNumber = typeof targetNumber === 'string' ? parseInt(targetNumber, 10) : targetNumber;
+      existingPrBranch = planApprovedEvent.payload.prBranch as string | undefined;
+
+      logger.info('Plan approved - using PR from event', {
+        conversationId,
+        prNumber: existingPrNumber,
+        prBranch: existingPrBranch,
+        eventTargetType: planApprovedEvent.target.type,
+      });
+
+      // Verify PR is still open and get branch if not in payload
+      const vcs = await getVCSForProject(project.vcs.type, project.repoFullName);
+      if (vcs?.getPullRequestInfo && existingPrNumber) {
+        const prInfo = await vcs.getPullRequestInfo(
+          project.vcs.owner,
+          project.vcs.repo,
+          existingPrNumber
+        );
+        if (prInfo) {
+          if (prInfo.state === 'closed') {
+            // PR is closed - we cannot proceed with plan approval
+            logger.error('Cannot approve plan - PR is closed', {
+              conversationId,
+              prNumber: existingPrNumber,
+            });
+            if (trigger.postFeedback) {
+              await trigger.postFeedback(
+                triggerEvent,
+                `❌ Cannot execute plan - PR #${existingPrNumber} is closed. Please reopen the PR or create a new one.`
+              );
+            }
+            return {
+              response: `Cannot execute plan - PR #${existingPrNumber} is closed.`,
+              action: { type: 'comment', body: `Cannot execute plan - PR #${existingPrNumber} is closed.` },
+              complete: false,
+            };
+          }
+          // Use branch from PR info if not in payload
+          if (!existingPrBranch) {
+            existingPrBranch = prInfo.head;
+          }
+        }
+      }
+    } else {
+      // For non-plan-approved events, use conversation PR info or event target
+      existingPrNumber = conversation.prNumber ?? undefined;
+
+      // If we don't have PR info in conversation, check if we're responding to a PR event
+      if (!existingPrNumber && events[0]?.target.type === 'pull_request') {
+        const targetNumber = events[0].target.number;
+        existingPrNumber = typeof targetNumber === 'string' ? parseInt(targetNumber, 10) : targetNumber;
+      }
+
+      // If we have a PR, try to get the branch name and check if it's still open
+      if (existingPrNumber && !existingPrBranch) {
+        const vcs = await getVCSForProject(project.vcs.type, project.repoFullName);
+        if (vcs?.getPullRequestInfo) {
+          const prInfo = await vcs.getPullRequestInfo(
+            project.vcs.owner,
+            project.vcs.repo,
+            existingPrNumber
+          );
+          if (prInfo) {
+            if (prInfo.state === 'closed') {
+              logger.info('Existing PR is closed, will create a new one', {
+                conversationId,
+                closedPrNumber: existingPrNumber,
+              });
+              existingPrNumber = undefined;
+              await conversationService.updateStatus(conversation.id, {
+                prNumber: undefined,
+              });
+            } else {
+              existingPrBranch = prInfo.head;
+            }
+          }
+        }
+      }
+    }
+
+    // Get existing plan
+    // IMPORTANT: For plan_approved events, ALWAYS load the plan from the PR's branch
+    // This ensures we execute the plan that's actually in the PR, not a stale reference
     let existingPlan = undefined;
-    if (conversation.planRef) {
+
+    if (planApprovedEvent && existingPrBranch) {
+      // For plan_approved, fetch plan from the PR branch - this is the authoritative source
+      const vcs = await getVCSForProject(project.vcs.type, project.id);
+      if (vcs?.supportsPlanFiles && vcs.findPlanFile && vcs.getPlanFile) {
+        logger.info('Looking for plan on PR branch', {
+          conversationId,
+          prNumber: existingPrNumber,
+          prBranch: existingPrBranch,
+        });
+
+        const planRef = await vcs.findPlanFile(project, existingPrBranch);
+        if (planRef) {
+          const planContent = await vcs.getPlanFile(project, planRef);
+          if (planContent) {
+            existingPlan = planManager.parsePlanFromMarkdown(planContent);
+            logger.info('Found plan on PR branch', {
+              conversationId,
+              planRef,
+              planStatus: existingPlan?.metadata?.status,
+            });
+          }
+        }
+
+        if (!existingPlan) {
+          // No plan found on the PR branch - we cannot proceed
+          logger.error('Cannot approve plan - no plan file found on PR branch', {
+            conversationId,
+            prNumber: existingPrNumber,
+            prBranch: existingPrBranch,
+          });
+          const errorMessage = `Cannot execute plan - no plan file found on this PR's branch (\`${existingPrBranch}\`).\n\n` +
+            `Expected a plan file in \`.ai-bug-fixer/plans/\` directory. ` +
+            `Please ensure the plan was created properly or ask me to create a new plan.`;
+          if (trigger.postFeedback) {
+            await trigger.postFeedback(triggerEvent, `❌ ${errorMessage}`);
+          }
+          return {
+            response: errorMessage,
+            action: { type: 'comment', body: errorMessage },
+            complete: false,
+          };
+        }
+      }
+    } else if (conversation.planRef) {
+      // For non-plan-approved events, use conversation.planRef as before
       const vcs = await getVCSForProject(project.vcs.type, project.id);
       if (vcs?.supportsPlanFiles && vcs.getPlanFile) {
         const planContent = await vcs.getPlanFile(project, conversation.planRef);
@@ -1052,53 +1191,12 @@ export async function orchestrateConversation(
       }
     }
 
-    // Determine existing PR info (from conversation or from event target)
-    // This is used to push updates to an existing PR instead of creating a new one
-    let existingPrNumber = conversation.prNumber ?? undefined;
-    let existingPrBranch: string | undefined;
-
-    // If we don't have PR info in conversation, check if we're responding to a PR event
-    if (!existingPrNumber && events[0]?.target.type === 'pull_request') {
-      const targetNumber = events[0].target.number;
-      existingPrNumber = typeof targetNumber === 'string' ? parseInt(targetNumber, 10) : targetNumber;
-    }
-
-    // If we have a PR, try to get the branch name and check if it's still open
-    if (existingPrNumber && !existingPrBranch) {
-      // Try to get branch from VCS
-      const vcs = await getVCSForProject(project.vcs.type, project.repoFullName);
-      if (vcs?.getPullRequestInfo) {
-        const prInfo = await vcs.getPullRequestInfo(
-          project.vcs.owner,
-          project.vcs.repo,
-          existingPrNumber
-        );
-        if (prInfo) {
-          // Check if PR is closed/merged - if so, we need a new PR
-          if (prInfo.state === 'closed') {
-            logger.info('Existing PR is closed, will create a new one', {
-              conversationId,
-              closedPrNumber: existingPrNumber,
-            });
-            existingPrNumber = undefined;
-            // Clear PR number from conversation so we create a new one
-            await conversationService.updateStatus(conversation.id, {
-              prNumber: undefined,
-            });
-          } else {
-            existingPrBranch = prInfo.head;
-          }
-        }
-      }
-    }
-
-    // Check for plan approval event - triggers execution
-    const planApprovedEvent = events.find(e => e.type === 'plan_approved');
+    // Handle plan approval
     if (planApprovedEvent && existingPlan) {
       logger.info('Plan approved - triggering execution', {
         conversationId,
-        planRef: conversation.planRef,
         prNumber: existingPrNumber,
+        prBranch: existingPrBranch,
       });
 
       // Update plan status to approved
