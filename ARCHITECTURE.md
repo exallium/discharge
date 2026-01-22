@@ -6,24 +6,47 @@ This document explains the system architecture, what runs where, and deployment 
 
 ### Components Running in Docker
 
-#### 1. **Router** (Main Application)
+#### 1. **Web App** (Next.js Application)
 - **Image**: Built from `router/Dockerfile`
-- **Purpose**: Webhook receiver, job orchestrator, worker manager
+- **Purpose**: Web UI, API routes for webhooks, admin dashboard
 - **Ports**: 3000 (HTTP)
 - **Dependencies**:
+  - PostgreSQL (required)
+  - Redis (required)
+
+**What it does:**
+- Serves admin UI for managing projects and secrets
+- Receives webhooks from GitHub, Sentry, CircleCI via API routes
+- Validates webhook signatures
+- Parses events and queues jobs
+
+#### 2. **Worker** (Background Job Processor)
+- **Image**: Same as web app, different entrypoint
+- **Purpose**: Process queued jobs, spawn runner containers
+- **Dependencies**:
+  - PostgreSQL (required)
   - Redis (required)
   - Docker socket (required - for spawning runner containers)
   - Claude CLI credentials (volume mount)
 
 **What it does:**
-- Receives webhooks from GitHub, Sentry, CircleCI
-- Validates webhook signatures
-- Parses events and queues jobs
-- Manages BullMQ workers
+- Picks up jobs from BullMQ queue
 - Spawns dynamic runner containers for each job
+- Monitors job completion
 - Posts status updates back to triggers
 
-#### 2. **Redis** (Job Queue Backend)
+#### 3. **PostgreSQL** (Database)
+- **Image**: `postgres:15-alpine` (official)
+- **Purpose**: Persistent storage for projects, jobs, encrypted secrets
+- **Ports**: 5432 (internal only)
+- **Persistence**: Volume `postgres_data`
+
+**What it does:**
+- Stores project configurations
+- Stores encrypted service credentials
+- Stores job history and audit logs
+
+#### 4. **Redis** (Job Queue Backend)
 - **Image**: `redis:7-alpine` (official)
 - **Purpose**: BullMQ job queue, worker coordination
 - **Ports**: 6379 (internal only)
@@ -31,10 +54,10 @@ This document explains the system architecture, what runs where, and deployment 
 
 **What it does:**
 - Stores job queue (waiting, active, completed, failed jobs)
-- Coordinates between router and workers
-- Persists job history
+- Coordinates between web app and workers
+- Ephemeral queue state
 
-#### 3. **Runner Containers** (Dynamically Spawned)
+#### 5. **Runner Containers** (Dynamically Spawned)
 - **Image**: Built from `agent-runners/claude-code/Dockerfile`
 - **Purpose**: Execute AI agent (Claude Code CLI) to investigate and fix bugs
 - **Lifecycle**: Created per job, destroyed after completion
@@ -80,7 +103,7 @@ This document explains the system architecture, what runs where, and deployment 
 ┌─────────────────────────────────────────────────────────────────┐
 │                         External Services                        │
 ├─────────────────────────────────────────────────────────────────┤
-│  GitHub  │  Sentry  │  CircleCI  │  Anthropic API  │  Discord  │
+│  GitHub  │  Sentry  │  CircleCI  │  Anthropic API              │
 └────┬───────────┬────────────┬────────────────┬─────────────────┘
      │           │            │                │
      │ Webhooks  │            │                │ API Calls
@@ -94,13 +117,20 @@ This document explains the system architecture, what runs where, and deployment 
 │  │  Docker Network: ai-bug-fixer_internal                  │  │
 │  │                                                          │  │
 │  │  ┌──────────────┐         ┌──────────────┐             │  │
-│  │  │    Router    │◄───────►│    Redis     │             │  │
+│  │  │   Web App    │◄───────►│  PostgreSQL  │             │  │
+│  │  │  (Next.js)   │         │              │             │  │
+│  │  │              │         │ - Projects   │             │  │
+│  │  │ - API Routes │         │ - Secrets    │             │  │
+│  │  │ - Admin UI   │         │ - Job logs   │             │  │
+│  │  │ - Webhooks   │         └──────────────┘             │  │
+│  │  └──────────────┘                                       │  │
+│  │                                                          │  │
+│  │  ┌──────────────┐         ┌──────────────┐             │  │
+│  │  │    Worker    │◄───────►│    Redis     │             │  │
 │  │  │              │         │              │             │  │
-│  │  │ - Webhooks   │         │ - Job Queue  │             │  │
-│  │  │ - API        │         │ - BullMQ     │             │  │
-│  │  │ - Workers    │         │              │             │  │
-│  │  │ - Health     │         └──────────────┘             │  │
-│  │  └──────┬───────┘                                       │  │
+│  │  │ - Job queue  │         │ - BullMQ     │             │  │
+│  │  │ - Spawn runs │         │ - Queue      │             │  │
+│  │  └──────┬───────┘         └──────────────┘             │  │
 │  │         │                                               │  │
 │  │         │ Spawns dynamically                            │  │
 │  │         ▼                                               │  │
@@ -116,7 +146,7 @@ This document explains the system architecture, what runs where, and deployment 
 │  Volume Mounts:                                                │
 │  - ~/.claude → Runner containers (Claude CLI credentials)     │
 │  - /workspaces → Temporary git clones                         │
-│  - /var/run/docker.sock → Router (spawn runners)              │
+│  - /var/run/docker.sock → Worker (spawn runners)              │
 │                                                                 │
 └────────────────────────────────────────────────────────────────┘
 ```
@@ -126,19 +156,21 @@ This document explains the system architecture, what runs where, and deployment 
 ### 1. Webhook Event (e.g., GitHub Issue)
 
 ```
-GitHub → POST /webhooks/github-issues
+GitHub → POST /api/webhooks/github
          ↓
-Router validates webhook signature
+Web App validates webhook signature
          ↓
-Router parses event → TriggerEvent
+Web App parses event → TriggerEvent
          ↓
-Router queues job → Redis
+Web App queues job → Redis (BullMQ)
          ↓
-Worker picks up job
+Worker picks up job from queue
+         ↓
+Worker loads project config from PostgreSQL
          ↓
 Worker spawns Runner container
          ↓
-Runner clones repo
+Runner clones repository
          ↓
 Runner runs Claude Code CLI
          ↓
@@ -148,9 +180,9 @@ Claude creates fix + commits
          ↓
 Runner pushes branch
          ↓
-Router creates PR via GitHub API
+Worker creates PR via GitHub API
          ↓
-Router posts comment on issue
+Worker posts comment on issue
          ↓
 Runner container destroyed
 ```
@@ -180,7 +212,9 @@ docker-compose -f docker-compose.prod.yml down
 ```
 
 **Components:**
-- ✅ Router (always running)
+- ✅ Web App (always running)
+- ✅ Worker (always running)
+- ✅ PostgreSQL (always running)
 - ✅ Redis (always running)
 - ✅ Runners (spawned dynamically)
 
@@ -470,32 +504,36 @@ services:
 
 ### Persistent Volumes
 
-1. **`redis_data`**
-   - Purpose: Job queue persistence
-   - Size: ~1GB (grows with job history)
+1. **`postgres_data`**
+   - Purpose: Database storage (projects, secrets, job logs)
+   - Size: ~1-5GB (grows with job history)
    - Backup: Yes (critical)
 
-2. **`workspaces`**
+2. **`redis_data`**
+   - Purpose: Job queue state
+   - Size: ~100MB (queue is ephemeral)
+   - Backup: Optional (can rebuild from postgres)
+
+3. **`workspaces`**
    - Purpose: Temporary git clones
    - Size: Varies (cleaned up after jobs)
    - Backup: No (ephemeral)
 
 ### Backup Strategy
 
-**Redis data** (critical):
+**PostgreSQL data** (critical):
 ```bash
 # Manual backup
-docker-compose exec redis redis-cli SAVE
-docker cp ai-bug-fixer-redis:/data/dump.rdb ./backups/
+docker-compose exec postgres pg_dump -U postgres ai_bug_fixer > ./backups/db.sql
 
 # Automated (cron)
-0 2 * * * /path/to/backup-redis.sh
+0 2 * * * /path/to/backup-postgres.sh
 ```
 
 **Configuration**:
 ```bash
-# Backup .env and projects config
-tar -czf config-backup.tar.gz .env router/src/config/
+# Backup .env file
+cp .env ./backups/.env.$(date +%Y%m%d)
 ```
 
 ## Troubleshooting

@@ -27,7 +27,7 @@ interface TriggerPlugin {
   type: string;                  // Type name for internal routing
 
   // Webhook handling
-  validateWebhook(req: Request): Promise<boolean>;
+  validateWebhook(req: WebhookRequest): Promise<boolean>;
   parseWebhook(payload: any): Promise<TriggerEvent | null>;
 
   // Tool generation
@@ -53,14 +53,13 @@ interface TriggerPlugin {
 Create a new file in `router/src/triggers/your-trigger.ts`:
 
 ```typescript
-import { Request } from 'express';
-import { TriggerPlugin, TriggerEvent, Tool, FixStatus } from './base';
+import { TriggerPlugin, TriggerEvent, Tool, FixStatus, WebhookRequest } from './base';
 
 export class YourTrigger implements TriggerPlugin {
   id = 'your-trigger';
   type = 'your-trigger';
 
-  async validateWebhook(req: Request): Promise<boolean> {
+  async validateWebhook(req: WebhookRequest): Promise<boolean> {
     // Verify webhook signature/authentication
     // Return true if valid, false otherwise
     const signature = req.headers['x-your-signature'];
@@ -494,7 +493,7 @@ export class SentryTrigger implements TriggerPlugin {
   id = 'sentry';
   type = 'sentry';
 
-  async validateWebhook(req: Request): Promise<boolean> {
+  async validateWebhook(req: WebhookRequest): Promise<boolean> {
     // Sentry doesn't sign webhooks, could verify IP ranges
     return true;
   }
@@ -552,7 +551,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
   id = 'github-issues';
   type = 'github-issues';
 
-  async validateWebhook(req: Request): Promise<boolean> {
+  async validateWebhook(req: WebhookRequest): Promise<boolean> {
     const signature = req.headers['x-hub-signature-256'] as string;
     const secret = process.env.GITHUB_WEBHOOK_SECRET;
 
@@ -660,7 +659,7 @@ async parseWebhook(payload: any): Promise<TriggerEvent | null> {
 - Never log sensitive data (tokens, credentials)
 
 ```typescript
-async validateWebhook(req: Request): Promise<boolean> {
+async validateWebhook(req: WebhookRequest): Promise<boolean> {
   // Verify signature
   const signature = req.headers['x-signature'];
   if (!this.isValidSignature(req.body, signature)) {
@@ -1137,7 +1136,7 @@ This allows database unit tests to use a minimal schema, while integration tests
 - Review existing source implementations in `router/src/triggers/`
 - Check test examples in `router/tests/unit/triggers/`
 - See webhook payload fixtures in `router/tests/fixtures/`
-- Read the main architecture doc: [GENERIC_ARCHITECTURE.md](./GENERIC_ARCHITECTURE.md)
+- Read the main architecture doc: [ARCHITECTURE.md](./ARCHITECTURE.md)
 
 ---
 

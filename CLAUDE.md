@@ -12,22 +12,35 @@ All commands run from the `router/` directory:
 
 ```bash
 # Development
-npm run dev              # Start with ts-node (hot reload)
-npm run build            # Compile TypeScript
+npm run dev:setup        # First-time: build agent runner Docker image
+npm run dev:up           # Start postgres, redis, mcp + Next.js dev server
+npm run dev:down         # Stop infrastructure
+npm run worker:dev       # Start job worker (run in separate terminal)
+
+# Building
+npm run build            # Build Next.js app + worker
 
 # Testing
 npm test                 # Unit tests only (no Docker required)
 npm run test:unit        # Same as above
 npm run test:integration # Integration tests (requires Docker + Redis)
-npm run test:all         # Unit + integration
+npm run test:all         # Unit + integration + e2e
 npm run test:watch       # Watch mode
 npm run test:coverage    # Generate coverage report
+npm run test:e2e         # Playwright end-to-end tests
 
 # Run a single test file
 npx jest tests/unit/triggers/github-issues.test.ts
 
 # Run tests matching a pattern
 npx jest --testNamePattern="should validate webhook"
+
+# Other
+npm run typecheck        # TypeScript type checking
+npm run lint             # ESLint
+npm run db:studio        # Drizzle Studio (database viewer)
+npm run db:generate      # Generate database migrations
+npm run db:migrate       # Run database migrations
 ```
 
 Docker commands from repository root:
@@ -40,43 +53,52 @@ docker-compose -f docker-compose.prod.yml up -d  # Production
 
 This is an **AI-powered bug fixing system** that receives webhooks from bug sources, runs AI agents to investigate and fix issues, then creates PRs with the fixes.
 
-### Three Plugin Systems
+### Service-Oriented Architecture
 
-1. **Triggers** (`router/src/triggers/`) - Receive webhooks from bug sources
-   - Interface: `TriggerPlugin` in `base.ts`
+The system uses a service-oriented plugin architecture with services in `packages/services/`:
+
+1. **Trigger Services** (`packages/services/github/`, `sentry/`, `circleci/`)
+   - Handle webhooks from bug sources
    - Convert external webhooks to normalized `TriggerEvent`
-   - Generate bash investigation tools for AI agents
    - Post results back to source systems
 
-2. **Runners** (`router/src/runner/runners/`) - Execute AI agents
-   - Interface: `RunnerPlugin` in `../base.ts`
-   - Claude Code runner spawns Docker containers
-   - Reads analysis from `.claude/analysis.json` after execution
+2. **Runner Services** (`packages/services/claude-code/`)
+   - Execute AI agents in Docker containers
+   - Read analysis from `.claude/analysis.json` after execution
 
-3. **VCS** (`router/src/vcs/`) - Interact with version control
-   - Interface: `VCSPlugin` in `base.ts`
+3. **VCS Integration** (`router/src/vcs/`)
    - Create PRs, add comments, update statuses
+   - Currently GitHub-focused
+
+### Core Components
+
+- **Next.js App** (`router/app/`) - Web UI and API routes
+- **Worker** (`router/src/worker.ts`) - Background job processor
+- **Orchestrator** (`router/src/runner/orchestrator.ts`) - Core workflow
+- **Service Locator** (`packages/service-locator/`) - Service discovery
+- **Service SDK** (`packages/service-sdk/`) - Interface definitions
 
 ### Request Flow
 
 ```
-Webhook → POST /webhooks/:triggerId → Parse → BullMQ Queue → Worker → Orchestrator:
-  1. Load project config from config/projects.ts
-  2. Generate investigation tools from trigger
-  3. Execute runner (Claude Code in Docker)
-  4. Parse .claude/analysis.json
-  5. If fix found with high confidence → Create PR via VCS plugin
-  6. Post result comment to source
+Webhook → POST /api/webhooks/:triggerId → Parse → BullMQ Queue → Worker → Orchestrator:
+  1. Load project config from database
+  2. Execute runner (Claude Code in Docker)
+  3. Parse .claude/analysis.json
+  4. If fix found with high confidence → Create PR via VCS
+  5. Post result comment to source
 ```
 
 ### Key Files
 
-- `router/src/index.ts` - Express app entry, initializes all plugins
-- `router/src/config/projects.ts` - Repository configurations (triggers, runner settings, VCS)
+- `router/app/api/webhooks/` - Webhook API routes
+- `router/app/api/health/` - Health check endpoint
 - `router/src/runner/orchestrator.ts` - Core workflow: run AI, create PR, post results
 - `router/src/runner/prompts.ts` - Prompt templates for AI agents
 - `router/src/runner/bug-config.ts` - `.ai-bugs.json` schema and validation
-- `router/src/queue/index.ts` - BullMQ job queue (Redis backend)
+- `router/src/queue/` - BullMQ job queue (Redis backend)
+- `router/src/db/` - Drizzle ORM database schema
+- `router/src/worker.ts` - Background job processor
 
 ### Repository Configuration (`.ai-bugs.json`)
 
@@ -90,13 +112,6 @@ The runner reads this file after cloning, matches labels to categories, and:
 2. Injects category-specific requirements into the prompt
 3. Tears down infrastructure in the finally block
 
-### Plugin Registration
-
-Plugins self-register when imported. To add a new trigger/runner/VCS:
-1. Implement the interface from `base.ts`
-2. Export and import in `index.ts` to register
-3. Add to project configs in `config/projects.ts`
-
 ### Job Queue
 
 - BullMQ with Redis backend
@@ -107,27 +122,29 @@ Plugins self-register when imported. To add a new trigger/runner/VCS:
 
 ### Health Endpoints
 
-- `GET /health` - Full system check (Redis, queue, plugins)
-- `GET /ready` - Load balancer readiness
-- `GET /live` - Kubernetes liveness
+- `GET /api/health` - Full system check (Redis, queue, services)
+- `GET /api/ready` - Load balancer readiness
+- `GET /api/live` - Kubernetes liveness
 
 ## Testing Conventions
 
 - Unit tests in `router/tests/unit/` - mock all external dependencies
 - Integration tests in `router/tests/integration/` - use real Docker + Redis
-- Fixtures in `router/tests/fixtures/` - realistic webhook payloads
+- E2E tests via Playwright - full browser testing
 - Mock trigger in `router/tests/mocks/mock-trigger.ts` for testing
 
 ## Environment Variables
 
 Core (required):
 - `REDIS_URL` - Job queue backend
-- `USER` - For Docker volume mounting
+- `DATABASE_URL` - PostgreSQL connection string
+- `DB_ENCRYPTION_KEY` - 32-byte hex string for encrypting secrets
+- `SESSION_SECRET` - Random string for session cookies
 
-Per-plugin (required only if using that plugin):
-- GitHub VCS/Trigger: `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET`
-- Sentry Trigger: `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`
-- CircleCI Trigger: `CIRCLECI_TOKEN`
+Per-service (required only if using that service):
+- GitHub: `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`
+- Sentry: `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`
+- CircleCI: `CIRCLECI_TOKEN`
 - Claude Code Runner: Uses local OAuth via `claude auth` (no API key needed)
 
 See `.env.example` for full configuration options.

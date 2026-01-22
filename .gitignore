@@ -66,3 +66,14 @@ temp/
 # Playwright
 playwright-report/
 test-results/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+drizzle/meta/
+
+# Misc caches
+.turbo/
+.eslintcache
+.prettiercache

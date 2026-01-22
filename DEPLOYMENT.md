@@ -58,7 +58,7 @@ nano .env
 docker-compose -f docker-compose.prod.yml up -d
 
 # 5. Verify deployment
-curl http://localhost:3000/health
+curl http://localhost:3000/api/health
 ```
 
 ## Exposing to External Services
@@ -136,7 +136,7 @@ Once your tunnel is running, configure your services:
 **Verify it works:**
 ```bash
 # From anywhere on the internet
-curl https://ai-bug-fixer.yourdomain.com/health
+curl https://ai-bug-fixer.yourdomain.com/api/health
 ```
 
 ## Environment Setup
@@ -258,16 +258,16 @@ docker-compose -f docker-compose.prod.yml ps
 
 ```bash
 # Health check
-curl http://localhost:3000/health
+curl http://localhost:3000/api/health
 
 # Readiness probe
-curl http://localhost:3000/ready
+curl http://localhost:3000/api/ready
 
 # Liveness probe
-curl http://localhost:3000/live
+curl http://localhost:3000/api/live
 
-# Queue status
-curl http://localhost:3000/dashboard
+# Queue status (included in health check)
+curl http://localhost:3000/api/health
 ```
 
 ### Update Deployment
@@ -330,13 +330,13 @@ spec:
               key: token
         livenessProbe:
           httpGet:
-            path: /live
+            path: /api/live
             port: 3000
           initialDelaySeconds: 10
           periodSeconds: 30
         readinessProbe:
           httpGet:
-            path: /ready
+            path: /api/ready
             port: 3000
           initialDelaySeconds: 5
           periodSeconds: 10
@@ -383,17 +383,17 @@ kubectl logs -f deployment/claude-agent-router
 
 The application provides three health check endpoints:
 
-1. **`/health`** - Comprehensive system health
+1. **`/api/health`** - Comprehensive system health
    - Returns: Status of Redis, queue, triggers, VCS, runners
    - HTTP 200: Healthy
    - HTTP 503: Unhealthy or degraded
 
-2. **`/ready`** - Readiness probe
+2. **`/api/ready`** - Readiness probe
    - Returns: Whether system is ready to handle requests
    - HTTP 200: Ready
    - HTTP 503: Not ready
 
-3. **`/live`** - Liveness probe
+3. **`/api/live`** - Liveness probe
    - Returns: Whether process is alive
    - HTTP 200: Alive
    - HTTP 503: Dead (should restart)
@@ -660,10 +660,10 @@ docker-compose -f docker-compose.prod.yml logs -f router
 
 ```bash
 # Application health
-curl http://localhost:3000/health | jq
+curl http://localhost:3000/api/health | jq
 
-# Queue statistics
-curl http://localhost:3000/dashboard | jq
+# Queue statistics (included in health check)
+curl http://localhost:3000/api/health | jq
 
 # Redis status
 docker-compose exec redis redis-cli INFO

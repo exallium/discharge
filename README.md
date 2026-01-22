@@ -14,18 +14,20 @@ A self-hosted automation system that uses AI agents to automatically investigate
 
 ## 🏗️ Architecture
 
-**Plugin-based architecture** with three main plugin types:
+**Service-oriented plugin architecture** with three main plugin types:
 
-- **Trigger Plugins** - Handle webhooks from bug sources (GitHub Issues, Sentry, CircleCI)
-- **Runner Plugins** - Execute AI agents (Claude Code, or custom LLMs)
-- **VCS Plugins** - Interact with version control systems (GitHub, GitLab, Bitbucket)
+- **Trigger Services** - Handle webhooks from bug sources (GitHub Issues, Sentry, CircleCI)
+- **Runner Services** - Execute AI agents (Claude Code, or custom LLMs)
+- **VCS Services** - Interact with version control systems (GitHub, GitLab, Bitbucket)
 
 **Core Components:**
 
-- **Router** - Express.js webhook receiver, job queue orchestrator, worker manager
+- **Router** - Next.js web app with API routes for webhooks, admin UI, and orchestration
+- **Worker** - Background job processor that runs AI agents
+- **PostgreSQL** - Persistent storage for projects, jobs, and secrets
 - **Redis** - BullMQ job queue backend
 - **Runner Containers** - Dynamically spawned Docker containers that execute AI agents
-- **External Services** - GitHub, Sentry, CircleCI (webhooks), Anthropic API (Claude)
+- **External Services** - GitHub, Sentry, CircleCI (webhooks)
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed component breakdown, data flow, and deployment architecture.
 
@@ -33,51 +35,53 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed component breakdown, data 
 
 ```
 ai-bug-fixer/
-├── router/                          # Main application
+├── router/                          # Main application (Next.js)
+│   ├── app/                         # Next.js App Router
+│   │   ├── api/                     # API routes
+│   │   │   ├── webhooks/            # Webhook endpoints
+│   │   │   ├── health/              # Health check endpoint
+│   │   │   ├── ready/               # Readiness probe
+│   │   │   ├── live/                # Liveness probe
+│   │   │   └── ...                  # Other API routes
+│   │   └── (admin)/                 # Admin UI pages
 │   ├── src/
-│   │   ├── index.ts                 # Express app entry
 │   │   ├── config/                  # Project configurations
-│   │   ├── triggers/                # Trigger plugins (GitHub, Sentry, CircleCI)
-│   │   │   ├── github-issues/
-│   │   │   ├── sentry/
-│   │   │   ├── circleci/
-│   │   │   └── base.ts
+│   │   ├── triggers/                # Trigger plugin interfaces
+│   │   │   └── base.ts              # TriggerPlugin interface
 │   │   ├── runner/                  # AI agent orchestration
-│   │   │   ├── runners/             # Runner plugins (Claude Code, custom)
-│   │   │   ├── orchestrator.ts
-│   │   │   └── prompts.ts
-│   │   ├── vcs/                     # VCS plugins (GitHub, GitLab)
-│   │   │   ├── github/
-│   │   │   └── base.ts
-│   │   ├── webhooks/                # Webhook routing
+│   │   │   ├── orchestrator.ts      # Core workflow
+│   │   │   ├── prompts.ts           # Prompt templates
+│   │   │   └── bug-config.ts        # .ai-bugs.json handling
+│   │   ├── vcs/                     # VCS plugin interfaces
+│   │   │   └── base.ts              # VCSPlugin interface
 │   │   ├── queue/                   # BullMQ job queue
-│   │   ├── health.ts                # Health check endpoints
-│   │   ├── logger.ts                # Structured logging
-│   │   ├── rate-limiter.ts          # Rate limiting middleware
-│   │   └── env-validator.ts         # Environment validation
-│   ├── tests/                       # Comprehensive test suite
+│   │   ├── db/                      # Drizzle ORM database schema
+│   │   └── worker.ts                # Background job processor
+│   ├── tests/                       # Test suite
 │   │   ├── unit/                    # Unit tests (no dependencies)
-│   │   ├── integration/             # Integration tests (Docker required)
-│   │   ├── fixtures/                # Test data and payloads
-│   │   └── helpers/                 # Test utilities
+│   │   └── integration/             # Integration tests
 │   ├── Dockerfile                   # Multi-stage production build
 │   └── package.json
 │
-├── agent-runners/                   # AI agent container images
-│   └── claude-code/                 # Claude Code runner
-│       └── Dockerfile               # Claude Code CLI runner
+├── packages/                        # Shared packages (monorepo)
+│   ├── services/                    # Service implementations
+│   │   ├── github/                  # GitHub trigger & VCS
+│   │   ├── sentry/                  # Sentry trigger
+│   │   ├── circleci/                # CircleCI trigger
+│   │   └── claude-code/             # Claude Code runner
+│   ├── service-sdk/                 # Service interface definitions
+│   └── service-locator/             # Service discovery
 │
-├── .env.example                     # Environment template (comprehensive)
-├── setup.sh                         # Automated setup script
+├── agent-runners/                   # AI agent container images
+│   └── claude-code/                 # Claude Code runner Dockerfile
+│
+├── .env.example                     # Environment template
 ├── docker-compose.yml               # Development configuration
 ├── docker-compose.prod.yml          # Production configuration
-│
-└── docs/
-    ├── ARCHITECTURE.md              # System architecture and deployment
-    ├── DEPLOYMENT.md                # Production deployment guide
-    ├── EXPOSING-WEBHOOKS.md         # Webhook exposure (Cloudflare Tunnel, etc.)
-    ├── AGENTS.md                    # Plugin development guide
-    └── GENERIC_ARCHITECTURE.md      # Original design document
+├── ARCHITECTURE.md                  # System architecture
+├── DEPLOYMENT.md                    # Production deployment guide
+├── EXPOSING-WEBHOOKS.md             # Webhook exposure guide
+└── AGENTS.md                        # Plugin development guide
 ```
 
 ## 🚀 Quick Start
@@ -207,6 +211,67 @@ open http://localhost:3000/dashboard
 # List webhook endpoints
 curl http://localhost:3000/webhooks | jq
 ```
+
+## 🛠️ Development Environment
+
+For local development with hot reloading:
+
+### Prerequisites
+
+- Node.js 20+
+- Docker & Docker Compose
+- A GitHub personal access token (for testing GitHub triggers)
+
+### First-Time Setup
+
+```bash
+# Install dependencies
+cd router
+npm install
+
+# Create environment file
+cp ../.env.example ../.env.dev
+
+# Edit .env.dev and set required values:
+# - DB_ENCRYPTION_KEY: 32-byte hex string for encrypting secrets
+# - SESSION_SECRET: Random string for session cookies
+# - POSTGRES_PASSWORD: Database password
+
+# Build the agent runner Docker image (one-time)
+npm run dev:setup
+```
+
+### Running Locally
+
+You need **two terminals** for local development:
+
+```bash
+# Terminal 1: Start infrastructure + web server
+cd router
+npm run dev:up
+
+# Terminal 2: Start job worker
+cd router
+npm run worker:dev
+```
+
+This starts:
+- **PostgreSQL** - Database on port 5432
+- **Redis** - Job queue on port 6379
+- **Next.js** - Web UI + API on port 3000
+- **Worker** - Background job processor
+
+### Useful Commands
+
+```bash
+npm run dev:down     # Stop infrastructure
+npm test             # Run tests
+npm run typecheck    # Type check
+npm run lint         # Lint
+npm run db:studio    # View database (Drizzle Studio)
+```
+
+See [router/DEV_README.md](./router/DEV_README.md) for detailed development documentation.
 
 ## 🌐 Exposing to External Services
 
@@ -656,10 +721,11 @@ See [DEPLOYMENT.md - Security Checklist](./DEPLOYMENT.md#security-checklist) for
 ### ✅ Production Ready
 
 **Core System:**
-- ✅ Plugin-based architecture (triggers, runners, VCS)
-- ✅ Express.js router with webhook handling
+- ✅ Service-oriented plugin architecture (triggers, runners, VCS)
+- ✅ Next.js web app with API routes and admin UI
+- ✅ PostgreSQL for persistent storage
 - ✅ BullMQ job queue with Redis backend
-- ✅ Worker pool for concurrent job processing
+- ✅ Background worker for job processing
 - ✅ Docker container orchestration
 
 **Production Features:**
