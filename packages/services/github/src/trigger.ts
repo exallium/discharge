@@ -423,6 +423,10 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     // Build trigger event
     const issueLabels = (issue.labels || []).map((l: GitHubLabel) => l.name);
 
+    // For PR comments, try to extract linked issue number from PR body
+    // This allows routing PR comments back to the original issue conversation
+    const linkedIssueNumber = isPRComment ? this.extractLinkedIssueNumber(issue.body) : null;
+
     return {
       triggerType: 'github',
       triggerId: `${repository.full_name}#${issue.number}-comment-${comment.id}`,
@@ -433,9 +437,14 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       description: issue.body || 'No description provided',
       metadata: {
         severity: this.determineSeverity(issueLabels),
-        // For PRs, use prNumber; for issues, use issueNumber
+        // For PRs, include both prNumber and linkedIssueNumber (if found)
+        // issueNumber is used by getConversationId to route to the original issue
         ...(isPRComment
-          ? { prNumber: issue.number, prUrl: issue.html_url }
+          ? {
+              prNumber: issue.number,
+              prUrl: issue.html_url,
+              issueNumber: linkedIssueNumber || undefined,
+            }
           : { issueNumber: issue.number, issueUrl: issue.html_url }),
         labels: issueLabels,
         author: issue.user?.login,
@@ -1064,6 +1073,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
 
   /**
    * Parse issue comment event to ConversationEvent
+   * Note: GitHub sends issue_comment events for both issues AND PRs
    */
   private parseIssueCommentConversationEvent(
     payload: GitHubIssueCommentEventPayload
@@ -1071,15 +1081,24 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     const { issue, comment, repository } = payload;
     const issueLabels = (issue.labels || []).map((l: GitHubLabel) => l.name);
 
+    // Check if this is a PR comment (PRs have pull_request field)
+    const isPRComment = !!(issue as { pull_request?: { url: string } }).pull_request;
+
+    // For PR comments, try to route to the linked issue conversation
+    const linkedIssueNumber = isPRComment ? this.extractLinkedIssueNumber(issue.body) : null;
+    const externalId = linkedIssueNumber
+      ? `${repository.full_name}#${linkedIssueNumber}` // Route to issue conversation
+      : `${repository.full_name}#${issue.number}`; // Use PR/issue number
+
     return {
       type: 'issue_comment',
       source: {
         platform: 'github',
-        externalId: `${repository.full_name}#${issue.number}`,
+        externalId,
         url: comment.html_url,
       },
       target: {
-        type: 'issue',
+        type: isPRComment ? 'pull_request' : 'issue',
         number: issue.number,
         title: issue.title,
         body: issue.body || '',
@@ -1270,19 +1289,20 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
    * Get unique conversation identifier from trigger event
    * Format: owner/repo#number
    *
-   * For PR events, uses the linked issue number if available,
-   * otherwise falls back to the PR number.
+   * When a PR is linked to an issue (via "Fixes #123" in the body), route to the issue
+   * conversation so all activity stays together. Only use PR number for standalone PRs.
    */
   getConversationId(event: TriggerEvent): string {
     const repoFullName = event.triggerId.split('#')[0];
 
-    // Prefer issue number (set for issue events and PR events linked to issues)
+    // Check issueNumber first - this is set to the linked issue for PR events
+    // (extracted from PR body like "Fixes #123") or directly for issue events
     const issueNumber = event.metadata.issueNumber as number | undefined;
     if (issueNumber) {
       return `${repoFullName}#${issueNumber}`;
     }
 
-    // Fall back to PR number for PR events without linked issue
+    // For standalone PR events (no linked issue), use PR number
     const prNumber = event.metadata.prNumber as number | undefined;
     if (prNumber) {
       return `${repoFullName}#${prNumber}`;

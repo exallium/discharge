@@ -42,6 +42,56 @@ export interface LockResult {
 }
 
 /**
+ * Debounce issue events by filtering out issue_labeled events that follow issue_opened.
+ *
+ * When a GitHub issue is created with labels, GitHub sends:
+ * - 1 issue_opened event (contains the labels in target.labels)
+ * - N issue_labeled events (one per label)
+ *
+ * The labeled events are redundant since the labels are already in the opened event.
+ * This function filters them out to avoid duplicate processing.
+ */
+function debounceIssueEvents(events: PendingEventEntry[]): PendingEventEntry[] {
+  // Check if there's an issue_opened event
+  const hasIssueOpened = events.some(e => e.eventType === 'issue_opened');
+
+  if (!hasIssueOpened) {
+    return events;
+  }
+
+  // Filter out issue_labeled events that target the same issue as the opened event
+  const issueOpenedEvent = events.find(e => e.eventType === 'issue_opened');
+  const issueNumber = issueOpenedEvent?.eventPayload.target.number;
+
+  const filtered = events.filter(event => {
+    if (event.eventType !== 'issue_labeled') {
+      return true;
+    }
+
+    // Filter out labeled events for the same issue
+    if (event.eventPayload.target.number === issueNumber) {
+      logger.debug('Filtering redundant issue_labeled event', {
+        issueNumber,
+        label: event.eventPayload.payload.label?.name,
+      });
+      return false;
+    }
+
+    return true;
+  });
+
+  if (filtered.length < events.length) {
+    logger.info('Debounced issue_labeled events', {
+      issueNumber,
+      originalCount: events.length,
+      filteredCount: filtered.length,
+    });
+  }
+
+  return filtered;
+}
+
+/**
  * Debounce PR review events by merging pr_review and pr_review_comment events
  * that target the same PR into a single event.
  *
@@ -212,6 +262,17 @@ export class ConversationService {
   }
 
   /**
+   * Find a conversation by its linked PR number
+   * Used to route PR events back to the original conversation (e.g., Sentry issue → PR)
+   */
+  async findByPrNumber(
+    projectId: string,
+    prNumber: number
+  ): Promise<ConversationEntry | undefined> {
+    return conversationsRepo.findByPrNumber(projectId, prNumber);
+  }
+
+  /**
    * Find a conversation by ID
    */
   async getConversation(id: string): Promise<ConversationEntry | undefined> {
@@ -237,8 +298,9 @@ export class ConversationService {
     // First drain events (atomically)
     const rawEvents = await conversationsRepo.drainEvents(conversationId);
 
-    // Debounce PR review events (merge review + comments into single events)
-    const pendingEvents = debouncePRReviewEvents(rawEvents);
+    // Debounce events: filter redundant issue_labeled, merge PR review comments
+    const afterIssueDebounce = debounceIssueEvents(rawEvents);
+    const pendingEvents = debouncePRReviewEvents(afterIssueDebounce);
 
     // Then release lock
     const released = await conversationsRepo.releaseLock(conversationId, jobId);

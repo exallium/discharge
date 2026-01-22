@@ -64,25 +64,56 @@ export class EventRouter {
     event: ConversationEvent,
     triggerEvent: TriggerEvent
   ): Promise<EventRouteResult> {
-    // Get conversation ID from trigger
-    const conversationId = this.getConversationId(trigger, triggerEvent, event);
-    if (!conversationId) {
-      return {
-        action: 'ignored',
-        reason: 'Could not determine conversation ID',
-      };
+    // Check if this is a PR event - if so, try to find existing conversation by PR number first
+    // This ensures PR events route back to the original conversation (e.g., Sentry → PR)
+    const isPrEvent = event.type.startsWith('pr_') ||
+                      event.type === 'plan_approved' ||
+                      event.type === 'escalation_requested' ||
+                      event.target.type === 'pull_request';
+
+    let conversation;
+
+    const prNumber = typeof event.target.number === 'number'
+      ? event.target.number
+      : parseInt(String(event.target.number), 10);
+
+    if (isPrEvent && prNumber && !isNaN(prNumber)) {
+      // For PR events, first check if there's an existing conversation that owns this PR
+      const existingConversation = await this.conversationService.findByPrNumber(
+        triggerEvent.projectId,
+        prNumber
+      );
+
+      if (existingConversation) {
+        logger.info('Routing PR event to existing conversation', {
+          prNumber: event.target.number,
+          conversationId: existingConversation.id,
+          originalTrigger: existingConversation.triggerType,
+          externalId: existingConversation.externalId,
+        });
+        conversation = existingConversation;
+      }
     }
 
-    // Get or create conversation
-    const conversation = await this.conversationService.getOrCreateConversation(
-      trigger.type,
-      conversationId,
-      triggerEvent.projectId,
-      triggerEvent as unknown as Record<string, unknown>
-    );
+    // If no existing conversation found (or not a PR event), use normal lookup
+    if (!conversation) {
+      const conversationId = this.getConversationId(trigger, triggerEvent, event);
+      if (!conversationId) {
+        return {
+          action: 'ignored',
+          reason: 'Could not determine conversation ID',
+        };
+      }
+
+      conversation = await this.conversationService.getOrCreateConversation(
+        trigger.type,
+        conversationId,
+        triggerEvent.projectId,
+        triggerEvent as unknown as Record<string, unknown>
+      );
+    }
 
     // If conversation has a PR, ignore issue events (conversation continues on PR)
-    const isPrEvent = event.type.startsWith('pr_') || event.type.includes('pull_request');
     if (conversation.prNumber && !isPrEvent) {
       logger.debug('Ignoring issue event - conversation has moved to PR', {
         conversationId: conversation.id,
@@ -126,14 +157,18 @@ export class EventRouter {
     );
 
     if (lockAcquired) {
-      // For PR review events, add a short delay to allow subsequent comment events to queue
-      // GitHub sends review + comments in rapid succession, and we want them all in one batch
+      // Debounce certain event types to collect related events that arrive in rapid succession
+      // - PR reviews: GitHub sends review + comments separately
+      // - Issue opened: GitHub sends issue_opened + issue_labeled separately when created with labels
       const isPRReviewEvent = event.type === 'pr_review' || event.type === 'pr_review_comment';
+      const isIssueOpenedEvent = event.type === 'issue_opened';
+      const shouldDebounce = isPRReviewEvent || isIssueOpenedEvent;
       let allEvents = [event];
 
-      if (isPRReviewEvent) {
-        const debounceMs = 3000; // 3 second delay for PR reviews
-        logger.debug('Debouncing PR review event', {
+      if (shouldDebounce) {
+        // Shorter delay for issue events (labels arrive faster than review comments)
+        const debounceMs = isIssueOpenedEvent ? 2000 : 3000;
+        logger.debug('Debouncing event to collect related events', {
           conversationId: conversation.id,
           eventType: event.type,
           debounceMs,
@@ -150,10 +185,10 @@ export class EventRouter {
 
         // If events were queued, include them with the original event
         if (queuedEvents.pendingEvents.length > 0) {
-          logger.info('Merging debounced PR review events', {
+          logger.info('Merging debounced events', {
             conversationId: conversation.id,
             originalEvent: event.type,
-            queuedCount: queuedEvents.pendingEvents.length,
+            queuedEvents: queuedEvents.pendingEvents.map(pe => pe.eventType),
           });
 
           // Add queued events (they're already debounced by the service)

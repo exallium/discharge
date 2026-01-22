@@ -1031,13 +1031,11 @@ export async function orchestrateConversation(
     // Pre-flight checks
     await performPreflightChecks(runner);
 
-    // Get conversation message history
-    const conversation = await conversationService.getOrCreateConversation(
-      trigger.type,
-      conversationId,
-      projectId,
-      {}
-    );
+    // Get the existing conversation by ID (it was created by the router)
+    const conversation = await conversationService.getConversation(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation not found: ${conversationId}`);
+    }
     const messageHistory = await conversationService.getMessageHistory(conversation.id);
 
     // Check for plan approval event first - this determines how we load plan and PR info
