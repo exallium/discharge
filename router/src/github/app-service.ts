@@ -112,7 +112,7 @@ export function generateAppManifest(baseUrl: string): object {
     name: process.env.GITHUB_APP_NAME || generateAppName(),
     url: baseUrl,
     hook_attributes: {
-      url: `${baseUrl}/api/webhooks/github-issues`,
+      url: `${baseUrl}/api/webhooks/github`,
       active: true,
     },
     redirect_url: `${baseUrl}/api/github/app/callback`,

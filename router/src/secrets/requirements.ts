@@ -101,7 +101,7 @@ function getEnabledTriggerIds(project: ProjectConfig): string[] {
   }
 
   if (project.triggers.github?.issues) {
-    enabled.push('github-issues');
+    enabled.push('github');
   }
 
   if (project.triggers.circleci?.enabled) {
@@ -198,7 +198,7 @@ export function getAllSecretRequirements(): AggregatedSecretRequirement[] {
   }
 
   // All registered triggers
-  const triggerIds = ['sentry', 'github-issues', 'circleci'];
+  const triggerIds = ['sentry', 'github', 'circleci'];
   for (const triggerId of triggerIds) {
     const trigger = registry.getTriggerByType(triggerId);
     if (!trigger) continue;
@@ -230,13 +230,13 @@ export function isSharedSecret(secretId: string, project: ProjectConfig): boolea
 
 /**
  * Format usedBy array for display
- * e.g., ['vcs', 'github-issues'] -> 'VCS, GitHub Issues'
+ * e.g., ['vcs', 'github'] -> 'VCS, GitHub'
  */
 export function formatUsedBy(usedBy: string[]): string {
   const labels: Record<string, string> = {
     runner: 'Claude Code Runner',
     vcs: 'VCS',
-    'github-issues': 'GitHub Issues',
+    github: 'GitHub',
     sentry: 'Sentry',
     circleci: 'CircleCI',
   };

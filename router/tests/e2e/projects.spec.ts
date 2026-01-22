@@ -166,7 +166,7 @@ test.describe('Projects', () => {
         await page.goto(`/projects/${projectId}`);
 
         // Toggle GitHub Issues trigger
-        const githubTrigger = page.locator('#trigger-github-issues');
+        const githubTrigger = page.locator('#trigger-github');
         const wasChecked = await githubTrigger.isChecked();
         await githubTrigger.click();
 

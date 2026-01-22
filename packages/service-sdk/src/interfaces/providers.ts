@@ -56,15 +56,17 @@ export interface ProjectProvider {
 }
 
 /**
- * Provides GitHub-specific authentication
- * Separated from SecretsProvider because GitHub App auth requires special handling
+ * Provides VCS authentication (tokens, webhook secrets)
+ * Abstracted from specific VCS implementations
  */
-export interface GitHubAuthProvider {
+export interface VCSAuthProvider {
   /**
-   * Get an installation access token for a repository
+   * Get an access token for a repository
+   * For GitHub: returns GitHub App installation token
+   * For GitLab/Bitbucket: returns personal access token
    *
    * @param repoFullName - Repository identifier (e.g., 'owner/repo')
-   * @returns Installation token or null if not available
+   * @returns Access token or null if not available
    */
   getToken(repoFullName: string): Promise<string | null>;
 
@@ -77,14 +79,13 @@ export interface GitHubAuthProvider {
   getWebhookSecret(projectId?: string): Promise<string | null>;
 
   /**
-   * Get GitHub App credentials
-   * Returns null if GitHub App is not configured
+   * Get the app/bot identifier (optional)
+   * For GitHub: returns the GitHub App slug (e.g., 'my-app' for 'my-app[bot]')
+   * Used for bot self-detection to prevent triggering on own actions
+   *
+   * @returns App slug/identifier or null if not applicable
    */
-  getAppCredentials(): Promise<{
-    appId: number;
-    appSlug: string;
-    privateKey: string;
-  } | null>;
+  getAppSlug?(): Promise<string | null>;
 }
 
 /**
@@ -105,6 +106,6 @@ export interface LoggerProvider {
 export interface ProviderConfig {
   secrets: SecretsProvider;
   projects: ProjectProvider;
-  github?: GitHubAuthProvider;
+  vcsAuth?: VCSAuthProvider;
   logger?: LoggerProvider;
 }

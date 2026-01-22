@@ -15,6 +15,7 @@ import { findProjectById } from '../config/projects';
 import { logger } from '../logger';
 import * as jobHistoryRepo from '../db/repositories/job-history';
 import { cleanupStaleWorktrees } from '../runner/workspace';
+import { publishConversationEvent } from '../realtime/pubsub';
 
 /**
  * Whether git workspaces feature is enabled
@@ -140,6 +141,21 @@ async function processConversationJob(
     routeMode,
     iteration,
     isInitial,
+  });
+
+  // Publish job_started event
+  await publishConversationEvent(conversationId, {
+    type: 'job_started',
+    data: {
+      jobId: job.id,
+      iteration,
+      routeMode,
+    },
+  }).catch((err) => {
+    logger.warn('Failed to publish job_started event', {
+      conversationId,
+      error: getErrorMessage(err),
+    });
   });
 
   try {
@@ -315,15 +331,53 @@ export function createWorker(concurrency = 2) {
   );
 
   // Event handlers
-  worker.on('completed', (job, result) => {
+  worker.on('completed', async (job, result) => {
     console.log(`✓ Job ${job.id} completed`, {
       fixed: result.fixed,
       duration: `${result.duration}ms`,
     });
+
+    // Publish real-time event for conversation jobs
+    const conversationData = (job.data as unknown as { conversationData?: ConversationJobData }).conversationData;
+    if (conversationData?.conversationId) {
+      await publishConversationEvent(conversationData.conversationId, {
+        type: 'job_completed',
+        data: {
+          jobId: job.id,
+          fixed: result.fixed,
+          prUrl: result.prUrl,
+          durationMs: result.duration,
+        },
+      }).catch((err) => {
+        logger.warn('Failed to publish job_completed event', {
+          conversationId: conversationData.conversationId,
+          error: getErrorMessage(err),
+        });
+      });
+    }
   });
 
-  worker.on('failed', (job, error) => {
+  worker.on('failed', async (job, error) => {
     console.error(`✗ Job ${job?.id} failed:`, error.message);
+
+    // Publish real-time event for conversation jobs
+    if (job) {
+      const conversationData = (job.data as unknown as { conversationData?: ConversationJobData }).conversationData;
+      if (conversationData?.conversationId) {
+        await publishConversationEvent(conversationData.conversationId, {
+          type: 'job_failed',
+          data: {
+            jobId: job.id,
+            error: error.message,
+          },
+        }).catch((err) => {
+          logger.warn('Failed to publish job_failed event', {
+            conversationId: conversationData.conversationId,
+            error: getErrorMessage(err),
+          });
+        });
+      }
+    }
   });
 
   worker.on('error', (error) => {

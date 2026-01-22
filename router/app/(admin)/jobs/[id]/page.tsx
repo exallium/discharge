@@ -5,9 +5,6 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
   ArrowLeft,
-  MessageSquare,
-  Bot,
-  User,
   Clock,
   ExternalLink,
   AlertCircle,
@@ -22,7 +19,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { formatRelativeTime, formatDuration } from '@/lib/utils';
+import { TimelineLive, buildTimelineEvents } from '@/components/timeline';
+import { formatRelativeTime } from '@/lib/utils';
 import { conversationsRepo, jobHistoryRepo } from '@/src/db/repositories';
 import { ConversationActions } from '../conversation-actions';
 
@@ -46,8 +44,28 @@ export default async function ConversationDetailPage({ params }: ConversationDet
     jobHistoryRepo.findByTrigger(conversation.triggerType, conversation.externalId),
   ]);
 
-  // Build timeline from messages and jobs
-  const timeline = buildTimeline(messages, jobs);
+  // Build typed timeline events from messages and jobs
+  const timelineEvents = buildTimelineEvents(
+    messages.map(m => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      sourceType: m.sourceType,
+      sourceId: m.sourceId,
+      sourceAuthor: m.sourceAuthor,
+      createdAt: m.createdAt,
+    })),
+    jobs.map(j => ({
+      jobId: j.jobId,
+      status: j.status,
+      fixed: j.fixed,
+      error: j.error,
+      prUrl: j.prUrl,
+      startedAt: j.startedAt,
+      completedAt: j.completedAt,
+      createdAt: j.createdAt,
+    }))
+  );
 
   // Parse issue URL from trigger event if available
   const triggerLinks = conversation.triggerEvent?.links as Record<string, string> | undefined;
@@ -147,17 +165,11 @@ export default async function ConversationDetailPage({ params }: ConversationDet
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {timeline.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No activity yet
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {timeline.map((item, index) => (
-                    <TimelineItem key={item.id} item={item} isLast={index === timeline.length - 1} />
-                  ))}
-                </div>
-              )}
+              <TimelineLive
+                conversationId={conversation.id}
+                initialEvents={timelineEvents}
+                isRunning={conversation.state === 'running'}
+              />
             </CardContent>
           </Card>
 
@@ -318,175 +330,6 @@ export default async function ConversationDetailPage({ params }: ConversationDet
   );
 }
 
-// Types for timeline
-interface TimelineEntry {
-  id: string;
-  type: 'message' | 'job';
-  timestamp: Date;
-  data: {
-    role?: string;
-    content?: string;
-    sourceType?: string | null;
-    sourceAuthor?: string | null;
-    jobId?: string;
-    status?: string;
-    fixed?: boolean | null;
-    duration?: number;
-    error?: string | null;
-    prUrl?: string | null;
-  };
-}
-
-function buildTimeline(
-  messages: Awaited<ReturnType<typeof conversationsRepo.getMessages>>,
-  jobs: Awaited<ReturnType<typeof jobHistoryRepo.findByTrigger>>
-): TimelineEntry[] {
-  const timeline: TimelineEntry[] = [];
-
-  // Add messages
-  for (const msg of messages) {
-    timeline.push({
-      id: `msg-${msg.id}`,
-      type: 'message',
-      timestamp: msg.createdAt,
-      data: {
-        role: msg.role,
-        content: msg.content,
-        sourceType: msg.sourceType,
-        sourceAuthor: msg.sourceAuthor,
-      },
-    });
-  }
-
-  // Add jobs
-  for (const job of jobs) {
-    const startTime = job.startedAt ? new Date(job.startedAt) : new Date(job.createdAt);
-    const endTime = job.completedAt ? new Date(job.completedAt) : undefined;
-    const duration = endTime ? endTime.getTime() - startTime.getTime() : undefined;
-
-    timeline.push({
-      id: `job-${job.jobId}`,
-      type: 'job',
-      timestamp: startTime,
-      data: {
-        jobId: job.jobId,
-        status: job.status,
-        fixed: job.fixed,
-        duration,
-        error: job.error,
-        prUrl: job.prUrl,
-      },
-    });
-  }
-
-  // Sort by timestamp
-  timeline.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-
-  return timeline;
-}
-
-function TimelineItem({ item, isLast }: { item: TimelineEntry; isLast: boolean }) {
-  return (
-    <div className="flex gap-4">
-      {/* Timeline line and dot */}
-      <div className="flex flex-col items-center">
-        <div className="flex items-center justify-center w-8 h-8 rounded-full border-2 bg-background">
-          {item.type === 'message' ? (
-            item.data.role === 'assistant' ? (
-              <Bot className="h-4 w-4 text-primary" />
-            ) : item.data.role === 'user' ? (
-              <User className="h-4 w-4 text-muted-foreground" />
-            ) : (
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-            )
-          ) : (
-            <JobStatusIcon status={item.data.status || 'pending'} />
-          )}
-        </div>
-        {!isLast && <div className="w-0.5 flex-1 bg-border mt-2" />}
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 pb-6">
-        <div className="flex items-center gap-2 mb-1">
-          {item.type === 'message' ? (
-            <>
-              <span className="font-medium capitalize">{item.data.role}</span>
-              {item.data.sourceAuthor && (
-                <span className="text-sm text-muted-foreground">
-                  ({item.data.sourceAuthor})
-                </span>
-              )}
-            </>
-          ) : (
-            <>
-              <span className="font-medium">Job</span>
-              <span className="font-mono text-sm text-muted-foreground">
-                {item.data.jobId?.slice(0, 8)}
-              </span>
-              <JobStatusBadge status={item.data.status || 'pending'} fixed={item.data.fixed} />
-            </>
-          )}
-          <span className="text-sm text-muted-foreground ml-auto">
-            {formatRelativeTime(item.timestamp)}
-          </span>
-        </div>
-
-        {item.type === 'message' && item.data.content && (
-          <div className="p-3 rounded-lg bg-muted text-sm whitespace-pre-wrap">
-            {item.data.content.length > 500
-              ? `${item.data.content.slice(0, 500)}...`
-              : item.data.content}
-          </div>
-        )}
-
-        {item.type === 'job' && (
-          <div className="p-3 rounded-lg border text-sm">
-            <div className="flex items-center gap-4">
-              {item.data.duration && (
-                <div className="flex items-center gap-1 text-muted-foreground">
-                  <Clock className="h-3 w-3" />
-                  {formatDuration(item.data.duration)}
-                </div>
-              )}
-              {item.data.fixed !== null && (
-                <div className="flex items-center gap-1">
-                  {item.data.fixed ? (
-                    <>
-                      <CheckCircle2 className="h-3 w-3 text-green-500" />
-                      <span className="text-green-600">Fix created</span>
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground">No fix</span>
-                  )}
-                </div>
-              )}
-            </div>
-            {item.data.prUrl && (
-              <div className="mt-2">
-                <a
-                  href={item.data.prUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-primary hover:underline"
-                >
-                  <GitPullRequest className="h-3 w-3" />
-                  View Pull Request
-                </a>
-              </div>
-            )}
-            {item.data.error && (
-              <div className="mt-2 p-2 rounded bg-destructive/10 text-destructive text-xs">
-                {item.data.error}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function StateBadge({ state }: { state: string }) {
   switch (state) {
     case 'running':
@@ -535,19 +378,3 @@ function JobStatusIcon({ status }: { status: string }) {
   }
 }
 
-function JobStatusBadge({ status, fixed }: { status: string; fixed?: boolean | null }) {
-  if (status === 'success') {
-    return fixed ? (
-      <Badge className="bg-green-500 text-xs">Fixed</Badge>
-    ) : (
-      <Badge variant="secondary" className="text-xs">Analyzed</Badge>
-    );
-  }
-  if (status === 'failed') {
-    return <Badge variant="destructive" className="text-xs">Failed</Badge>;
-  }
-  if (status === 'running') {
-    return <Badge className="bg-blue-500 text-xs">Running</Badge>;
-  }
-  return <Badge variant="outline" className="text-xs">{status}</Badge>;
-}

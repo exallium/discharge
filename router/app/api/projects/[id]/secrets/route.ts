@@ -7,9 +7,7 @@ import { projectsRepo, settingsRepo } from '@/src/db/repositories';
 import { setSecret, deleteSecret } from '@/src/secrets';
 import { getProjectSecretRequirements, formatUsedBy } from '@/src/secrets/requirements';
 import type { ProjectConfig } from '@/src/config/projects';
-// Ensure runner plugins are registered before fetching secret requirements
-import { initializeRunners } from '@/src/runner';
-initializeRunners();
+// Services are initialized via instrumentation.ts before any route handlers run
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -28,7 +26,7 @@ export interface SecretStatus {
   description: string;
   /** Whether this secret is required */
   required: boolean;
-  /** Which plugins use this secret (e.g., ['vcs', 'github-issues']) */
+  /** Which plugins use this secret (e.g., ['vcs', 'github']) */
   usedBy: string[];
   /** Formatted usedBy for display (e.g., 'VCS, GitHub Issues') */
   usedByDisplay: string;
@@ -120,7 +118,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     if (triggers.github && typeof triggers.github === 'object') {
       const github = triggers.github as Record<string, unknown>;
-      if (github.issues) enabledTriggers.push('github-issues');
+      if (github.issues) enabledTriggers.push('github');
     }
     if (triggers.sentry && typeof triggers.sentry === 'object') {
       const sentry = triggers.sentry as Record<string, unknown>;

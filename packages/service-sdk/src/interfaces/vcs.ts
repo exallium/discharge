@@ -153,6 +153,57 @@ export interface VCSPlugin {
   ): Promise<string | null>;
 
   // ========================================
+  // Issue/PR Operations (Optional)
+  // ========================================
+
+  /**
+   * Add labels to an issue or PR
+   * Implementations can no-op if not supported
+   */
+  addLabels?(
+    owner: string,
+    repo: string,
+    number: number,
+    labels: string[]
+  ): Promise<void>;
+
+  /**
+   * Request reviewers for a pull request
+   * Implementations can no-op if not supported
+   */
+  requestReviewers?(
+    owner: string,
+    repo: string,
+    prNumber: number,
+    reviewers: string[]
+  ): Promise<void>;
+
+  /**
+   * Get pull request info (branch, base, state)
+   * Returns null if PR not found or not supported
+   */
+  getPullRequestInfo?(
+    owner: string,
+    repo: string,
+    prNumber: number
+  ): Promise<{
+    head: string;        // Source branch name
+    base: string;        // Target branch name
+    state: 'open' | 'closed' | 'merged';
+    title: string;
+    body: string;
+  } | null>;
+
+  /**
+   * Remove only the plan file, keeping the branch/PR open
+   * Used after successful plan execution
+   */
+  removePlanFileOnly?(
+    project: VCSProjectConfig,
+    planRef: string
+  ): Promise<void>;
+
+  // ========================================
   // Secret Requirements
   // ========================================
 

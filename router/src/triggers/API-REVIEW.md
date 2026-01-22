@@ -298,7 +298,7 @@ id: string;
  * Trigger type identifier
  * Used for worker routing and configuration
  *
- * Example: 'sentry', 'github-issues', 'circleci'
+ * Example: 'sentry', 'github', 'circleci'
  */
 type: string;
 ```

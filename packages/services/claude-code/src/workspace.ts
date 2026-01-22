@@ -19,7 +19,7 @@ import { mkdir, rm, readFile, writeFile, readdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import {
-  getGitHubAuthProvider,
+  getVCSAuthProvider,
   getLogger,
   getErrorMessage,
 } from '@ai-bug-fixer/service-sdk';
@@ -61,7 +61,7 @@ interface ProjectRepo {
  * Get GitHub token for a repository
  */
 async function getGitHubToken(repoFullName: string): Promise<string | null> {
-  const githubAuth = getGitHubAuthProvider();
+  const githubAuth = getVCSAuthProvider();
   if (!githubAuth) {
     return null;
   }

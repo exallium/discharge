@@ -26,7 +26,7 @@ import type {
 } from '@ai-bug-fixer/service-sdk';
 import {
   getSecretsProvider,
-  getGitHubAuthProvider,
+  getVCSAuthProvider,
   getLogger,
   getErrorMessage,
   isExecError,
@@ -243,7 +243,7 @@ async function getAuthenticatedRepoUrl(repoUrl: string): Promise<string> {
   }
   const repoFullName = match[1];
 
-  const githubAuth = getGitHubAuthProvider();
+  const githubAuth = getVCSAuthProvider();
   if (!githubAuth) {
     return repoUrl;
   }
@@ -1035,6 +1035,8 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       }, null, 2));
       parts.push('```');
       parts.push('');
+      parts.push('**CRITICAL:** Only these action types are valid: `create_plan`, `update_plan`, `execute`, `create_pr`, `comment`, `request_info`. Do NOT use any other action type.');
+      parts.push('');
       parts.push('**Requirements:**');
       parts.push('- `context`: Must describe the problem in 2-4 sentences minimum');
       parts.push('- `approach`: Must describe your solution strategy in 2-4 sentences minimum');
@@ -1080,6 +1082,8 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       parts.push('');
       parts.push('**Important:** Include ALL sections in the content, even if unchanged. The content replaces the entire plan file.');
       parts.push('');
+      parts.push('**CRITICAL:** Only these action types are valid: `create_plan`, `update_plan`, `execute`, `create_pr`, `comment`, `request_info`. Do NOT use any other action type.');
+      parts.push('');
       parts.push('If you only need to acknowledge feedback or ask a question (no plan changes), use:');
       parts.push('```json');
       parts.push('{');
@@ -1102,7 +1106,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       parts.push('}');
       parts.push('```');
       parts.push('');
-      parts.push('Action types: "create_plan", "update_plan", "execute", "comment", "request_info"');
+      parts.push('**CRITICAL:** Only these action types are valid: `create_plan`, `update_plan`, `execute`, `create_pr`, `comment`, `request_info`. Do NOT use any other action type.');
     }
 
     return parts.join('\n');
@@ -1127,6 +1131,20 @@ export class ClaudeCodeRunner implements RunnerPlugin {
 
       // Validate required fields
       if (result.response && result.action) {
+        // Validate action type - convert unknown types to comment
+        const VALID_ACTION_TYPES = ['create_plan', 'update_plan', 'execute', 'create_pr', 'comment', 'request_info'];
+        if (!VALID_ACTION_TYPES.includes(result.action.type)) {
+          logger.warn('Runner returned invalid action type, converting to comment', {
+            invalidType: result.action.type,
+            response: result.response?.slice(0, 200),
+          });
+          // Convert to comment with the response
+          result.action = {
+            type: 'comment',
+            body: result.response || `Analysis complete. (Original action: ${result.action.type})`,
+          };
+        }
+
         // If action is create_plan, validate and fix the plan structure
         if (result.action.type === 'create_plan' && result.action.plan) {
           // Pass stdout as fallback content for empty sections

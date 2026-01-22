@@ -18,6 +18,7 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ResourceLinks, extractIssueUrl } from '@/components/ui/resource-links';
 import { formatRelativeTime } from '@/lib/utils';
 import { projectsRepo, conversationsRepo } from '@/src/db/repositories';
 import { ConversationActions } from './conversation-actions';
@@ -101,14 +102,23 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
                   {conversations.map((conv) => (
                     <TableRow key={conv.id}>
                       <TableCell>
-                        <Link
-                          href={`/jobs/${conv.id}`}
-                          className="font-medium hover:underline"
-                        >
-                          {conv.externalId}
-                        </Link>
-                        <div className="text-xs text-muted-foreground">
-                          {conv.triggerType}
+                        <div className="flex items-center gap-2">
+                          <div>
+                            <Link
+                              href={`/jobs/${conv.id}`}
+                              className="font-medium hover:underline"
+                            >
+                              {conv.externalId}
+                            </Link>
+                            <div className="text-xs text-muted-foreground">
+                              {conv.triggerType}
+                            </div>
+                          </div>
+                          <ResourceLinks
+                            issueUrl={extractIssueUrl(conv.triggerEvent)}
+                            prUrl={conv.prUrl}
+                            prNumber={conv.prNumber}
+                          />
                         </div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">

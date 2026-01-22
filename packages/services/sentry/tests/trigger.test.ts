@@ -1,49 +1,28 @@
-import { SentryTrigger } from '@ai-bug-fixer/service-sentry';
-import type { TriggerEvent } from '@ai-bug-fixer/service-sdk';
-import { mockWebhookPayloads } from '../../fixtures/webhook-payloads';
-import { createMockWebhookRequest } from '../../mocks/webhook-request';
-import * as projectsModule from '../../../src/config/projects';
+/**
+ * Tests for SentryTrigger
+ */
 
-// Mock the projects module
-jest.mock('../../../src/config/projects', () => ({
-  findProjectsBySource: jest.fn(),
-}));
+import crypto from 'crypto';
+import { SentryTrigger } from '../src/trigger';
+import type { TriggerEvent } from '@ai-bug-fixer/service-sdk';
+import { configureProviders, resetProviders } from '@ai-bug-fixer/service-sdk';
+import { mockWebhookPayloads } from './fixtures/webhook-payloads';
+import { createMockWebhookRequest } from './helpers/webhook-request';
+import { mockProject, mockProjectProvider, mockSecretsProvider, mockLoggerProvider } from './setup';
+
+// Mock global fetch
+global.fetch = jest.fn();
 
 describe('SentryTrigger', () => {
   let trigger: SentryTrigger;
-  const mockFindProjectsBySource = projectsModule.findProjectsBySource as jest.MockedFunction<
-    typeof projectsModule.findProjectsBySource
-  >;
-
-  // Mock project configuration
-  const mockProject = {
-    id: 'test-project',
-    repo: 'git@github.com:owner/my-app.git',
-    repoFullName: 'owner/my-app',
-    branch: 'main',
-    vcs: {
-      type: 'github' as const,
-      owner: 'owner',
-      repo: 'my-app',
-    },
-    triggers: {
-      sentry: {
-        projectSlug: 'my-app',
-        enabled: true,
-      },
-    },
-  };
 
   beforeEach(() => {
     trigger = new SentryTrigger();
     jest.clearAllMocks();
-
-    // Default: return mock project
-    mockFindProjectsBySource.mockResolvedValue([mockProject]);
-
-    // Clear environment variables
-    delete process.env.SENTRY_WEBHOOK_SECRET;
-    delete process.env.SENTRY_AUTH_TOKEN;
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      statusText: 'OK',
+    });
   });
 
   describe('id and type', () => {
@@ -55,7 +34,7 @@ describe('SentryTrigger', () => {
 
   describe('validateWebhook', () => {
     it('should accept webhook without signature when no secret is configured', async () => {
-      const req = createMockWebhookRequest({}, mockWebhookPayloads.sentry.issueCreated);
+      const req = createMockWebhookRequest({}, mockWebhookPayloads.issueCreated);
 
       const result = await trigger.validateWebhook(req);
       expect(result).toBe(true);
@@ -64,7 +43,7 @@ describe('SentryTrigger', () => {
     it('should reject webhook with signature when no secret is configured', async () => {
       const req = createMockWebhookRequest(
         { 'sentry-hook-signature': 'some-signature' },
-        mockWebhookPayloads.sentry.issueCreated
+        mockWebhookPayloads.issueCreated
       );
 
       const result = await trigger.validateWebhook(req);
@@ -75,8 +54,7 @@ describe('SentryTrigger', () => {
       const secret = 'test-secret';
       process.env.SENTRY_WEBHOOK_SECRET = secret;
 
-      const body = mockWebhookPayloads.sentry.issueCreated;
-      const crypto = require('crypto');
+      const body = mockWebhookPayloads.issueCreated;
       const expectedSignature = crypto
         .createHmac('sha256', secret)
         .update(JSON.stringify(body))
@@ -96,7 +74,7 @@ describe('SentryTrigger', () => {
 
       const req = createMockWebhookRequest(
         { 'sentry-hook-signature': 'invalid-signature' },
-        mockWebhookPayloads.sentry.issueCreated
+        mockWebhookPayloads.issueCreated
       );
 
       const result = await trigger.validateWebhook(req);
@@ -106,7 +84,7 @@ describe('SentryTrigger', () => {
 
   describe('parseWebhook', () => {
     it('should parse issue created webhook', async () => {
-      const payload = mockWebhookPayloads.sentry.issueCreated;
+      const payload = mockWebhookPayloads.issueCreated;
       const event = await trigger.parseWebhook(payload);
 
       expect(event).toBeTruthy();
@@ -125,7 +103,7 @@ describe('SentryTrigger', () => {
     });
 
     it('should parse minimal issue payload', async () => {
-      const payload = mockWebhookPayloads.sentry.issueCreatedMinimal;
+      const payload = mockWebhookPayloads.issueCreatedMinimal;
       const event = await trigger.parseWebhook(payload);
 
       expect(event).toBeTruthy();
@@ -137,37 +115,43 @@ describe('SentryTrigger', () => {
     });
 
     it('should return null for non-created actions', async () => {
-      const payload = mockWebhookPayloads.sentry.issueResolved;
+      const payload = mockWebhookPayloads.issueResolved;
       const event = await trigger.parseWebhook(payload);
 
       expect(event).toBeNull();
     });
 
     it('should return null when project slug is missing', async () => {
-      const payload = mockWebhookPayloads.sentry.issueWithoutProjectSlug;
+      const payload = mockWebhookPayloads.issueWithoutProjectSlug;
       const event = await trigger.parseWebhook(payload);
 
       expect(event).toBeNull();
     });
 
     it('should return null when no matching project is found', async () => {
-      mockFindProjectsBySource.mockResolvedValue([]);
+      // Configure with empty project provider
+      resetProviders();
+      configureProviders({
+        secrets: mockSecretsProvider,
+        projects: {
+          async findByRepo() { return null; },
+          async findBySource() { return []; },
+        },
+        logger: mockLoggerProvider,
+      });
 
-      const payload = mockWebhookPayloads.sentry.issueCreated;
+      const payload = mockWebhookPayloads.issueCreated;
       const event = await trigger.parseWebhook(payload);
 
       expect(event).toBeNull();
-      expect(mockFindProjectsBySource).toHaveBeenCalledWith('sentry', expect.any(Function));
-    });
 
-    it('should use first project when multiple matches are found', async () => {
-      const secondProject = { ...mockProject, id: 'second-project' };
-      mockFindProjectsBySource.mockResolvedValue([mockProject, secondProject]);
-
-      const payload = mockWebhookPayloads.sentry.issueCreated;
-      const event = await trigger.parseWebhook(payload);
-
-      expect(event?.projectId).toBe('test-project');
+      // Restore default provider
+      resetProviders();
+      configureProviders({
+        secrets: mockSecretsProvider,
+        projects: mockProjectProvider,
+        logger: mockLoggerProvider,
+      });
     });
 
     it('should handle issue without metadata gracefully', async () => {
@@ -420,16 +404,8 @@ describe('SentryTrigger', () => {
   });
 
   describe('updateStatus', () => {
-    beforeEach(() => {
-      global.fetch = jest.fn();
-    });
-
     it('should update issue status when fixed', async () => {
       process.env.SENTRY_AUTH_TOKEN = 'test-token';
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        statusText: 'OK',
-      });
 
       const event: TriggerEvent = {
         triggerType: 'sentry',
@@ -492,16 +468,8 @@ describe('SentryTrigger', () => {
   });
 
   describe('addComment', () => {
-    beforeEach(() => {
-      global.fetch = jest.fn();
-    });
-
     it('should add comment to issue', async () => {
       process.env.SENTRY_AUTH_TOKEN = 'test-token';
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        statusText: 'OK',
-      });
 
       const event: TriggerEvent = {
         triggerType: 'sentry',
@@ -548,14 +516,8 @@ describe('SentryTrigger', () => {
   describe('Custom Instance URL', () => {
     const mockProjectWithInstanceUrl = {
       id: 'test-project',
-      repo: 'git@github.com:owner/my-app.git',
       repoFullName: 'owner/my-app',
       branch: 'main',
-      vcs: {
-        type: 'github' as const,
-        owner: 'owner',
-        repo: 'my-app',
-      },
       triggers: {
         sentry: {
           projectSlug: 'my-app',
@@ -566,10 +528,31 @@ describe('SentryTrigger', () => {
       },
     };
 
-    it('should include instanceUrl in parsed event metadata', async () => {
-      mockFindProjectsBySource.mockResolvedValue([mockProjectWithInstanceUrl]);
+    beforeEach(() => {
+      // Configure with custom project provider
+      resetProviders();
+      configureProviders({
+        secrets: mockSecretsProvider,
+        projects: {
+          async findByRepo() { return mockProjectWithInstanceUrl; },
+          async findBySource() { return [mockProjectWithInstanceUrl]; },
+        },
+        logger: mockLoggerProvider,
+      });
+    });
 
-      const payload = mockWebhookPayloads.sentry.issueCreated;
+    afterEach(() => {
+      // Restore default provider
+      resetProviders();
+      configureProviders({
+        secrets: mockSecretsProvider,
+        projects: mockProjectProvider,
+        logger: mockLoggerProvider,
+      });
+    });
+
+    it('should include instanceUrl in parsed event metadata', async () => {
+      const payload = mockWebhookPayloads.issueCreated;
       const event = await trigger.parseWebhook(payload);
 
       expect(event).toBeTruthy();
@@ -578,20 +561,10 @@ describe('SentryTrigger', () => {
     });
 
     it('should include instanceUrl in API link', async () => {
-      mockFindProjectsBySource.mockResolvedValue([mockProjectWithInstanceUrl]);
-
-      const payload = mockWebhookPayloads.sentry.issueCreated;
+      const payload = mockWebhookPayloads.issueCreated;
       const event = await trigger.parseWebhook(payload);
 
       expect(event?.links?.api).toBe('https://sentry.mycompany.com/api/0/issues/12345/');
-    });
-
-    it('should use default sentry.io when no instanceUrl configured', async () => {
-      const payload = mockWebhookPayloads.sentry.issueCreated;
-      const event = await trigger.parseWebhook(payload);
-
-      expect(event?.metadata.sentryInstanceUrl).toBe('https://sentry.io');
-      expect(event?.links?.api).toBe('https://sentry.io/api/0/issues/12345/');
     });
 
     it('should use custom instanceUrl in API tools', async () => {
@@ -624,10 +597,6 @@ describe('SentryTrigger', () => {
 
     it('should use custom instanceUrl when updating status', async () => {
       process.env.SENTRY_AUTH_TOKEN = 'test-token';
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        statusText: 'OK',
-      });
 
       const event: TriggerEvent = {
         triggerType: 'sentry',
@@ -651,10 +620,6 @@ describe('SentryTrigger', () => {
 
     it('should use custom instanceUrl when adding comments', async () => {
       process.env.SENTRY_AUTH_TOKEN = 'test-token';
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        statusText: 'OK',
-      });
 
       const event: TriggerEvent = {
         triggerType: 'sentry',

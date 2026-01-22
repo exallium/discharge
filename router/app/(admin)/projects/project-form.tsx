@@ -355,13 +355,13 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
           <div className="flex items-center space-x-2">
             <input
               type="checkbox"
-              id="trigger-github-issues"
-              value="github-issues"
+              id="trigger-github"
+              value="github"
               checked={githubIssues}
               onChange={(e) => setGithubIssues(e.target.checked)}
               className="h-4 w-4 rounded border-input"
             />
-            <Label htmlFor="trigger-github-issues">GitHub Issues</Label>
+            <Label htmlFor="trigger-github">GitHub Issues</Label>
           </div>
 
           <div className="flex items-center space-x-2">
@@ -482,7 +482,7 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
         <ProjectSecrets
           projectId={project.id}
           enabledTriggers={[
-            ...(githubIssues ? ['github-issues'] : []),
+            ...(githubIssues ? ['github'] : []),
             ...(sentry ? ['sentry'] : []),
             ...(circleci ? ['circleci'] : []),
           ]}
@@ -522,7 +522,7 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
       {!isNew && (githubIssues || sentry || circleci) && (
         <WebhookInfo
           enabledTriggers={[
-            ...(githubIssues ? ['github-issues'] : []),
+            ...(githubIssues ? ['github'] : []),
             ...(sentry ? ['sentry'] : []),
             ...(circleci ? ['circleci'] : []),
           ]}

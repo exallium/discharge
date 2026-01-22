@@ -16,7 +16,7 @@
 import type {
   SecretsProvider,
   ProjectProvider,
-  GitHubAuthProvider,
+  VCSAuthProvider,
   LoggerProvider,
   ProviderConfig,
 } from './interfaces/providers';
@@ -24,7 +24,7 @@ import type {
 // Provider instances (configured by router at startup)
 let secretsProvider: SecretsProvider | null = null;
 let projectProvider: ProjectProvider | null = null;
-let githubAuthProvider: GitHubAuthProvider | null = null;
+let vcsAuthProvider: VCSAuthProvider | null = null;
 let loggerProvider: LoggerProvider | null = null;
 
 // Default logger that uses console
@@ -50,7 +50,7 @@ const defaultLogger: LoggerProvider = {
  * configureProviders({
  *   secrets: mySecretsAdapter,
  *   projects: myProjectsAdapter,
- *   github: myGitHubAdapter,
+ *   vcsAuth: myVCSAuthAdapter,
  *   logger: myLogger,
  * });
  * ```
@@ -58,7 +58,7 @@ const defaultLogger: LoggerProvider = {
 export function configureProviders(config: ProviderConfig): void {
   secretsProvider = config.secrets;
   projectProvider = config.projects;
-  githubAuthProvider = config.github ?? null;
+  vcsAuthProvider = config.vcsAuth ?? null;
   loggerProvider = config.logger ?? defaultLogger;
 
   getLogger().info('SDK providers configured');
@@ -77,7 +77,7 @@ export function isConfigured(): boolean {
 export function resetProviders(): void {
   secretsProvider = null;
   projectProvider = null;
-  githubAuthProvider = null;
+  vcsAuthProvider = null;
   loggerProvider = null;
 }
 
@@ -112,12 +112,12 @@ export function getProjectProvider(): ProjectProvider {
 }
 
 /**
- * Get the GitHub auth provider
+ * Get the VCS auth provider
  *
- * @returns GitHub auth provider or null if not configured
+ * @returns VCS auth provider or null if not configured
  */
-export function getGitHubAuthProvider(): GitHubAuthProvider | null {
-  return githubAuthProvider;
+export function getVCSAuthProvider(): VCSAuthProvider | null {
+  return vcsAuthProvider;
 }
 
 /**

@@ -47,7 +47,7 @@ async function diagnoseFilterReason(triggerId: string, body: unknown): Promise<F
   // Extract common fields for logging
   const eventInfo: Record<string, unknown> = {};
 
-  if (triggerId === 'github-issues') {
+  if (triggerId === 'github') {
     const action = payload?.action;
     const repoFullName = payload?.repository?.full_name;
     const issueNumber = payload?.issue?.number;

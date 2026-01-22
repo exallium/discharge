@@ -9,7 +9,7 @@
 import type {
   SecretsProvider,
   ProjectProvider,
-  GitHubAuthProvider,
+  VCSAuthProvider,
   LoggerProvider,
   TriggerProjectConfig,
 } from '@ai-bug-fixer/service-sdk';
@@ -82,11 +82,13 @@ export const projectsAdapter: ProjectProvider = {
 };
 
 /**
- * GitHub auth provider adapter
+ * VCS auth provider adapter
  *
- * Wraps the router's GitHub App service to implement GitHubAuthProvider interface.
+ * Wraps the router's GitHub App service to implement VCSAuthProvider interface.
+ * Currently supports GitHub via GitHub App authentication.
+ * Future: Could be extended to support GitLab, Bitbucket, etc.
  */
-export const githubAuthAdapter: GitHubAuthProvider = {
+export const vcsAuthAdapter: VCSAuthProvider = {
   async getToken(repoFullName: string): Promise<string | null> {
     const credentials = await getAppCredentials();
     if (!credentials) return null;
@@ -119,19 +121,9 @@ export const githubAuthAdapter: GitHubAuthProvider = {
     return credentials?.webhookSecret ?? null;
   },
 
-  async getAppCredentials(): Promise<{
-    appId: number;
-    appSlug: string;
-    privateKey: string;
-  } | null> {
+  async getAppSlug(): Promise<string | null> {
     const credentials = await getAppCredentials();
-    if (!credentials) return null;
-
-    return {
-      appId: credentials.appId,
-      appSlug: credentials.appSlug,
-      privateKey: credentials.pem,
-    };
+    return credentials?.appSlug ?? null;
   },
 };
 

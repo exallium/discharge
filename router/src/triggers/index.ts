@@ -18,7 +18,7 @@ export * from './base';
 
 /**
  * Get a trigger plugin by its ID
- * Triggers are identified by ID (e.g., 'github-issues', 'sentry', 'circleci')
+ * Triggers are identified by ID (e.g., 'github', 'sentry', 'circleci')
  */
 export function getTriggerById(id: string): TriggerPlugin | undefined {
   return registry.getTriggerByType(id);

@@ -30,7 +30,7 @@ export interface WebhookRequest {
  */
 export interface TriggerEvent {
   // Core identification
-  triggerType: string;           // 'sentry', 'github-issues', etc.
+  triggerType: string;           // 'sentry', 'github', etc.
   triggerId: string;             // Issue ID, event ID, job ID, etc.
   projectId: string;             // Which project config to use
 

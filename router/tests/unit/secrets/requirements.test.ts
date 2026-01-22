@@ -19,8 +19,8 @@ jest.mock('@ai-bug-fixer/service-locator', () => ({
   registry: {
     getTriggerByType: jest.fn((id: string) => {
       const triggers: Record<string, { getRequiredSecrets: () => Array<{ id: string; label: string; description: string; required: boolean }> }> = {
-        // github-issues no longer requires github_token - uses GitHub App authentication
-        'github-issues': {
+        // github no longer requires github_token - uses GitHub App authentication
+        github: {
           getRequiredSecrets: () => [],
         },
         sentry: {
@@ -58,6 +58,9 @@ jest.mock('@ai-bug-fixer/service-locator', () => ({
       };
       return triggers[id] || null;
     }),
+    getRunnerByType: jest.fn(() => null), // No runners registered in test
+    getAllRunners: jest.fn(() => []), // No runners registered in test
+    getAllTriggers: jest.fn(() => []), // No triggers registered in test
   },
 }));
 
@@ -133,11 +136,11 @@ describe('Secret Requirements Aggregation', () => {
       expect(ids).not.toContain('github_token'); // GitHub App handles this
     });
 
-    it('should return empty for GitHub project with github-issues (both use App auth)', () => {
+    it('should return empty for GitHub project with github trigger (both use App auth)', () => {
       const project = createProject({ vcsType: 'github', githubIssuesEnabled: true });
       const requirements = getProjectSecretRequirements(project);
 
-      // Both GitHub VCS and github-issues use GitHub App authentication
+      // Both GitHub VCS and github trigger use GitHub App authentication
       expect(requirements).toHaveLength(0);
     });
 
@@ -226,13 +229,13 @@ describe('Secret Requirements Aggregation', () => {
     });
 
     it('should format trigger names correctly', () => {
-      expect(formatUsedBy(['github-issues'])).toBe('GitHub Issues');
+      expect(formatUsedBy(['github'])).toBe('GitHub');
       expect(formatUsedBy(['sentry'])).toBe('Sentry');
       expect(formatUsedBy(['circleci'])).toBe('CircleCI');
     });
 
     it('should join multiple values with comma', () => {
-      expect(formatUsedBy(['vcs', 'github-issues'])).toBe('VCS, GitHub Issues');
+      expect(formatUsedBy(['vcs', 'github'])).toBe('VCS, GitHub');
     });
 
     it('should handle unknown identifiers', () => {

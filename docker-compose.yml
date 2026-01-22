@@ -42,7 +42,9 @@ services:
   # Web Application (Next.js)
   # ─────────────────────────────────────────────
   web:
-    build: ./router
+    build:
+      context: .
+      dockerfile: router/Dockerfile
     command: npm run start
     ports:
       - "3000:3000"
@@ -78,7 +80,9 @@ services:
   # Background Worker (BullMQ Job Processor)
   # ─────────────────────────────────────────────
   worker:
-    build: ./router
+    build:
+      context: .
+      dockerfile: router/Dockerfile
     command: npm run worker
     depends_on:
       postgres:

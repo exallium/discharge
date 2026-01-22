@@ -1,40 +1,18 @@
-import { CircleCITrigger } from '@ai-bug-fixer/service-circleci';
-import { createMockWebhookRequest } from '../../mocks/webhook-request';
-import * as projectsModule from '../../../src/config/projects';
+/**
+ * Tests for CircleCITrigger
+ */
 
-// Mock projects module
-jest.mock('../../../src/config/projects', () => ({
-  findProjectsBySource: jest.fn(),
-}));
+import crypto from 'crypto';
+import { CircleCITrigger } from '../src/trigger';
+import { configureProviders, resetProviders } from '@ai-bug-fixer/service-sdk';
+import { createMockWebhookRequest } from './helpers/webhook-request';
+import { mockProject, mockProjectProvider, mockSecretsProvider, mockLoggerProvider } from './setup';
 
 describe('CircleCITrigger', () => {
   let trigger: CircleCITrigger;
-  const mockFindProjectsBySource = projectsModule.findProjectsBySource as jest.MockedFunction<
-    typeof projectsModule.findProjectsBySource
-  >;
-
-  // Mock project configuration
-  const mockProject = {
-    id: 'test-project',
-    repo: 'git@github.com:owner/repo.git',
-    repoFullName: 'owner/repo',
-    branch: 'main',
-    vcs: { type: 'github' as const, owner: 'owner', repo: 'repo' },
-    triggers: {
-      circleci: {
-        enabled: true,
-        projectSlug: 'gh/owner/repo',
-      },
-    },
-  };
 
   beforeEach(() => {
     trigger = new CircleCITrigger();
-    mockFindProjectsBySource.mockResolvedValue([mockProject]);
-    delete process.env.CIRCLECI_WEBHOOK_SECRET;
-  });
-
-  afterEach(() => {
     jest.clearAllMocks();
   });
 
@@ -57,7 +35,6 @@ describe('CircleCITrigger', () => {
       process.env.CIRCLECI_WEBHOOK_SECRET = 'test-secret';
 
       const body = { test: 'payload' };
-      const crypto = require('crypto');
       const signature = crypto
         .createHmac('sha256', 'test-secret')
         .update(JSON.stringify(body))
@@ -182,10 +159,27 @@ describe('CircleCITrigger', () => {
     });
 
     it('should return null if project not found', async () => {
-      mockFindProjectsBySource.mockResolvedValue([]);
+      // Configure with empty project provider
+      resetProviders();
+      configureProviders({
+        secrets: mockSecretsProvider,
+        projects: {
+          async findByRepo() { return null; },
+          async findBySource() { return []; },
+        },
+        logger: mockLoggerProvider,
+      });
 
       const event = await trigger.parseWebhook(failedWorkflowPayload);
       expect(event).toBeNull();
+
+      // Restore default provider
+      resetProviders();
+      configureProviders({
+        secrets: mockSecretsProvider,
+        projects: mockProjectProvider,
+        logger: mockLoggerProvider,
+      });
     });
   });
 
@@ -469,8 +463,6 @@ describe('CircleCITrigger', () => {
 
   describe('updateStatus', () => {
     it('should log status update', async () => {
-      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
       const event = {
         triggerType: 'circleci',
         triggerId: 'workflow-123',
@@ -483,18 +475,15 @@ describe('CircleCITrigger', () => {
 
       await trigger.updateStatus(event, { fixed: true });
 
-      expect(consoleSpy).toHaveBeenCalledWith(
+      // Check that info was logged via the mock logger
+      expect(mockLoggerProvider.info).toHaveBeenCalledWith(
         expect.stringContaining('[CircleCITrigger] Status update for workflow-123: fixed')
       );
-
-      consoleSpy.mockRestore();
     });
   });
 
   describe('addComment', () => {
     it('should log comment addition', async () => {
-      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
       const event = {
         triggerType: 'circleci',
         triggerId: 'workflow-123',
@@ -507,11 +496,10 @@ describe('CircleCITrigger', () => {
 
       await trigger.addComment(event, 'Test comment');
 
-      expect(consoleSpy).toHaveBeenCalledWith(
+      // Check that info was logged via the mock logger
+      expect(mockLoggerProvider.info).toHaveBeenCalledWith(
         expect.stringContaining('[CircleCITrigger] Would add comment to workflow-123')
       );
-
-      consoleSpy.mockRestore();
     });
   });
 });

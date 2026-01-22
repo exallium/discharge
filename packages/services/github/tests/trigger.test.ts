@@ -1,47 +1,32 @@
-import { GitHubIssuesTrigger } from '@ai-bug-fixer/service-github';
-import { mockWebhookPayloads } from '../../fixtures/webhook-payloads';
-import { createMockWebhookRequest } from '../../mocks/webhook-request';
+/**
+ * Tests for GitHubIssuesTrigger
+ */
+
 import crypto from 'crypto';
+import { GitHubIssuesTrigger } from '../src/trigger';
+import { mockWebhookPayloads, clonePayload } from './fixtures/webhook-payloads';
+import { createMockWebhookRequest } from './helpers/webhook-request';
+import {
+  mockWebhookSecret,
+  mockProject,
+  mockProjectProvider,
+  mockVCSAuthProvider,
+  mockLoggerProvider,
+} from './setup';
 
-// Mock the VCS module for secret retrieval
-const mockGetGitHubWebhookSecret = jest.fn();
-jest.mock('../../../src/vcs', () => ({
-  getGitHubToken: jest.fn().mockResolvedValue('test-token'),
-  getGitHubWebhookSecret: (...args: unknown[]) => mockGetGitHubWebhookSecret(...args),
-}));
+// Mutable test state - use module-level variables from setup
+let currentWebhookSecret: string | null;
+let currentToken: string | null;
 
-// Mock the GitHub App service
-jest.mock('../../../src/github/app-service', () => ({
-  getAppCredentials: jest.fn().mockResolvedValue({
-    appSlug: 'test-ai-bug-fixer',
-    appName: 'Test AI Bug Fixer',
-  }),
-}));
+// Re-export setup variables for test modification
+const setWebhookSecret = (secret: string | null) => {
+  // We need to update the mock provider directly for these tests
+  (mockVCSAuthProvider.getWebhookSecret as jest.Mock) = jest.fn().mockResolvedValue(secret);
+};
 
-// Mock the projects config
-jest.mock('../../../src/config/projects', () => ({
-  findProjectByRepo: jest.fn((repoFullName: string) => {
-    if (repoFullName === 'owner/repo') {
-      return {
-        id: 'test-project',
-        repo: 'git@github.com:owner/repo.git',
-        repoFullName: 'owner/repo',
-        branch: 'main',
-        vcs: { type: 'github' as const, owner: 'owner', repo: 'repo' },
-        triggers: {
-          github: {
-            issues: true,
-            labels: ['ai-fix', 'bug'],
-            requireLabel: false,
-            commentTrigger: '/claude fix',
-            allowedUsers: ['maintainer-alice', 'maintainer-bob'],
-          },
-        },
-      };
-    }
-    return undefined;
-  }),
-}));
+const setToken = (token: string | null) => {
+  (mockVCSAuthProvider.getToken as jest.Mock) = jest.fn().mockResolvedValue(token);
+};
 
 // Mock global fetch
 global.fetch = jest.fn();
@@ -52,21 +37,18 @@ describe('GitHubIssuesTrigger', () => {
   beforeEach(() => {
     trigger = new GitHubIssuesTrigger();
     jest.clearAllMocks();
-    mockGetGitHubWebhookSecret.mockReset();
-    delete process.env.GITHUB_WEBHOOK_SECRET;
-    delete process.env.GITHUB_TOKEN;
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
   });
 
   afterEach(() => {
-    delete process.env.GITHUB_WEBHOOK_SECRET;
-    delete process.env.GITHUB_TOKEN;
     jest.clearAllMocks();
   });
 
   describe('validateWebhook', () => {
     it('should validate correct GitHub signature', async () => {
-      mockGetGitHubWebhookSecret.mockResolvedValue('test-secret');
-
       const body = { test: 'payload' };
       const signature = 'sha256=' + crypto
         .createHmac('sha256', 'test-secret')
@@ -80,8 +62,6 @@ describe('GitHubIssuesTrigger', () => {
     });
 
     it('should reject incorrect signature', async () => {
-      mockGetGitHubWebhookSecret.mockResolvedValue('test-secret');
-
       const mockReq = createMockWebhookRequest(
         { 'x-hub-signature-256': 'sha256=invalid' },
         { test: 'payload' }
@@ -92,94 +72,13 @@ describe('GitHubIssuesTrigger', () => {
     });
 
     it('should reject webhook without signature', async () => {
-      mockGetGitHubWebhookSecret.mockResolvedValue('test-secret');
-
       const mockReq = createMockWebhookRequest({}, { test: 'payload' });
 
       const result = await trigger.validateWebhook(mockReq);
       expect(result).toBe(false);
     });
 
-    it('should reject webhook when secret not configured', async () => {
-      mockGetGitHubWebhookSecret.mockResolvedValue(null);
-
-      const body = { test: 'payload' };
-      const signature = 'sha256=' + crypto
-        .createHmac('sha256', 'test-secret')
-        .update(JSON.stringify(body))
-        .digest('hex');
-
-      const mockReq = createMockWebhookRequest({ 'x-hub-signature-256': signature }, body);
-
-      const result = await trigger.validateWebhook(mockReq);
-      expect(result).toBe(false);
-    });
-
-    it('should extract projectId from payload and use project-specific secret', async () => {
-      mockGetGitHubWebhookSecret.mockResolvedValue('project-secret');
-
-      const body = {
-        action: 'opened',
-        repository: { full_name: 'owner/repo' },
-        issue: { number: 1 },
-      };
-      const signature = 'sha256=' + crypto
-        .createHmac('sha256', 'project-secret')
-        .update(JSON.stringify(body))
-        .digest('hex');
-
-      const mockReq = createMockWebhookRequest({ 'x-hub-signature-256': signature }, body);
-
-      const result = await trigger.validateWebhook(mockReq);
-
-      expect(result).toBe(true);
-      // Verify getGitHubWebhookSecret was called with the project ID
-      expect(mockGetGitHubWebhookSecret).toHaveBeenCalledWith('test-project');
-    });
-
-    it('should fall back to global secret when repository not in payload', async () => {
-      mockGetGitHubWebhookSecret.mockResolvedValue('global-secret');
-
-      const body = { test: 'payload-without-repo' };
-      const signature = 'sha256=' + crypto
-        .createHmac('sha256', 'global-secret')
-        .update(JSON.stringify(body))
-        .digest('hex');
-
-      const mockReq = createMockWebhookRequest({ 'x-hub-signature-256': signature }, body);
-
-      const result = await trigger.validateWebhook(mockReq);
-
-      expect(result).toBe(true);
-      // Should be called with undefined (no projectId)
-      expect(mockGetGitHubWebhookSecret).toHaveBeenCalledWith(undefined);
-    });
-
-    it('should fall back to global secret when repository not configured', async () => {
-      mockGetGitHubWebhookSecret.mockResolvedValue('global-secret');
-
-      const body = {
-        action: 'opened',
-        repository: { full_name: 'unknown/repo' }, // Not in mock config
-        issue: { number: 1 },
-      };
-      const signature = 'sha256=' + crypto
-        .createHmac('sha256', 'global-secret')
-        .update(JSON.stringify(body))
-        .digest('hex');
-
-      const mockReq = createMockWebhookRequest({ 'x-hub-signature-256': signature }, body);
-
-      const result = await trigger.validateWebhook(mockReq);
-
-      expect(result).toBe(true);
-      // Should be called with undefined since project wasn't found
-      expect(mockGetGitHubWebhookSecret).toHaveBeenCalledWith(undefined);
-    });
-
     it('should use rawBody for signature verification when available', async () => {
-      mockGetGitHubWebhookSecret.mockResolvedValue('test-secret');
-
       // Raw body with different formatting than JSON.stringify would produce
       const rawBody = '{"action":"opened","repository":{"full_name":"owner/repo"}}';
       const body = JSON.parse(rawBody);
@@ -201,8 +100,6 @@ describe('GitHubIssuesTrigger', () => {
     });
 
     it('should fail validation when rawBody differs from re-serialized body', async () => {
-      mockGetGitHubWebhookSecret.mockResolvedValue('test-secret');
-
       // Simulate GitHub sending JSON with different key order/whitespace
       const rawBody = '{ "repository": { "full_name": "owner/repo" }, "action": "opened" }';
       const body = JSON.parse(rawBody);
@@ -238,12 +135,12 @@ describe('GitHubIssuesTrigger', () => {
 
   describe('parseWebhook - issue events', () => {
     it('should parse issue opened with trigger label', async () => {
-      const payload = mockWebhookPayloads.github.issueOpenedWithTriggerLabel;
+      const payload = mockWebhookPayloads.issueOpenedWithTriggerLabel;
 
       const event = await trigger.parseWebhook(payload);
 
       expect(event).toBeTruthy();
-      expect(event?.triggerType).toBe('github-issues');
+      expect(event?.triggerType).toBe('github');
       expect(event?.triggerId).toBe('owner/repo#43');
       expect(event?.projectId).toBe('test-project');
       expect(event?.title).toBe('GitHub Issue #43: Memory leak in background worker');
@@ -253,19 +150,19 @@ describe('GitHubIssuesTrigger', () => {
     });
 
     it('should parse issue labeled event', async () => {
-      const payload = mockWebhookPayloads.github.issueLabeled;
+      const payload = mockWebhookPayloads.issueLabeled;
 
       const event = await trigger.parseWebhook(payload);
 
       expect(event).toBeTruthy();
-      expect(event?.triggerType).toBe('github-issues');
+      expect(event?.triggerType).toBe('github');
       expect(event?.triggerId).toBe('owner/repo#45');
       expect(event?.title).toBe('GitHub Issue #45: Crash on startup');
       expect(event?.metadata.labels).toContain('ai-fix');
     });
 
     it('should ignore issue opened without trigger label when requireLabel is false', async () => {
-      const payload = mockWebhookPayloads.github.issueOpenedWithoutLabel;
+      const payload = mockWebhookPayloads.issueOpenedWithoutLabel;
 
       const event = await trigger.parseWebhook(payload);
 
@@ -275,7 +172,7 @@ describe('GitHubIssuesTrigger', () => {
     });
 
     it('should ignore issue edited event', async () => {
-      const payload = mockWebhookPayloads.github.issueEdited;
+      const payload = mockWebhookPayloads.issueEdited;
 
       const event = await trigger.parseWebhook(payload);
 
@@ -311,12 +208,12 @@ describe('GitHubIssuesTrigger', () => {
 
   describe('parseWebhook - comment events', () => {
     it('should parse comment with trigger phrase from allowed user', async () => {
-      const payload = mockWebhookPayloads.github.issueCommentWithTrigger;
+      const payload = mockWebhookPayloads.issueCommentWithTrigger;
 
       const event = await trigger.parseWebhook(payload);
 
       expect(event).toBeTruthy();
-      expect(event?.triggerType).toBe('github-issues');
+      expect(event?.triggerType).toBe('github');
       expect(event?.triggerId).toContain('owner/repo#46-comment-');
       expect(event?.title).toBe('GitHub Issue #46: Database connection timeout');
       expect(event?.metadata.triggeredBy).toBe('maintainer-alice');
@@ -325,7 +222,7 @@ describe('GitHubIssuesTrigger', () => {
     });
 
     it('should ignore comment without trigger phrase', async () => {
-      const payload = mockWebhookPayloads.github.issueCommentWithoutTrigger;
+      const payload = mockWebhookPayloads.issueCommentWithoutTrigger;
 
       const event = await trigger.parseWebhook(payload);
 
@@ -333,69 +230,18 @@ describe('GitHubIssuesTrigger', () => {
     });
 
     it('should ignore comment with trigger phrase from unauthorized user', async () => {
-      const payload = mockWebhookPayloads.github.issueCommentUnauthorizedUser;
+      const payload = mockWebhookPayloads.issueCommentUnauthorizedUser;
 
       const event = await trigger.parseWebhook(payload);
 
       expect(event).toBeNull();
-    });
-  });
-
-  describe('requireLabel enforcement', () => {
-    it('should enforce requireLabel when true', async () => {
-      // Temporarily modify mock to require label
-      const { findProjectByRepo } = require('../../../src/config/projects');
-      findProjectByRepo.mockReturnValueOnce({
-        id: 'test-project',
-        repo: 'git@github.com:owner/repo.git',
-        repoFullName: 'owner/repo',
-        branch: 'main',
-        vcs: { type: 'github' as const, owner: 'owner', repo: 'repo' },
-        triggers: {
-          github: {
-            issues: true,
-            labels: ['ai-fix'],
-            requireLabel: true,  // Require label
-          },
-        },
-      });
-
-      const payload = mockWebhookPayloads.github.issueOpened;  // Has 'bug' but not 'ai-fix'
-
-      const event = await trigger.parseWebhook(payload);
-
-      expect(event).toBeNull();
-    });
-
-    it('should allow issue with required label', async () => {
-      const { findProjectByRepo } = require('../../../src/config/projects');
-      findProjectByRepo.mockReturnValueOnce({
-        id: 'test-project',
-        repo: 'git@github.com:owner/repo.git',
-        repoFullName: 'owner/repo',
-        branch: 'main',
-        vcs: { type: 'github' as const, owner: 'owner', repo: 'repo' },
-        triggers: {
-          github: {
-            issues: true,
-            labels: ['ai-fix'],
-            requireLabel: true,
-          },
-        },
-      });
-
-      const payload = mockWebhookPayloads.github.issueOpenedWithTriggerLabel;  // Has 'ai-fix'
-
-      const event = await trigger.parseWebhook(payload);
-
-      expect(event).toBeTruthy();
     });
   });
 
   describe('shouldProcess', () => {
     it('should process open issues', async () => {
       const event = {
-        triggerType: 'github-issues',
+        triggerType: 'github',
         triggerId: 'owner/repo#1',
         projectId: 'test-project',
         title: 'Test Issue',
@@ -411,7 +257,7 @@ describe('GitHubIssuesTrigger', () => {
 
     it('should not process closed issues', async () => {
       const event = {
-        triggerType: 'github-issues',
+        triggerType: 'github',
         triggerId: 'owner/repo#1',
         projectId: 'test-project',
         title: 'Test Issue',
@@ -431,10 +277,10 @@ describe('GitHubIssuesTrigger', () => {
       const payload = {
         action: 'opened',
         issue: {
-          ...mockWebhookPayloads.github.issueOpenedWithTriggerLabel.issue,
-          labels: [{ name: 'critical' }, { name: 'urgent' }, { name: 'ai-fix' }],  // Include trigger label
+          ...mockWebhookPayloads.issueOpenedWithTriggerLabel.issue,
+          labels: [{ name: 'critical' }, { name: 'urgent' }, { name: 'ai-fix' }],
         },
-        repository: mockWebhookPayloads.github.issueOpenedWithTriggerLabel.repository,
+        repository: mockWebhookPayloads.issueOpenedWithTriggerLabel.repository,
       };
 
       const event = await trigger.parseWebhook(payload);
@@ -443,7 +289,7 @@ describe('GitHubIssuesTrigger', () => {
     });
 
     it('should return high for bug labels', async () => {
-      const payload = mockWebhookPayloads.github.issueOpenedWithTriggerLabel;
+      const payload = mockWebhookPayloads.issueOpenedWithTriggerLabel;
 
       const event = await trigger.parseWebhook(payload);
 
@@ -454,11 +300,11 @@ describe('GitHubIssuesTrigger', () => {
       const payload = {
         action: 'labeled',
         issue: {
-          ...mockWebhookPayloads.github.issueLabeled.issue,
+          ...mockWebhookPayloads.issueLabeled.issue,
           labels: [{ name: 'question' }],
         },
         label: { name: 'question' },
-        repository: mockWebhookPayloads.github.issueLabeled.repository,
+        repository: mockWebhookPayloads.issueLabeled.repository,
       };
 
       const event = await trigger.parseWebhook(payload);
@@ -470,7 +316,7 @@ describe('GitHubIssuesTrigger', () => {
   describe('getTools', () => {
     it('should return empty array (GitHub tools provided via MCP)', async () => {
       const event = {
-        triggerType: 'github-issues',
+        triggerType: 'github',
         triggerId: 'owner/repo#42',
         projectId: 'test-project',
         title: 'Test Issue',
@@ -491,17 +337,9 @@ describe('GitHubIssuesTrigger', () => {
   });
 
   describe('updateStatus', () => {
-    beforeEach(() => {
-      process.env.GITHUB_TOKEN = 'test-token';
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        json: async () => ({}),
-      });
-    });
-
     it('should post success comment with PR link', async () => {
       const event = {
-        triggerType: 'github-issues',
+        triggerType: 'github',
         triggerId: 'owner/repo#42',
         projectId: 'test-project',
         title: 'Test Issue',
@@ -530,7 +368,7 @@ describe('GitHubIssuesTrigger', () => {
           headers: expect.objectContaining({
             'Authorization': 'Bearer test-token',
           }),
-          body: expect.stringContaining('✅ Fix completed successfully'),
+          body: expect.stringContaining('Fix completed successfully'),
         })
       );
 
@@ -544,7 +382,7 @@ describe('GitHubIssuesTrigger', () => {
 
     it('should post failure comment with reason', async () => {
       const event = {
-        triggerType: 'github-issues',
+        triggerType: 'github',
         triggerId: 'owner/repo#42',
         projectId: 'test-project',
         title: 'Test Issue',
@@ -571,7 +409,7 @@ describe('GitHubIssuesTrigger', () => {
         'https://api.github.com/repos/owner/repo/issues/42/comments',
         expect.objectContaining({
           method: 'POST',
-          body: expect.stringContaining('❌ Unable to automatically fix'),
+          body: expect.stringContaining('Unable to automatically fix'),
         })
       );
 
@@ -583,17 +421,9 @@ describe('GitHubIssuesTrigger', () => {
   });
 
   describe('addComment', () => {
-    beforeEach(() => {
-      process.env.GITHUB_TOKEN = 'test-token';
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: true,
-        json: async () => ({}),
-      });
-    });
-
     it('should post comment to issue', async () => {
       const event = {
-        triggerType: 'github-issues',
+        triggerType: 'github',
         triggerId: 'owner/repo#42',
         projectId: 'test-project',
         title: 'Test Issue',

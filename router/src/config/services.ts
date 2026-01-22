@@ -22,7 +22,7 @@ import { logger } from '../logger';
 import {
   secretsAdapter,
   projectsAdapter,
-  githubAuthAdapter,
+  vcsAuthAdapter,
   loggerAdapter,
 } from './providers';
 
@@ -41,7 +41,7 @@ export async function initializeServices(): Promise<void> {
   configureProviders({
     secrets: secretsAdapter,
     projects: projectsAdapter,
-    github: githubAuthAdapter,
+    vcsAuth: vcsAuthAdapter,
     logger: loggerAdapter,
   });
   logger.debug('SDK providers configured');

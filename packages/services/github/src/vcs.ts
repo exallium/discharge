@@ -639,7 +639,13 @@ export class GitHubVCS implements VCSPlugin {
     owner: string,
     repo: string,
     prNumber: number
-  ): Promise<{ head: { ref: string; sha: string }; base: { ref: string }; state: string } | null> {
+  ): Promise<{
+    head: string;
+    base: string;
+    state: 'open' | 'closed' | 'merged';
+    title: string;
+    body: string;
+  } | null> {
     const logger = getLogger();
     try {
       const { data: pr } = await this.octokit.pulls.get({
@@ -648,15 +654,20 @@ export class GitHubVCS implements VCSPlugin {
         pull_number: prNumber,
       });
 
+      // Map GitHub's state to our interface
+      let state: 'open' | 'closed' | 'merged' = 'open';
+      if (pr.merged) {
+        state = 'merged';
+      } else if (pr.state === 'closed') {
+        state = 'closed';
+      }
+
       return {
-        head: {
-          ref: pr.head.ref,
-          sha: pr.head.sha,
-        },
-        base: {
-          ref: pr.base.ref,
-        },
-        state: pr.state,
+        head: pr.head.ref,
+        base: pr.base.ref,
+        state,
+        title: pr.title,
+        body: pr.body || '',
       };
     } catch (error) {
       logger.warn('Failed to get PR info', {

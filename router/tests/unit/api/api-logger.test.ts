@@ -48,10 +48,10 @@ function createMockNextRequest(
 describe('extractWebhookContext', () => {
   describe('triggerId extraction', () => {
     it('should extract triggerId from URL path', () => {
-      const request = createMockNextRequest('/api/webhooks/github-issues');
+      const request = createMockNextRequest('/api/webhooks/github');
       const context = extractWebhookContext(request, {});
 
-      expect(context.triggerId).toBe('github-issues');
+      expect(context.triggerId).toBe('github');
     });
 
     it('should handle nested paths', () => {
@@ -79,7 +79,7 @@ describe('extractWebhookContext', () => {
 
     it('should extract context from GitHub issue event', () => {
       const request = createMockNextRequest(
-        '/api/webhooks/github-issues',
+        '/api/webhooks/github',
         undefined,
         undefined,
         { 'x-github-event': 'issues' }
@@ -87,7 +87,7 @@ describe('extractWebhookContext', () => {
 
       const context = extractWebhookContext(request, githubIssuePayload);
 
-      expect(context.triggerId).toBe('github-issues');
+      expect(context.triggerId).toBe('github');
       expect(context.eventType).toBe('issues');
       expect(context.payloadSummary).toEqual({
         action: 'opened',
@@ -99,7 +99,7 @@ describe('extractWebhookContext', () => {
     });
 
     it('should use action-based event type when x-github-event header missing', () => {
-      const request = createMockNextRequest('/api/webhooks/github-issues');
+      const request = createMockNextRequest('/api/webhooks/github');
 
       const context = extractWebhookContext(request, githubIssuePayload);
 
@@ -148,7 +148,7 @@ describe('extractWebhookContext', () => {
           title: longTitle,
         },
       };
-      const request = createMockNextRequest('/api/webhooks/github-issues');
+      const request = createMockNextRequest('/api/webhooks/github');
 
       const context = extractWebhookContext(request, payload);
 
@@ -245,7 +245,7 @@ describe('API Logger - Request Body Parsing', () => {
     // This tests that extractWebhookContext works correctly when
     // called with a parsed JSON body (as it would be after parseRequestBody)
     const request = createMockNextRequest(
-      '/api/webhooks/github-issues',
+      '/api/webhooks/github',
       JSON.stringify(samplePayload),
       'application/json',
       { 'x-github-event': 'issues' }
@@ -254,7 +254,7 @@ describe('API Logger - Request Body Parsing', () => {
     const context = extractWebhookContext(request, samplePayload);
 
     expect(context).toEqual({
-      triggerId: 'github-issues',
+      triggerId: 'github',
       eventType: 'issues',
       payloadSummary: {
         action: 'labeled',
@@ -271,7 +271,7 @@ describe('API Logger - Request Body Parsing', () => {
     // This test verifies the context extraction works the same regardless
     // of how the body was originally encoded
     const request = createMockNextRequest(
-      '/api/webhooks/github-issues',
+      '/api/webhooks/github',
       `payload=${encodeURIComponent(JSON.stringify(samplePayload))}`,
       'application/x-www-form-urlencoded',
       { 'x-github-event': 'issues' }
@@ -281,7 +281,7 @@ describe('API Logger - Request Body Parsing', () => {
     const context = extractWebhookContext(request, samplePayload);
 
     expect(context).toEqual({
-      triggerId: 'github-issues',
+      triggerId: 'github',
       eventType: 'issues',
       payloadSummary: {
         action: 'labeled',

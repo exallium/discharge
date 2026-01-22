@@ -43,7 +43,7 @@ function createMockNextRequest(
   contentType: string,
   method = 'POST'
 ): NextRequest {
-  return new NextRequest('http://localhost/api/webhooks/github-issues', {
+  return new NextRequest('http://localhost/api/webhooks/github', {
     method,
     headers: {
       'content-type': contentType,
@@ -182,7 +182,7 @@ describe('Webhook Body Parsing', () => {
     });
 
     it('should try JSON parsing when content-type is missing', async () => {
-      const request = new NextRequest('http://localhost/api/webhooks/github-issues', {
+      const request = new NextRequest('http://localhost/api/webhooks/github', {
         method: 'POST',
         body: JSON.stringify(samplePayload),
       });

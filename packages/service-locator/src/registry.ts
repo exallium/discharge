@@ -137,7 +137,7 @@ export class ServiceRegistry {
   }
 
   /**
-   * Get a trigger by its type (e.g., 'github-issues', 'sentry')
+   * Get a trigger by its type (e.g., 'github', 'sentry')
    * Used for webhook routing
    */
   getTriggerByType(type: string): TriggerPlugin | undefined {

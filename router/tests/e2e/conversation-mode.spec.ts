@@ -208,7 +208,7 @@ test.describe('Conversation Settings', () => {
         await page.goto(`/projects/${projectId}`);
 
         // Enable a trigger
-        await page.locator('#trigger-github-issues').check();
+        await page.locator('#trigger-github').check();
 
         // Change branch
         await page.fill('#branch', 'develop');
@@ -229,7 +229,7 @@ test.describe('Conversation Settings', () => {
         await expect(page.locator('#branch')).toHaveValue('develop');
 
         // Trigger should be checked
-        await expect(page.locator('#trigger-github-issues')).toBeChecked();
+        await expect(page.locator('#trigger-github')).toBeChecked();
 
         // Conversation settings should be preserved
         await expect(page.locator('#conversationAutoExecuteThreshold')).toHaveValue('0.7');

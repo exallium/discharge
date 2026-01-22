@@ -10,7 +10,7 @@
  *
  * Webhook setup:
  * 1. In GitHub repo settings, go to "Webhooks"
- * 2. Set webhook URL to: https://your-domain/webhooks/github-issues
+ * 2. Set webhook URL to: https://your-domain/webhooks/github
  * 3. Select events: "Issues", "Issue comments"
  * 4. Set secret (required for security)
  */
@@ -28,7 +28,7 @@ import {
   ConversationEvent,
   DEFAULT_ROUTING_TAGS,
   getProjectProvider,
-  getGitHubAuthProvider,
+  getVCSAuthProvider,
   getLogger,
   getErrorMessage,
 } from '@ai-bug-fixer/service-sdk';
@@ -48,11 +48,12 @@ import {
 } from './types/webhooks';
 
 /**
- * GitHub Issues trigger plugin
+ * GitHub trigger plugin
+ * Handles issues, issue comments, pull requests, and PR reviews
  */
 export class GitHubIssuesTrigger implements TriggerPlugin {
-  id = 'github-issues';
-  type = 'github-issues';
+  id = 'github';
+  type = 'github';
 
   webhookConfig: WebhookConfig = {
     events: ['issues', 'issue_comment', 'pull_request', 'pull_request_review', 'pull_request_review_comment'],
@@ -87,7 +88,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
   private cachedBotUsername: string | null = null;
 
   /**
-   * Get the bot username from GitHub App credentials
+   * Get the bot username from VCS auth provider
    * The bot username is {appSlug}[bot]
    */
   private async getBotUsername(): Promise<string | null> {
@@ -95,17 +96,17 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       return this.cachedBotUsername;
     }
 
-    const githubAuth = getGitHubAuthProvider();
-    if (!githubAuth) {
+    const vcsAuth = getVCSAuthProvider();
+    if (!vcsAuth?.getAppSlug) {
       return null;
     }
 
-    const credentials = await githubAuth.getAppCredentials();
-    if (!credentials?.appSlug) {
+    const appSlug = await vcsAuth.getAppSlug();
+    if (!appSlug) {
       return null;
     }
 
-    this.cachedBotUsername = `${credentials.appSlug}[bot]`;
+    this.cachedBotUsername = `${appSlug}[bot]`;
     return this.cachedBotUsername;
   }
 
@@ -168,7 +169,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       projectId = project?.id;
     }
 
-    const githubAuth = getGitHubAuthProvider();
+    const githubAuth = getVCSAuthProvider();
     if (!githubAuth) {
       logger.error('[GitHubIssuesTrigger] GitHub auth provider not configured');
       return false;
@@ -181,6 +182,12 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       return false;
     }
 
+    logger.debug('[GitHubIssuesTrigger] Webhook secret found', {
+      projectId,
+      secretLength: secret.length,
+      secretPrefix: secret.substring(0, 4) + '...',
+    });
+
     // Use raw body for signature verification (JSON.stringify may produce different output)
     const body = req.rawBody ?? JSON.stringify(req.body);
     const expectedSignature = 'sha256=' + crypto
@@ -188,15 +195,32 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
       .update(body)
       .digest('hex');
 
+    logger.debug('[GitHubIssuesTrigger] Signature comparison', {
+      receivedSignature: signature.substring(0, 20) + '...',
+      expectedSignature: expectedSignature.substring(0, 20) + '...',
+      bodySource: req.rawBody ? 'rawBody' : 'JSON.stringify',
+      bodyLength: body.length,
+    });
+
     // Timing-safe comparison requires same-length buffers
     if (signature.length !== expectedSignature.length) {
+      logger.warn('[GitHubIssuesTrigger] Signature length mismatch', {
+        receivedLength: signature.length,
+        expectedLength: expectedSignature.length,
+      });
       return false;
     }
 
-    return crypto.timingSafeEqual(
+    const isValid = crypto.timingSafeEqual(
       Buffer.from(signature),
       Buffer.from(expectedSignature)
     );
+
+    if (!isValid) {
+      logger.warn('[GitHubIssuesTrigger] Signature mismatch - secrets may be out of sync');
+    }
+
+    return isValid;
   }
 
   /**
@@ -301,7 +325,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
 
     // Build trigger event
     return {
-      triggerType: 'github-issues',
+      triggerType: 'github',
       triggerId: `${repository.full_name}#${issue.number}`,
       projectId: project.id,
       title: `GitHub Issue #${issue.number}: ${issue.title}`,
@@ -348,7 +372,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     // Check if this is a PR comment (PRs have pull_request URL in the issue object)
     const isPRComment = !!(issue as { pull_request?: { url: string } }).pull_request;
 
-    // For actual issues, require github-issues trigger to be enabled
+    // For actual issues, require github trigger to be enabled
     // For PR comments, we always process (GitHub App handles PR conversations)
     const githubConfig = project.triggers.github;
     if (!isPRComment && !githubConfig?.issues) {
@@ -400,7 +424,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     const issueLabels = (issue.labels || []).map((l: GitHubLabel) => l.name);
 
     return {
-      triggerType: 'github-issues',
+      triggerType: 'github',
       triggerId: `${repository.full_name}#${issue.number}-comment-${comment.id}`,
       projectId: project.id,
       title: isPRComment
@@ -458,7 +482,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     const linkedIssueNumber = this.extractLinkedIssueNumber(pull_request.body);
 
     return {
-      triggerType: 'github-issues',
+      triggerType: 'github',
       triggerId: `${repository.full_name}#${pull_request.number}-review-${review.id}`,
       projectId: project.id,
       title: `PR Review on #${pull_request.number}: ${pull_request.title}`,
@@ -512,7 +536,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     const linkedIssueNumber = this.extractLinkedIssueNumber(pull_request.body);
 
     return {
-      triggerType: 'github-issues',
+      triggerType: 'github',
       triggerId: `${repository.full_name}#${pull_request.number}-comment-${comment.id}`,
       projectId: project.id,
       title: `PR Comment on #${pull_request.number}: ${pull_request.title}`,
@@ -617,7 +641,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     }
 
     return {
-      triggerType: 'github-issues',
+      triggerType: 'github',
       triggerId,
       projectId: project.id,
       title,
@@ -732,7 +756,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     const logger = getLogger();
 
     // Get token from GitHub App installation (using repo name, not project ID)
-    const githubAuth = getGitHubAuthProvider();
+    const githubAuth = getVCSAuthProvider();
     if (!githubAuth) {
       logger.error('[GitHubIssuesTrigger] GitHub auth provider not configured');
       return;
@@ -832,7 +856,7 @@ export class GitHubIssuesTrigger implements TriggerPlugin {
     }
 
     // Get token from GitHub App installation (using repo name, not project ID)
-    const githubAuth = getGitHubAuthProvider();
+    const githubAuth = getVCSAuthProvider();
     if (!githubAuth) {
       logger.error('[GitHubIssuesTrigger] GitHub auth provider not configured');
       return;

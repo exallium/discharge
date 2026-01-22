@@ -1,7 +1,6 @@
-import type { TriggerPlugin, TriggerEvent, FixStatus, AnalysisResult, PrefetchedData } from '@ai-bug-fixer/service-sdk';
+import type { TriggerPlugin, TriggerEvent, FixStatus, AnalysisResult, PrefetchedData, VCSPlugin } from '@ai-bug-fixer/service-sdk';
 import type { TriageResult, InvestigationContext, RunnerPlugin } from '@ai-bug-fixer/service-sdk';
 import { formatPRBody } from '@ai-bug-fixer/service-sdk';
-import { GitHubVCS } from '@ai-bug-fixer/service-github';
 import { requireMCPForSentry, getMCPToolCallLogs } from './mcp';
 import { findProjectById, ProjectConfig } from '../config/projects';
 import { validateTools } from './tools';
@@ -171,7 +170,7 @@ export async function orchestrateWithTriage(
   if (triage.labels && triage.labels.length > 0) {
     try {
       const vcs = await getVCSForProject(project.vcs.type, project.id);
-      if (vcs instanceof GitHubVCS && event.metadata?.issueNumber) {
+      if (vcs?.addLabels && event.metadata?.issueNumber) {
         await vcs.addLabels(
           project.vcs.owner,
           project.vcs.repo,
@@ -392,7 +391,7 @@ async function handleNonActionableTriage(
     const project = await findProjectById(event.projectId);
     if (project) {
       const vcs = await getVCSForProject(project.vcs.type, project.id);
-      if (vcs instanceof GitHubVCS && event.metadata?.issueNumber) {
+      if (vcs?.addLabels && event.metadata?.issueNumber) {
         await vcs.addLabels(
           project.vcs.owner,
           project.vcs.repo,
@@ -605,13 +604,13 @@ export async function orchestrateFix(
     if (prResult.success) {
       console.log(`[Orchestrator] PR created: ${prUrl}`);
 
-      // Add labels and reviewers if configured (GitHub specific)
+      // Add labels and reviewers if configured
       const vcs = await getVCSForProject(targetProject.vcs.type, targetProject.id);
-      if (vcs instanceof GitHubVCS && prNumber) {
-        if (targetProject.vcs.labels && targetProject.vcs.labels.length > 0) {
+      if (vcs && prNumber) {
+        if (vcs.addLabels && targetProject.vcs.labels && targetProject.vcs.labels.length > 0) {
           await vcs.addLabels(targetProject.vcs.owner, targetProject.vcs.repo, prNumber, targetProject.vcs.labels);
         }
-        if (targetProject.vcs.reviewers && targetProject.vcs.reviewers.length > 0) {
+        if (vcs.requestReviewers && targetProject.vcs.reviewers && targetProject.vcs.reviewers.length > 0) {
           await vcs.requestReviewers(targetProject.vcs.owner, targetProject.vcs.repo, prNumber, targetProject.vcs.reviewers);
         }
       }
@@ -869,7 +868,7 @@ export async function cleanupInvestigationFile(
 ): Promise<void> {
   try {
     const vcs = await getVCSForProject(project.vcs.type, project.id);
-    if (!vcs || !(vcs instanceof GitHubVCS)) {
+    if (!vcs?.removePlanFileOnly) {
       logger.warn('VCS does not support file cleanup');
       return;
     }
@@ -930,7 +929,7 @@ async function createInvestigationPR(
     });
 
     // Add plan-approved label instruction to PR if we have the capability
-    if (result.prNumber && vcs instanceof GitHubVCS) {
+    if (result.prNumber && vcs?.addLabels) {
       // Add a 'needs-review' or 'investigation' label
       try {
         await vcs.addLabels(
@@ -1068,7 +1067,7 @@ export async function orchestrateConversation(
     if (existingPrNumber && !existingPrBranch) {
       // Try to get branch from VCS
       const vcs = await getVCSForProject(project.vcs.type, project.repoFullName);
-      if (vcs instanceof GitHubVCS) {
+      if (vcs?.getPullRequestInfo) {
         const prInfo = await vcs.getPullRequestInfo(
           project.vcs.owner,
           project.vcs.repo,
@@ -1087,7 +1086,7 @@ export async function orchestrateConversation(
               prNumber: undefined,
             });
           } else {
-            existingPrBranch = prInfo.head.ref;
+            existingPrBranch = prInfo.head;
           }
         }
       }
@@ -1521,7 +1520,7 @@ async function handleConversationAction(
         if (wasApprovedPlanExecution) {
           // Clean up the plan file after successful execution
           const vcs = await getVCSForProject(project.vcs.type, project.id);
-          if (conversation.planRef && vcs instanceof GitHubVCS) {
+          if (conversation.planRef && vcs?.removePlanFileOnly) {
             try {
               // Delete just the plan file, not the branch (the PR is still open)
               await vcs.removePlanFileOnly(project, conversation.planRef);
@@ -1586,13 +1585,13 @@ async function handleConversationAction(
           prNumber,
         });
 
-        // Add labels and reviewers if configured (GitHub specific)
+        // Add labels and reviewers if configured
         const vcs = await getVCSForProject(project.vcs.type, project.id);
-        if (vcs instanceof GitHubVCS && prNumber) {
-          if (project.vcs.labels && project.vcs.labels.length > 0) {
+        if (vcs && prNumber) {
+          if (vcs.addLabels && project.vcs.labels && project.vcs.labels.length > 0) {
             await vcs.addLabels(project.vcs.owner, project.vcs.repo, prNumber, project.vcs.labels);
           }
-          if (project.vcs.reviewers && project.vcs.reviewers.length > 0) {
+          if (vcs.requestReviewers && project.vcs.reviewers && project.vcs.reviewers.length > 0) {
             await vcs.requestReviewers(project.vcs.owner, project.vcs.repo, prNumber, project.vcs.reviewers);
           }
         }
@@ -1640,6 +1639,19 @@ async function handleConversationAction(
           triggerEvent,
           `❓ I need some clarification before proceeding:\n\n${questionList}`
         );
+      }
+      break;
+    }
+
+    default: {
+      // Unknown action type - log warning and post response as comment
+      logger.warn('Unknown action type in handleConversationAction', {
+        actionType: (action as { type: string }).type,
+        conversationId: conversation.id,
+      });
+      // Post the response as a comment so user sees something
+      if (trigger.postFeedback && result.response) {
+        await trigger.postFeedback(triggerEvent, result.response);
       }
       break;
     }

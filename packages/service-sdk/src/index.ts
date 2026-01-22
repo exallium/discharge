@@ -71,11 +71,36 @@ export {
   DEFAULT_CONVERSATION_CONFIG,
 } from './types/conversation';
 
+// Timeline event types (for UI components)
+export type {
+  TimelineEventType,
+  MessageEventData,
+  JobStartedEventData,
+  JobCompletedEventData,
+  JobFailedEventData,
+  PlanCreatedEventData,
+  PlanUpdatedEventData,
+  PlanApprovedEventData,
+  PRCreatedEventData,
+  PRMergedEventData,
+  LabeledEventData,
+  CommentPostedEventData,
+  TimelineEventData,
+  TimelineEvent,
+} from './types/timeline-events';
+
+export {
+  isMessageEvent,
+  isJobEvent,
+  isPlanEvent,
+  isPREvent,
+} from './types/timeline-events';
+
 // Provider interfaces (for dependency injection)
 export type {
   SecretsProvider,
   ProjectProvider,
-  GitHubAuthProvider,
+  VCSAuthProvider,
   LoggerProvider,
   ProviderConfig,
 } from './interfaces/providers';
@@ -87,7 +112,7 @@ export {
   resetProviders,
   getSecretsProvider,
   getProjectProvider,
-  getGitHubAuthProvider,
+  getVCSAuthProvider,
   getLogger,
 } from './context';
 
