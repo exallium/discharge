@@ -312,9 +312,9 @@ export function buildAgentPrompt(
     investigate: isSentryTrigger
       ? `You are an investigation agent analyzing a Sentry error to understand its root cause.
 
-**IMPORTANT: You MUST use the MCP tools from the \`ai-bug-fixer\` MCP server to fetch Sentry data.**
+**IMPORTANT: You MUST use the MCP tools from the \`discharge\` MCP server to fetch Sentry data.**
 
-The \`ai-bug-fixer\` MCP server is already configured and connected to Sentry. Do NOT try to install or use any other Sentry MCP - just call the tools directly.
+The \`discharge\` MCP server is already configured and connected to Sentry. Do NOT try to install or use any other Sentry MCP - just call the tools directly.
 
 **Your REQUIRED first steps:**
 1. Call \`sentry_get_latest_event\` with issueId "${event.triggerId}" to get the full stack trace
@@ -588,15 +588,15 @@ export function buildMCPToolsSection(triggerType: string, issueId?: string): str
   return `
 ## Sentry Data Access via MCP
 
-You have access to Sentry data through the \`ai-bug-fixer\` MCP server that is already configured for you.
+You have access to Sentry data through the \`discharge\` MCP server that is already configured for you.
 
-**IMPORTANT:** Do NOT try to install or configure any other Sentry MCP servers. The \`ai-bug-fixer\` MCP server is already connected and authenticated with this project's Sentry account.
+**IMPORTANT:** Do NOT try to install or configure any other Sentry MCP servers. The \`discharge\` MCP server is already connected and authenticated with this project's Sentry account.
 
 ${issueIdNote}
 
 ### Available MCP Tools
 
-These tools are provided by the \`ai-bug-fixer\` MCP server:
+These tools are provided by the \`discharge\` MCP server:
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|

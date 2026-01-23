@@ -20,7 +20,7 @@ cat > "$CLAUDE_JSON" << EOF
 {
   "hasCompletedOnboarding": true,
   "mcpServers": {
-    "ai-bug-fixer": {
+    "discharge": {
       "type": "sse",
       "url": "http://mcp:3001/sse?projectId=${PROJECT_ID}"
     }

@@ -157,7 +157,7 @@ const enabledTools = getEnabledTools();
 // Create the server
 const server = new Server(
   {
-    name: 'ai-bug-fixer-mcp',
+    name: 'discharge-mcp',
     version: '1.0.0',
   },
   {

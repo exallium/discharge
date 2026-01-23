@@ -212,7 +212,7 @@ async function prepareClaudeConfig(workspacePath: string, projectId?: string): P
   // Configure MCP server if enabled
   if (ENABLE_MCP_SERVER && projectId) {
     const mcpServersConfig = {
-      'ai-bug-fixer': {
+      'discharge': {
         type: 'sse',
         url: `${MCP_AGENT_URL}/sse?projectId=${encodeURIComponent(projectId)}`,
       },

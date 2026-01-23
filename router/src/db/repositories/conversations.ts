@@ -193,6 +193,7 @@ export async function findByPrNumber(
 
 /**
  * Get or create a conversation for a target
+ * Uses ON CONFLICT to handle race conditions atomically
  */
 export async function getOrCreate(
   triggerType: string,
@@ -200,11 +201,6 @@ export async function getOrCreate(
   projectId: string,
   triggerEvent?: Record<string, unknown>
 ): Promise<ConversationEntry> {
-  const existing = await findByTarget(triggerType, externalId);
-  if (existing) {
-    return existing;
-  }
-
   const db = getDatabase();
   const newConversation: NewConversation = {
     triggerType,
@@ -217,16 +213,39 @@ export async function getOrCreate(
     triggerEvent: triggerEvent ?? null,
   };
 
-  const result = await db.insert(conversations).values(newConversation).returning();
+  // Use upsert to handle race conditions - if conflict, do nothing and fetch existing
+  const result = await db
+    .insert(conversations)
+    .values(newConversation)
+    .onConflictDoNothing({
+      target: [conversations.triggerType, conversations.externalId],
+    })
+    .returning();
 
-  logger.info('Conversation created', {
-    conversationId: result[0].id,
+  // If insert succeeded, we have a new conversation
+  if (result.length > 0) {
+    logger.info('Conversation created', {
+      conversationId: result[0].id,
+      triggerType,
+      externalId,
+      projectId,
+    });
+    return toConversationEntry(result[0]);
+  }
+
+  // Insert was a no-op due to conflict - fetch the existing conversation
+  const existing = await findByTarget(triggerType, externalId);
+  if (!existing) {
+    // This should never happen, but handle it gracefully
+    throw new Error(`Failed to create or find conversation for ${triggerType}:${externalId}`);
+  }
+
+  logger.debug('Conversation already exists', {
+    conversationId: existing.id,
     triggerType,
     externalId,
-    projectId,
   });
-
-  return toConversationEntry(result[0]);
+  return existing;
 }
 
 /**
