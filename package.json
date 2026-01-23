@@ -26,6 +26,7 @@
     "dev": "npm run dev -w router",
     "dev:up": "npm run dev:up -w router",
     "dev:setup": "npm run dev:setup -w router",
+    "worker:dev": "npm run worker:dev -w discharge-router",
     "test": "npm run test --workspaces --if-present",
     "test:unit": "npm run test:unit -w router",
     "test:router": "npm run test -w router",
