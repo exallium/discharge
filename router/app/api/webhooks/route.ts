@@ -17,7 +17,7 @@ export async function GET() {
   }));
 
   return NextResponse.json({
-    message: 'AI Bug Fixer Webhook Router',
+    message: 'Discharge Webhook Router',
     endpoints,
   });
 }

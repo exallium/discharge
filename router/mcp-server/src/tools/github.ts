@@ -16,21 +16,21 @@ export const GetIssueSchema = z.object({
   owner: z.string().describe('Repository owner (user or organization)'),
   repo: z.string().describe('Repository name'),
   issueNumber: z.number().describe('Issue number'),
-  projectId: z.string().optional().describe('Optional: AI Bug Fixer project ID'),
+  projectId: z.string().optional().describe('Optional: Discharge project ID'),
 });
 
 export const GetIssueCommentsSchema = z.object({
   owner: z.string().describe('Repository owner'),
   repo: z.string().describe('Repository name'),
   issueNumber: z.number().describe('Issue number'),
-  projectId: z.string().optional().describe('Optional: AI Bug Fixer project ID'),
+  projectId: z.string().optional().describe('Optional: Discharge project ID'),
 });
 
 export const GetIssueEventsSchema = z.object({
   owner: z.string().describe('Repository owner'),
   repo: z.string().describe('Repository name'),
   issueNumber: z.number().describe('Issue number'),
-  projectId: z.string().optional().describe('Optional: AI Bug Fixer project ID'),
+  projectId: z.string().optional().describe('Optional: Discharge project ID'),
 });
 
 export const SearchIssuesSchema = z.object({
@@ -40,7 +40,7 @@ export const SearchIssuesSchema = z.object({
   state: z.enum(['open', 'closed', 'all']).optional().default('open').describe('Issue state filter'),
   labels: z.string().optional().describe('Comma-separated list of labels'),
   limit: z.number().optional().default(30).describe('Maximum issues to return'),
-  projectId: z.string().optional().describe('Optional: AI Bug Fixer project ID'),
+  projectId: z.string().optional().describe('Optional: Discharge project ID'),
 });
 
 export const GetRepoIssuesSchema = z.object({
@@ -48,28 +48,28 @@ export const GetRepoIssuesSchema = z.object({
   repo: z.string().describe('Repository name'),
   state: z.enum(['open', 'closed', 'all']).optional().default('open').describe('Issue state filter'),
   limit: z.number().optional().default(30).describe('Maximum issues to return'),
-  projectId: z.string().optional().describe('Optional: AI Bug Fixer project ID'),
+  projectId: z.string().optional().describe('Optional: Discharge project ID'),
 });
 
 export const GetPullRequestSchema = z.object({
   owner: z.string().describe('Repository owner'),
   repo: z.string().describe('Repository name'),
   pullNumber: z.number().describe('Pull request number'),
-  projectId: z.string().optional().describe('Optional: AI Bug Fixer project ID'),
+  projectId: z.string().optional().describe('Optional: Discharge project ID'),
 });
 
 export const GetPullRequestDiffSchema = z.object({
   owner: z.string().describe('Repository owner'),
   repo: z.string().describe('Repository name'),
   pullNumber: z.number().describe('Pull request number'),
-  projectId: z.string().optional().describe('Optional: AI Bug Fixer project ID'),
+  projectId: z.string().optional().describe('Optional: Discharge project ID'),
 });
 
 export const GetPullRequestReviewsSchema = z.object({
   owner: z.string().describe('Repository owner'),
   repo: z.string().describe('Repository name'),
   pullNumber: z.number().describe('Pull request number'),
-  projectId: z.string().optional().describe('Optional: AI Bug Fixer project ID'),
+  projectId: z.string().optional().describe('Optional: Discharge project ID'),
 });
 
 /**
@@ -119,7 +119,7 @@ async function githubFetch<T>(
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: accept || 'application/vnd.github.v3+json',
-      'User-Agent': 'ai-bug-fixer-mcp',
+      'User-Agent': 'discharge-mcp',
     },
   });
 
@@ -460,7 +460,7 @@ export const githubTools: McpTool[] = [
         owner: { type: 'string', description: 'Repository owner (user or organization)' },
         repo: { type: 'string', description: 'Repository name' },
         issueNumber: { type: 'number', description: 'Issue number' },
-        projectId: { type: 'string', description: 'Optional: AI Bug Fixer project ID' },
+        projectId: { type: 'string', description: 'Optional: Discharge project ID' },
       },
       required: ['owner', 'repo', 'issueNumber'],
     },
@@ -481,7 +481,7 @@ export const githubTools: McpTool[] = [
         owner: { type: 'string', description: 'Repository owner' },
         repo: { type: 'string', description: 'Repository name' },
         issueNumber: { type: 'number', description: 'Issue number' },
-        projectId: { type: 'string', description: 'Optional: AI Bug Fixer project ID' },
+        projectId: { type: 'string', description: 'Optional: Discharge project ID' },
       },
       required: ['owner', 'repo', 'issueNumber'],
     },
@@ -503,7 +503,7 @@ export const githubTools: McpTool[] = [
         owner: { type: 'string', description: 'Repository owner' },
         repo: { type: 'string', description: 'Repository name' },
         issueNumber: { type: 'number', description: 'Issue number' },
-        projectId: { type: 'string', description: 'Optional: AI Bug Fixer project ID' },
+        projectId: { type: 'string', description: 'Optional: Discharge project ID' },
       },
       required: ['owner', 'repo', 'issueNumber'],
     },
@@ -532,7 +532,7 @@ export const githubTools: McpTool[] = [
         },
         labels: { type: 'string', description: 'Comma-separated list of labels' },
         limit: { type: 'number', description: 'Max issues to return (default: 30)' },
-        projectId: { type: 'string', description: 'Optional: AI Bug Fixer project ID' },
+        projectId: { type: 'string', description: 'Optional: Discharge project ID' },
       },
       required: ['owner', 'repo'],
     },
@@ -561,7 +561,7 @@ export const githubTools: McpTool[] = [
           description: 'Issue state filter (default: open)',
         },
         limit: { type: 'number', description: 'Max issues to return (default: 30)' },
-        projectId: { type: 'string', description: 'Optional: AI Bug Fixer project ID' },
+        projectId: { type: 'string', description: 'Optional: Discharge project ID' },
       },
       required: ['owner', 'repo'],
     },
@@ -583,7 +583,7 @@ export const githubTools: McpTool[] = [
         owner: { type: 'string', description: 'Repository owner' },
         repo: { type: 'string', description: 'Repository name' },
         pullNumber: { type: 'number', description: 'Pull request number' },
-        projectId: { type: 'string', description: 'Optional: AI Bug Fixer project ID' },
+        projectId: { type: 'string', description: 'Optional: Discharge project ID' },
       },
       required: ['owner', 'repo', 'pullNumber'],
     },
@@ -604,7 +604,7 @@ export const githubTools: McpTool[] = [
         owner: { type: 'string', description: 'Repository owner' },
         repo: { type: 'string', description: 'Repository name' },
         pullNumber: { type: 'number', description: 'Pull request number' },
-        projectId: { type: 'string', description: 'Optional: AI Bug Fixer project ID' },
+        projectId: { type: 'string', description: 'Optional: Discharge project ID' },
       },
       required: ['owner', 'repo', 'pullNumber'],
     },
@@ -625,7 +625,7 @@ export const githubTools: McpTool[] = [
         owner: { type: 'string', description: 'Repository owner' },
         repo: { type: 'string', description: 'Repository name' },
         pullNumber: { type: 'number', description: 'Pull request number' },
-        projectId: { type: 'string', description: 'Optional: AI Bug Fixer project ID' },
+        projectId: { type: 'string', description: 'Optional: Discharge project ID' },
       },
       required: ['owner', 'repo', 'pullNumber'],
     },

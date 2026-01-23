@@ -6,7 +6,7 @@ export default function DocsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Documentation"
-        description="Learn how to configure AI Bug Fixer for your repositories"
+        description="Learn how to configure Discharge for your repositories"
       />
       <ConfigReference />
     </div>

@@ -100,6 +100,7 @@ export async function set(
     encrypted?: boolean;
     description?: string;
     category?: string;
+    projectId?: string;
   }
 ): Promise<void> {
   const db = getDatabase();
@@ -120,6 +121,7 @@ export async function set(
     encrypted: shouldEncrypt,
     description: options?.description ?? null,
     category: options?.category ?? 'general',
+    projectId: options?.projectId ?? null,
   };
 
   // Upsert - insert or update on conflict
@@ -133,11 +135,12 @@ export async function set(
         encrypted: shouldEncrypt,
         description: options?.description ?? null,
         category: options?.category ?? null,
+        projectId: options?.projectId ?? null,
         updatedAt: new Date(),
       },
     });
 
-  logger.info('Setting updated', { key, encrypted: shouldEncrypt });
+  logger.info('Setting updated', { key, encrypted: shouldEncrypt, projectId: options?.projectId });
 }
 
 /**

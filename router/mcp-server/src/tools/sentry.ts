@@ -15,23 +15,23 @@ import type { McpTool } from '../types.js';
 // Note: projectId is optional - if not provided, uses the session's project ID
 export const GetIssueSchema = z.object({
   issueId: z.string().describe('The Sentry issue ID'),
-  projectId: z.string().optional().describe('The AI Bug Fixer project ID (optional - uses session project if not provided)'),
+  projectId: z.string().optional().describe('The Discharge project ID (optional - uses session project if not provided)'),
 });
 
 export const GetIssueEventsSchema = z.object({
   issueId: z.string().describe('The Sentry issue ID'),
-  projectId: z.string().optional().describe('The AI Bug Fixer project ID (optional - uses session project if not provided)'),
+  projectId: z.string().optional().describe('The Discharge project ID (optional - uses session project if not provided)'),
   limit: z.number().optional().default(10).describe('Maximum number of events to fetch'),
 });
 
 export const GetEventDetailsSchema = z.object({
   issueId: z.string().describe('The Sentry issue ID'),
   eventId: z.string().describe('The specific event ID'),
-  projectId: z.string().optional().describe('The AI Bug Fixer project ID (optional - uses session project if not provided)'),
+  projectId: z.string().optional().describe('The Discharge project ID (optional - uses session project if not provided)'),
 });
 
 export const SearchIssuesSchema = z.object({
-  projectId: z.string().optional().describe('The AI Bug Fixer project ID (optional - uses session project if not provided)'),
+  projectId: z.string().optional().describe('The Discharge project ID (optional - uses session project if not provided)'),
   query: z.string().optional().describe('Search query (Sentry search syntax)'),
   status: z.enum(['resolved', 'unresolved', 'ignored']).optional().describe('Filter by status'),
   limit: z.number().optional().default(25).describe('Maximum number of issues to return'),
@@ -310,7 +310,7 @@ export const sentryTools: McpTool[] = [
       type: 'object',
       properties: {
         issueId: { type: 'string', description: 'The Sentry issue ID' },
-        projectId: { type: 'string', description: 'Optional: AI Bug Fixer project ID (uses session project if not provided)' },
+        projectId: { type: 'string', description: 'Optional: Discharge project ID (uses session project if not provided)' },
       },
       required: ['issueId'],
     },
@@ -329,7 +329,7 @@ export const sentryTools: McpTool[] = [
       type: 'object',
       properties: {
         issueId: { type: 'string', description: 'The Sentry issue ID' },
-        projectId: { type: 'string', description: 'Optional: AI Bug Fixer project ID (uses session project if not provided)' },
+        projectId: { type: 'string', description: 'Optional: Discharge project ID (uses session project if not provided)' },
         limit: { type: 'number', description: 'Max events to return (default 10)' },
       },
       required: ['issueId'],
@@ -351,7 +351,7 @@ export const sentryTools: McpTool[] = [
       properties: {
         issueId: { type: 'string', description: 'The Sentry issue ID' },
         eventId: { type: 'string', description: 'The specific event ID' },
-        projectId: { type: 'string', description: 'Optional: AI Bug Fixer project ID (uses session project if not provided)' },
+        projectId: { type: 'string', description: 'Optional: Discharge project ID (uses session project if not provided)' },
       },
       required: ['issueId', 'eventId'],
     },
@@ -371,7 +371,7 @@ export const sentryTools: McpTool[] = [
       type: 'object',
       properties: {
         issueId: { type: 'string', description: 'The Sentry issue ID' },
-        projectId: { type: 'string', description: 'Optional: AI Bug Fixer project ID (uses session project if not provided)' },
+        projectId: { type: 'string', description: 'Optional: Discharge project ID (uses session project if not provided)' },
       },
       required: ['issueId'],
     },
@@ -389,7 +389,7 @@ export const sentryTools: McpTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        projectId: { type: 'string', description: 'Optional: AI Bug Fixer project ID (uses session project if not provided)' },
+        projectId: { type: 'string', description: 'Optional: Discharge project ID (uses session project if not provided)' },
         query: { type: 'string', description: 'Search query (Sentry search syntax)' },
         status: {
           type: 'string',

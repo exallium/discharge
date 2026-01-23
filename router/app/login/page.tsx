@@ -46,7 +46,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               </svg>
             </div>
           </div>
-          <h1 className="text-2xl font-bold">AI Bug Fixer</h1>
+          <h1 className="text-2xl font-bold">Discharge</h1>
           {firstRun ? (
             <p className="text-muted-foreground">
               Check the server console for your temporary password

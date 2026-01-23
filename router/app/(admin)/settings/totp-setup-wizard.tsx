@@ -82,12 +82,12 @@ export function TotpSetupWizard({ onComplete, onCancel }: TotpSetupWizardProps) 
   }
 
   function downloadBackupCodes() {
-    const content = `AI Bug Fixer - Backup Codes\n${'='.repeat(30)}\n\nKeep these codes safe. Each code can only be used once.\n\n${backupCodes.join('\n')}\n\nGenerated: ${new Date().toISOString()}`;
+    const content = `Discharge - Backup Codes\n${'='.repeat(30)}\n\nKeep these codes safe. Each code can only be used once.\n\n${backupCodes.join('\n')}\n\nGenerated: ${new Date().toISOString()}`;
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'ai-bug-fixer-backup-codes.txt';
+    a.download = 'discharge-backup-codes.txt';
     a.click();
     URL.revokeObjectURL(url);
   }

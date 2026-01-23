@@ -15,7 +15,7 @@ export default async function SettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        description="Configure your AI Bug Fixer system"
+        description="Configure your Discharge system"
       />
 
       <div className="grid gap-6">

@@ -227,6 +227,7 @@ export async function update(
 
 /**
  * Delete a project
+ * Associated secrets, job_history, and conversations cascade delete automatically via foreign keys
  */
 export async function remove(id: string): Promise<boolean> {
   const db = getDatabase();

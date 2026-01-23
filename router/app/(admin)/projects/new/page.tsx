@@ -6,7 +6,7 @@ export default function NewProjectPage() {
     <div className="space-y-6">
       <PageHeader
         title="New Project"
-        description="Add a new repository for AI bug fixing"
+        description="Add a new repository for Discharge"
       />
       <ProjectForm isNew />
     </div>

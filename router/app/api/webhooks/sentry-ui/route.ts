@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       webUrl,
-      project: 'AI Bug Fixer',
+      project: 'Discharge',
       identifier: routeResult.conversationId || `Job #${routeResult.jobId}`,
     });
   } catch (error) {

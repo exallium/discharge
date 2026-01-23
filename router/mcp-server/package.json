@@ -1,7 +1,7 @@
 {
-  "name": "ai-bug-fixer-mcp",
+  "name": "discharge-mcp",
   "version": "1.0.0",
-  "description": "Read-only MCP server for AI Bug Fixer integrations",
+  "description": "Read-only MCP server for Discharge integrations",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

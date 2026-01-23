@@ -92,7 +92,7 @@ function generateAppName(): string {
   const adjective = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
   const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
   const suffix = Math.floor(Math.random() * 1000);
-  return `AI Bug Fixer ${adjective}-${noun}-${suffix}`;
+  return `Discharge ${adjective}-${noun}-${suffix}`;
 }
 
 /**

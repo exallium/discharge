@@ -4,31 +4,31 @@
 
 @layer base {
   :root {
-    /* Light mode - Material Design inspired with Teal primary */
+    /* Light mode - Electric Purple + Blue theme */
     --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+    --foreground: 250 20% 10%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card: 250 20% 98%;
+    --card-foreground: 250 20% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 250 20% 10%;
 
-    /* Primary - Teal (keeping brand identity) */
-    --primary: 174 100% 21%;
+    /* Primary - Electric purple */
+    --primary: 270 100% 50%;
     --primary-foreground: 0 0% 100%;
 
-    /* Secondary - Blue-gray */
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
+    /* Secondary - Cool light gray with purple tint */
+    --secondary: 250 15% 92%;
+    --secondary-foreground: 250 20% 10%;
 
-    /* Muted - Light gray for backgrounds */
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    /* Muted - Subtle cool gray */
+    --muted: 250 15% 95%;
+    --muted-foreground: 250 10% 45%;
 
-    /* Accent - Light teal for highlights */
-    --accent: 174 40% 95%;
-    --accent-foreground: 174 100% 21%;
+    /* Accent - Electric blue */
+    --accent: 220 100% 55%;
+    --accent-foreground: 0 0% 100%;
 
     /* Semantic colors */
     --destructive: 0 84% 60%;
@@ -41,47 +41,47 @@
     --warning-foreground: 0 0% 100%;
 
     /* UI elements */
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 174 100% 21%;
+    --border: 250 15% 85%;
+    --input: 250 15% 85%;
+    --ring: 270 100% 50%;
 
     /* Border radius */
     --radius: 0.5rem;
 
     /* Chart colors for data visualization */
-    --chart-1: 174 100% 21%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --chart-1: 270 100% 50%;
+    --chart-2: 220 100% 55%;
+    --chart-3: 290 80% 60%;
+    --chart-4: 200 90% 50%;
+    --chart-5: 250 70% 60%;
   }
 
   .dark {
-    /* Dark mode */
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
+    /* Dark mode - Electric Purple + Blue theme */
+    --background: 250 25% 6%;
+    --foreground: 250 10% 95%;
 
-    --card: 222 47% 13%;
-    --card-foreground: 210 40% 98%;
+    --card: 250 25% 9%;
+    --card-foreground: 250 10% 95%;
 
-    --popover: 222 47% 13%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 250 25% 9%;
+    --popover-foreground: 250 10% 95%;
 
-    /* Primary - Lighter teal for dark mode */
-    --primary: 174 70% 50%;
-    --primary-foreground: 222 47% 11%;
+    /* Primary - Brighter electric purple */
+    --primary: 270 100% 65%;
+    --primary-foreground: 0 0% 100%;
 
-    /* Secondary */
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
+    /* Secondary - Dark purple-gray */
+    --secondary: 250 25% 15%;
+    --secondary-foreground: 250 10% 95%;
 
-    /* Muted */
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
+    /* Muted - Subtle dark */
+    --muted: 250 25% 12%;
+    --muted-foreground: 250 15% 60%;
 
-    /* Accent */
-    --accent: 217 33% 17%;
-    --accent-foreground: 174 70% 50%;
+    /* Accent - Bright electric blue */
+    --accent: 220 100% 60%;
+    --accent-foreground: 0 0% 100%;
 
     /* Semantic colors (slightly adjusted for dark mode) */
     --destructive: 0 62% 50%;
@@ -94,16 +94,16 @@
     --warning-foreground: 0 0% 0%;
 
     /* UI elements */
-    --border: 217 33% 20%;
-    --input: 217 33% 20%;
-    --ring: 174 70% 50%;
+    --border: 250 25% 18%;
+    --input: 250 25% 18%;
+    --ring: 270 100% 65%;
 
     /* Chart colors for dark mode */
-    --chart-1: 174 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --chart-1: 270 100% 65%;
+    --chart-2: 220 100% 60%;
+    --chart-3: 290 80% 65%;
+    --chart-4: 200 90% 55%;
+    --chart-5: 250 70% 65%;
   }
 }
 

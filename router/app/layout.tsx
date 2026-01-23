@@ -3,8 +3,8 @@ import { ThemeProvider } from '@/components/theme-provider';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'AI Bug Fixer',
-  description: 'AI-powered bug fixing system',
+  title: 'Discharge',
+  description: 'AI-powered bug fixing, powered by Claude',
   icons: {
     icon: '/favicon.ico',
   },

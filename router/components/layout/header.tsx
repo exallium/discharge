@@ -43,7 +43,7 @@ export function Header() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Bug className="h-5 w-5 text-primary-foreground" />
           </div>
-          <span className="hidden font-bold sm:inline-block">AI Bug Fixer</span>
+          <span className="hidden font-bold sm:inline-block">Discharge</span>
         </Link>
 
         {/* Navigation */}

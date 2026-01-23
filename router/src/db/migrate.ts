@@ -84,6 +84,15 @@ async function createTables(
     CREATE INDEX IF NOT EXISTS idx_settings_category ON settings(category)
   `);
 
+  // Add project_id column to settings for project-specific secrets
+  await db.execute(sql`
+    ALTER TABLE settings ADD COLUMN IF NOT EXISTS project_id VARCHAR(255) REFERENCES projects(id) ON DELETE CASCADE
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_settings_project_id ON settings(project_id)
+  `);
+
   // Job history table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS job_history (
@@ -367,6 +376,7 @@ async function createTables(
   // Run data migrations
   await migrateTriggerFormat(db);
   await migrateVcsOwnerRepo(db);
+  await migrateSettingsProjectId(db);
 }
 
 /**
@@ -521,6 +531,63 @@ async function migrateVcsOwnerRepo(
   }
 
   logger.info('VCS owner/repo migration completed');
+}
+
+/**
+ * Migrate settings to populate project_id column from key prefix
+ * Key format: projects:{projectId}:{plugin}:{secretKey}
+ * Extracts projectId and sets the project_id column for cascade delete
+ */
+async function migrateSettingsProjectId(
+  db: PostgresJsDatabase<typeof schema>
+): Promise<void> {
+  // Find settings with project prefix that don't have project_id set yet
+  const allSettings = await db.select().from(schema.settings);
+
+  const settingsToMigrate = allSettings.filter((s) => {
+    return s.key.startsWith('projects:') && s.projectId === null;
+  });
+
+  if (settingsToMigrate.length === 0) {
+    return;
+  }
+
+  logger.info(`Migrating ${settingsToMigrate.length} project-specific settings to set project_id column`);
+
+  for (const setting of settingsToMigrate) {
+    // Parse key format: projects:{projectId}:{plugin}:{secretKey}
+    const parts = setting.key.split(':');
+    if (parts.length < 4 || parts[0] !== 'projects') {
+      logger.warn(`Skipping malformed setting key: ${setting.key}`);
+      continue;
+    }
+
+    const projectId = parts[1];
+
+    // Check if the project still exists
+    const project = await db
+      .select()
+      .from(schema.projects)
+      .where(eq(schema.projects.id, projectId))
+      .limit(1);
+
+    if (project.length === 0) {
+      // Project doesn't exist, delete the orphaned setting
+      await db.delete(schema.settings).where(eq(schema.settings.key, setting.key));
+      logger.debug(`Deleted orphaned setting: ${setting.key}`);
+      continue;
+    }
+
+    // Set project_id on the existing setting
+    await db
+      .update(schema.settings)
+      .set({ projectId })
+      .where(eq(schema.settings.key, setting.key));
+
+    logger.debug(`Set project_id on setting: ${setting.key} -> ${projectId}`);
+  }
+
+  logger.info('Settings project_id migration completed');
 }
 
 /**

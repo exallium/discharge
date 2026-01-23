@@ -96,6 +96,7 @@ export const projects = pgTable(
 
 /**
  * Settings table - Global configuration (tokens, secrets)
+ * Project-specific settings have a non-null project_id and cascade delete with the project
  */
 export const settings = pgTable(
   'settings',
@@ -106,12 +107,16 @@ export const settings = pgTable(
     description: text('description'),
     category: varchar('category', { length: 100 }).default('general'),
 
+    // Project ownership - null means global setting, non-null means project-specific
+    projectId: varchar('project_id', { length: 255 }).references(() => projects.id, { onDelete: 'cascade' }),
+
     // Timestamps
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index('idx_settings_category').on(table.category),
+    index('idx_settings_project_id').on(table.projectId),
   ]
 );
 

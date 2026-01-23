@@ -101,6 +101,7 @@ export async function setSecret(
     encrypted: true,
     category: projectId ? 'project-secrets' : 'secrets',
     description: `${plugin} ${key}${projectId ? ` for project ${projectId}` : ''}`,
+    projectId, // Set for cascade delete on project deletion
   });
 
   logger.info('Secret stored', {
