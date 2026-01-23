@@ -19,7 +19,7 @@ import { mkdir, rm, readFile, writeFile, readdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { getErrorMessage } from '../types/errors';
-import { getVCSAuthProvider } from '@ai-bug-fixer/service-sdk';
+import { getVCSAuthProvider } from '@discharge/service-sdk';
 import { logger } from '../logger';
 
 const execAsync = promisify(exec);

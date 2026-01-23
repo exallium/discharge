@@ -22,9 +22,9 @@ export type {
   RunnerConversationResult,
   ConversationMessage,
   ConversationConfig,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 
 export {
   DEFAULT_ROUTING_TAGS,
   DEFAULT_CONVERSATION_CONFIG,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';

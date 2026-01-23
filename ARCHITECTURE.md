@@ -1,4 +1,4 @@
-# AI Bug Fixer Architecture
+# Discharge Architecture
 
 This document explains the system architecture, what runs where, and deployment options including Coolify.
 
@@ -61,7 +61,7 @@ This document explains the system architecture, what runs where, and deployment 
 - **Image**: Built from `agent-runners/claude-code/Dockerfile`
 - **Purpose**: Execute AI agent (Claude Code CLI) to investigate and fix bugs
 - **Lifecycle**: Created per job, destroyed after completion
-- **Network**: Shares `ai-bug-fixer_internal` network with router
+- **Network**: Shares `discharge_internal` network with router
 
 **What it does:**
 - Clones repository
@@ -114,7 +114,7 @@ This document explains the system architecture, what runs where, and deployment 
 ├────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐  │
-│  │  Docker Network: ai-bug-fixer_internal                  │  │
+│  │  Docker Network: discharge_internal                  │  │
 │  │                                                          │  │
 │  │  ┌──────────────┐         ┌──────────────┐             │  │
 │  │  │   Web App    │◄───────►│  PostgreSQL  │             │  │
@@ -266,7 +266,7 @@ Create `coolify.yml` in repo root:
 
 ```yaml
 services:
-  ai-bug-fixer:
+  discharge:
     build:
       context: ./router
       dockerfile: Dockerfile
@@ -435,7 +435,7 @@ The router needs Docker socket access to spawn runners. This is a security risk 
 
 ### Network Isolation
 
-All containers run in isolated network `ai-bug-fixer_internal`:
+All containers run in isolated network `discharge_internal`:
 
 - External access only via router port 3000
 - Redis not exposed to internet
@@ -562,7 +562,7 @@ curl http://localhost:3000/dashboard
 docker-compose exec redis redis-cli ping
 
 # Check network
-docker network inspect ai-bug-fixer_internal
+docker network inspect discharge_internal
 ```
 
 **Runner spawn failed:**
@@ -571,7 +571,7 @@ docker network inspect ai-bug-fixer_internal
 docker info
 
 # Check network exists
-docker network ls | grep ai-bug-fixer
+docker network ls | grep discharge
 ```
 
 **Out of disk space:**
@@ -634,7 +634,7 @@ git push coolify main
 **Coolify on a $20/month VPS:**
 
 1. Install Coolify on Hetzner/DigitalOcean
-2. Deploy AI Bug Fixer via git
+2. Deploy Discharge via git
 3. Use Cloudflare tunnel for webhooks
 4. Let Coolify handle monitoring, backups, HTTPS
 5. Pay only for Anthropic API usage

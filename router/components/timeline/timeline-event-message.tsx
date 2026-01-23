@@ -6,7 +6,7 @@
 
 import { Bot, User, MessageSquare } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/utils';
-import type { MessageEventData } from '@ai-bug-fixer/service-sdk';
+import type { MessageEventData } from '@discharge/service-sdk';
 import type { TimelineEntry } from './build-timeline';
 
 interface TimelineEventMessageProps {

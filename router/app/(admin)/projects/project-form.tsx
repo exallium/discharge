@@ -68,10 +68,10 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
   const [sentry, setSentry] = useState(!!project?.triggers?.sentry?.enabled);
   const [circleci, setCircleci] = useState(!!project?.triggers?.circleci?.enabled);
 
-  // Detected integrations from .ai-bugs.json
+  // Detected integrations from .discharge.json
   const [detectedIntegrations, setDetectedIntegrations] = useState<DetectedIntegrations>({});
 
-  // Handle detected integrations from .ai-bugs.json validation
+  // Handle detected integrations from .discharge.json validation
   const handleIntegrationsDetected = useCallback((integrations: DetectedIntegrations) => {
     setDetectedIntegrations(integrations);
 
@@ -125,7 +125,7 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
         triggers.github = { issues: true };
       }
       if (sentry) {
-        // Include detected config from .ai-bugs.json if available
+        // Include detected config from .discharge.json if available
         triggers.sentry = {
           enabled: true,
           ...(detectedIntegrations.sentry && {
@@ -136,7 +136,7 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
         };
       }
       if (circleci) {
-        // Include detected config from .ai-bugs.json if available
+        // Include detected config from .discharge.json if available
         triggers.circleci = {
           enabled: true,
           ...(detectedIntegrations.circleci && {
@@ -233,7 +233,7 @@ export function ProjectForm({ project, isNew = false }: ProjectFormProps) {
         />
       )}
 
-      {/* Config Validation - shows .ai-bugs.json preview */}
+      {/* Config Validation - shows .discharge.json preview */}
       {repoFullName && (
         <AiBugsValidator
           repoFullName={repoFullName}

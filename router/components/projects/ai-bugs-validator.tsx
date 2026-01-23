@@ -132,7 +132,7 @@ export function AiBugsValidator({ repoFullName, onIntegrationsDetected }: AiBugs
           Repository Configuration
         </CardTitle>
         <CardDescription>
-          Preview of .ai-bugs.json configuration from the repository
+          Preview of .discharge.json configuration from the repository
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -146,7 +146,7 @@ export function AiBugsValidator({ repoFullName, onIntegrationsDetected }: AiBugs
         {status === 'success' && result && !result.exists && (
           <div className="flex items-center gap-2 text-muted-foreground">
             <Info className="h-4 w-4" />
-            <span>{result.message || 'No .ai-bugs.json found - default settings will be used'}</span>
+            <span>{result.message || 'No .discharge.json found - default settings will be used'}</span>
           </div>
         )}
 

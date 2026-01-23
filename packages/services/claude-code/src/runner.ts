@@ -23,14 +23,14 @@ import type {
   RunnerConversationResult,
   RunnerAction,
   RunnerErrorType,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 import {
   getSecretsProvider,
   getVCSAuthProvider,
   getLogger,
   getErrorMessage,
   isExecError,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 
 import {
   buildConversationSystemPrompt,
@@ -350,23 +350,23 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         await execAsync(`git checkout -b ${fixBranch}`, { cwd: workspacePath });
       }
 
-      // Read .ai-bugs.json if it exists
+      // Read .discharge.json if it exists
       let bugConfig: AiBugsConfig | undefined;
       try {
-        const configPath = join(workspacePath, '.ai-bugs.json');
+        const configPath = join(workspacePath, '.discharge.json');
         const content = await readFile(configPath, 'utf-8');
         const parsed = JSON.parse(content);
         const validation = validateBugConfig(parsed);
         if (validation.valid) {
           bugConfig = validation.config;
-          logger.debug(`[ClaudeCode:${jobId}] Loaded .ai-bugs.json`);
+          logger.debug(`[ClaudeCode:${jobId}] Loaded .discharge.json`);
         } else {
           logger.warn(
-            `[ClaudeCode:${jobId}] Invalid .ai-bugs.json: ${validation.error}`
+            `[ClaudeCode:${jobId}] Invalid .discharge.json: ${validation.error}`
           );
         }
       } catch {
-        logger.debug(`[ClaudeCode:${jobId}] No .ai-bugs.json found, using defaults`);
+        logger.debug(`[ClaudeCode:${jobId}] No .discharge.json found, using defaults`);
       }
 
       // Clone secondary repositories if configured

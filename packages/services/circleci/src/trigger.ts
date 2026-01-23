@@ -25,7 +25,7 @@ import {
   getSecretsProvider,
   getProjectProvider,
   getLogger,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 import {
   CircleCIWebhookPayload,
   isWorkflowEvent,

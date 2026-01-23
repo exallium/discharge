@@ -17,14 +17,14 @@ services:
   # ─────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
-    container_name: claude-agent-postgres
+    container_name: discharge-postgres
 
     # Security: Run as postgres user
     user: "70:70"
 
     # Environment
     environment:
-      POSTGRES_DB: ai_bug_fixer
+      POSTGRES_DB: discharge
       POSTGRES_USER: ${POSTGRES_USER:-aibugfixer}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
 
@@ -69,7 +69,7 @@ services:
   # ─────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: claude-agent-redis
+    container_name: discharge-redis
 
     # Security: Run as non-root user
     user: "999:999"
@@ -117,7 +117,7 @@ services:
     build:
       context: ./router
       dockerfile: Dockerfile
-    container_name: claude-agent-router
+    container_name: discharge-router
 
     # Depends on PostgreSQL and Redis
     depends_on:
@@ -134,7 +134,7 @@ services:
       - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-2}
 
       # Database
-      - DATABASE_URL=postgres://${POSTGRES_USER:-aibugfixer}:${POSTGRES_PASSWORD}@postgres:5432/ai_bug_fixer
+      - DATABASE_URL=postgres://${POSTGRES_USER:-aibugfixer}:${POSTGRES_PASSWORD}@postgres:5432/discharge
       - DB_ENCRYPTION_KEY=${DB_ENCRYPTION_KEY}
 
       # Admin UI
@@ -166,7 +166,7 @@ services:
 
       # Docker
       - HOST_USER=${USER}
-      - DOCKER_NETWORK=ai-bug-fixer_internal
+      - DOCKER_NETWORK=discharge_internal
 
     # Volumes
     volumes:
@@ -216,7 +216,7 @@ services:
     build:
       context: ./router/mcp-server
       dockerfile: Dockerfile
-    container_name: claude-agent-mcp
+    container_name: discharge-mcp
 
     # Depends on PostgreSQL for secrets
     depends_on:
@@ -225,7 +225,7 @@ services:
 
     # Environment
     environment:
-      - DATABASE_URL=postgres://${POSTGRES_USER:-aibugfixer}:${POSTGRES_PASSWORD}@postgres:5432/ai_bug_fixer
+      - DATABASE_URL=postgres://${POSTGRES_USER:-aibugfixer}:${POSTGRES_PASSWORD}@postgres:5432/discharge
       - DB_ENCRYPTION_KEY=${DB_ENCRYPTION_KEY}
       - MCP_PORT=3001
       - MCP_TRANSPORT=sse
@@ -293,7 +293,7 @@ services:
   # Uncomment to enable secure tunnel without exposing ports
   # tunnel:
   #   image: cloudflare/cloudflared:latest
-  #   container_name: claude-agent-tunnel
+  #   container_name: discharge-tunnel
   #   command: tunnel run
   #   environment:
   #     - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
@@ -314,7 +314,7 @@ services:
   # Uncomment to enable container management UI
   # portainer:
   #   image: portainer/portainer-ce:latest
-  #   container_name: claude-agent-portainer
+  #   container_name: discharge-portainer
   #   volumes:
   #     - /var/run/docker.sock:/var/run/docker.sock:ro
   #     - portainer_data:/data
@@ -335,7 +335,7 @@ services:
   # Uncomment to enable real-time log viewer
   # dozzle:
   #   image: amir20/dozzle:latest
-  #   container_name: claude-agent-dozzle
+  #   container_name: discharge-dozzle
   #   volumes:
   #     - /var/run/docker.sock:/var/run/docker.sock:ro
   #   networks:
@@ -354,7 +354,7 @@ services:
 # =============================================================================
 networks:
   internal:
-    name: ai-bug-fixer_internal
+    name: discharge_internal
     driver: bridge
     ipam:
       config:
@@ -365,10 +365,10 @@ networks:
 # =============================================================================
 volumes:
   postgres_data:
-    name: claude-agent-postgres-data
+    name: discharge-postgres-data
   redis_data:
-    name: claude-agent-redis-data
+    name: discharge-redis-data
   workspaces:
-    name: claude-agent-workspaces
+    name: discharge-workspaces
   # portainer_data:
-  #   name: claude-agent-portainer-data
+  #   name: discharge-portainer-data

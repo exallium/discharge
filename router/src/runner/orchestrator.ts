@@ -1,6 +1,6 @@
-import type { TriggerPlugin, TriggerEvent, FixStatus, AnalysisResult, PrefetchedData } from '@ai-bug-fixer/service-sdk';
-import type { TriageResult, InvestigationContext, RunnerPlugin } from '@ai-bug-fixer/service-sdk';
-import { formatPRBody } from '@ai-bug-fixer/service-sdk';
+import type { TriggerPlugin, TriggerEvent, FixStatus, AnalysisResult, PrefetchedData } from '@discharge/service-sdk';
+import type { TriageResult, InvestigationContext, RunnerPlugin } from '@discharge/service-sdk';
+import { formatPRBody } from '@discharge/service-sdk';
 import { requireMCPForSentry, getMCPToolCallLogs } from './mcp';
 import { findProjectById, ProjectConfig } from '../config/projects';
 import { validateTools } from './tools';

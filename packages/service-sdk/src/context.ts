@@ -6,7 +6,7 @@
  *
  * Usage in services:
  * ```typescript
- * import { getSecretsProvider, getProjectProvider } from '@ai-bug-fixer/service-sdk';
+ * import { getSecretsProvider, getProjectProvider } from '@discharge/service-sdk';
  *
  * const secrets = getSecretsProvider();
  * const token = await secrets.getSecret('sentry', 'auth_token');
@@ -45,7 +45,7 @@ const defaultLogger: LoggerProvider = {
  * @example
  * ```typescript
  * // In router/src/config/services.ts
- * import { configureProviders } from '@ai-bug-fixer/service-sdk';
+ * import { configureProviders } from '@discharge/service-sdk';
  *
  * configureProviders({
  *   secrets: mySecretsAdapter,

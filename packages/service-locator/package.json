@@ -1,7 +1,7 @@
 {
-  "name": "@ai-bug-fixer/service-locator",
+  "name": "@discharge/service-locator",
   "version": "1.0.0",
-  "description": "Service registry and lookup for AI Bug Fixer plugins",
+  "description": "Service registry and lookup for Discharge plugins",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -21,7 +21,7 @@
     }
   },
   "dependencies": {
-    "@ai-bug-fixer/service-sdk": "^1.0.0"
+    "@discharge/service-sdk": "^1.0.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

@@ -12,22 +12,22 @@ export function ConfigReference() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileJson className="h-5 w-5" />
-            .ai-bugs.json Configuration
+            .discharge.json Configuration
           </CardTitle>
           <CardDescription>
-            Configure how AI Bug Fixer investigates and fixes bugs in your repository
+            Configure how Discharge investigates and fixes bugs in your repository
           </CardDescription>
         </CardHeader>
         <CardContent className="prose prose-sm dark:prose-invert max-w-none">
           <p>
-            The <code>.ai-bugs.json</code> file lives in your repository root and customizes
+            The <code>.discharge.json</code> file lives in your repository root and customizes
             how the AI agent investigates and fixes different types of bugs. This file is
             optional - default settings will be used if not present.
           </p>
 
           <h4>Location</h4>
           <pre className="bg-muted p-3 rounded-md overflow-x-auto">
-            <code>your-repo/.ai-bugs.json</code>
+            <code>your-repo/.discharge.json</code>
           </pre>
         </CardContent>
       </Card>

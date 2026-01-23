@@ -15,7 +15,7 @@ import {
 import { ProjectConfig } from '../../../src/config/projects';
 
 // Mock the service-locator registry
-jest.mock('@ai-bug-fixer/service-locator', () => ({
+jest.mock('@discharge/service-locator', () => ({
   registry: {
     getTriggerByType: jest.fn((id: string) => {
       const triggers: Record<string, { getRequiredSecrets: () => Array<{ id: string; label: string; description: string; required: boolean }> }> = {

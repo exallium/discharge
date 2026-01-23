@@ -11,7 +11,7 @@ import type {
   JobStartedEventData,
   JobCompletedEventData,
   JobFailedEventData,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 import type { TimelineEntry } from './build-timeline';
 
 type JobEventType = 'job_started' | 'job_completed' | 'job_failed';

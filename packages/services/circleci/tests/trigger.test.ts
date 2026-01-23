@@ -4,7 +4,7 @@
 
 import crypto from 'crypto';
 import { CircleCITrigger } from '../src/trigger';
-import { configureProviders, resetProviders } from '@ai-bug-fixer/service-sdk';
+import { configureProviders, resetProviders } from '@discharge/service-sdk';
 import { createMockWebhookRequest } from './helpers/webhook-request';
 import { mockProject, mockProjectProvider, mockSecretsProvider, mockLoggerProvider } from './setup';
 

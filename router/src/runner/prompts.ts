@@ -1,4 +1,4 @@
-import type { TriggerPlugin, TriggerEvent, Tool } from '@ai-bug-fixer/service-sdk';
+import type { TriggerPlugin, TriggerEvent, Tool } from '@discharge/service-sdk';
 import {
   AiBugsConfig,
   ResolvedRule,

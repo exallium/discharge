@@ -1,6 +1,6 @@
 # Exposing Webhooks to External Services
 
-When running AI Bug Fixer at home (like on a Mac Mini) or behind a firewall, you need to expose your webhook endpoint so that GitHub, Sentry, and CircleCI can send events to it. This guide covers several options with a focus on Cloudflare Tunnel.
+When running Discharge at home (like on a Mac Mini) or behind a firewall, you need to expose your webhook endpoint so that GitHub, Sentry, and CircleCI can send events to it. This guide covers several options with a focus on Cloudflare Tunnel.
 
 ## Table of Contents
 
@@ -44,7 +44,7 @@ When running AI Bug Fixer at home (like on a Mac Mini) or behind a firewall, you
 
 1. **Cloudflare account** (free tier is fine)
 2. **Domain name** managed by Cloudflare
-   - Can use a subdomain like `ai-bug-fixer.yourdomain.com`
+   - Can use a subdomain like `discharge.yourdomain.com`
    - Free domains: Freenom, or use Cloudflare Registrar
 
 ### Setup Guide
@@ -84,8 +84,8 @@ This opens a browser window. Select your domain from the list.
 #### Step 3: Create a Tunnel
 
 ```bash
-# Create a tunnel named 'ai-bug-fixer'
-cloudflared tunnel create ai-bug-fixer
+# Create a tunnel named 'discharge'
+cloudflared tunnel create discharge
 ```
 
 This creates:
@@ -103,8 +103,8 @@ tunnel: <YOUR-TUNNEL-ID>
 credentials-file: /Users/yourusername/.cloudflared/<TUNNEL-ID>.json
 
 ingress:
-  # Route webhooks to AI Bug Fixer
-  - hostname: ai-bug-fixer.yourdomain.com
+  # Route webhooks to Discharge
+  - hostname: discharge.yourdomain.com
     service: http://localhost:3000
 
   # Catch-all rule (required)
@@ -114,13 +114,13 @@ ingress:
 **For Mac Mini specifically:**
 - Replace `yourusername` with your actual username
 - Use full path to credentials file
-- Ensure AI Bug Fixer runs on port 3000
+- Ensure Discharge runs on port 3000
 
 #### Step 5: Configure DNS
 
 ```bash
 # Create DNS record pointing to your tunnel
-cloudflared tunnel route dns ai-bug-fixer ai-bug-fixer.yourdomain.com
+cloudflared tunnel route dns discharge discharge.yourdomain.com
 ```
 
 This creates a CNAME record in Cloudflare DNS.
@@ -129,7 +129,7 @@ This creates a CNAME record in Cloudflare DNS.
 
 **Test run:**
 ```bash
-cloudflared tunnel run ai-bug-fixer
+cloudflared tunnel run discharge
 ```
 
 **Run as a service (recommended for Mac Mini):**
@@ -150,7 +150,7 @@ Create `~/Library/LaunchAgents/com.cloudflare.cloudflared.plist`:
         <string>--config</string>
         <string>/Users/yourusername/.cloudflared/config.yml</string>
         <string>run</string>
-        <string>ai-bug-fixer</string>
+        <string>discharge</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -183,7 +183,7 @@ tail -f /tmp/cloudflared.out
 curl http://localhost:3000/health
 
 # From anywhere on the internet
-curl https://ai-bug-fixer.yourdomain.com/health
+curl https://discharge.yourdomain.com/health
 ```
 
 Both should return the same health check response.
@@ -193,15 +193,15 @@ Both should return the same health check response.
 Now configure your services to send webhooks to:
 
 **GitHub:**
-- Webhook URL: `https://ai-bug-fixer.yourdomain.com/webhooks/github-issues`
+- Webhook URL: `https://discharge.yourdomain.com/webhooks/github-issues`
 - Content type: `application/json`
 - Secret: Your `GITHUB_WEBHOOK_SECRET`
 
 **Sentry:**
-- Webhook URL: `https://ai-bug-fixer.yourdomain.com/webhooks/sentry`
+- Webhook URL: `https://discharge.yourdomain.com/webhooks/sentry`
 
 **CircleCI:**
-- Webhook URL: `https://ai-bug-fixer.yourdomain.com/webhooks/circleci`
+- Webhook URL: `https://discharge.yourdomain.com/webhooks/circleci`
 
 ### Managing the Tunnel
 
@@ -229,12 +229,12 @@ cloudflared tunnel list
 
 **Delete tunnel:**
 ```bash
-cloudflared tunnel delete ai-bug-fixer
+cloudflared tunnel delete discharge
 ```
 
 ### Docker Integration (Optional)
 
-If you're running AI Bug Fixer with Docker Compose, you can include cloudflared in your stack:
+If you're running Discharge with Docker Compose, you can include cloudflared in your stack:
 
 Add to `docker-compose.prod.yml`:
 
@@ -244,7 +244,7 @@ services:
 
   tunnel:
     image: cloudflare/cloudflared:latest
-    container_name: ai-bug-fixer-tunnel
+    container_name: discharge-tunnel
     command: tunnel --no-autoupdate run
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
@@ -257,7 +257,7 @@ services:
 
 **Get tunnel token:**
 ```bash
-cloudflared tunnel token ai-bug-fixer
+cloudflared tunnel token discharge
 ```
 
 Add token to `.env`:
@@ -276,15 +276,15 @@ credentials-file: /Users/yourusername/.cloudflared/<TUNNEL-ID>.json
 
 ingress:
   # Production
-  - hostname: ai-bug-fixer.yourdomain.com
+  - hostname: discharge.yourdomain.com
     service: http://localhost:3000
 
   # Staging
-  - hostname: staging.ai-bug-fixer.yourdomain.com
+  - hostname: staging.discharge.yourdomain.com
     service: http://localhost:3001
 
   # Monitoring dashboard
-  - hostname: monitor.ai-bug-fixer.yourdomain.com
+  - hostname: monitor.discharge.yourdomain.com
     service: http://localhost:9090
 
   # Catch-all
@@ -297,7 +297,7 @@ Enable Cloudflare Access for authentication:
 
 ```yaml
 ingress:
-  - hostname: ai-bug-fixer.yourdomain.com
+  - hostname: discharge.yourdomain.com
     service: http://localhost:3000
     originRequest:
       noTLSVerify: false
@@ -340,7 +340,7 @@ ngrok http 3000
 
 **With custom domain (paid):**
 ```bash
-ngrok http --domain=ai-bug-fixer.yourdomain.com 3000
+ngrok http --domain=discharge.yourdomain.com 3000
 ```
 
 **Configuration file** (`~/.ngrok2/ngrok.yml`):
@@ -348,15 +348,15 @@ ngrok http --domain=ai-bug-fixer.yourdomain.com 3000
 authtoken: <your-auth-token>
 region: us
 tunnels:
-  ai-bug-fixer:
+  discharge:
     proto: http
     addr: 3000
-    domain: ai-bug-fixer.yourdomain.com  # Paid feature
+    domain: discharge.yourdomain.com  # Paid feature
 ```
 
 **Run:**
 ```bash
-ngrok start ai-bug-fixer
+ngrok start discharge
 ```
 
 ### Run as Service on Mac
@@ -374,7 +374,7 @@ Create `~/Library/LaunchAgents/com.ngrok.agent.plist`:
     <array>
         <string>/opt/homebrew/bin/ngrok</string>
         <string>start</string>
-        <string>ai-bug-fixer</string>
+        <string>discharge</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -408,7 +408,7 @@ Create `~/Library/LaunchAgents/com.ngrok.agent.plist`:
 2. **Set up reverse proxy (Caddy or Nginx):**
    ```bash
    # Caddyfile
-   ai-bug-fixer.yourdomain.com {
+   discharge.yourdomain.com {
        reverse_proxy localhost:3000
    }
    ```
@@ -470,7 +470,7 @@ caffeinate -s &
 All services should start automatically:
 - Cloudflared (via LaunchAgent)
 - Docker (via Desktop settings)
-- AI Bug Fixer (via docker-compose restart policy)
+- Discharge (via docker-compose restart policy)
 
 **3. Monitor with:**
 
@@ -482,11 +482,11 @@ htop
 # Tunnel status
 tail -f /tmp/cloudflared.out
 
-# AI Bug Fixer logs
+# Discharge logs
 docker-compose -f docker-compose.prod.yml logs -f
 
 # Webhook traffic
-curl https://ai-bug-fixer.yourdomain.com/dashboard
+curl https://discharge.yourdomain.com/dashboard
 ```
 
 **4. Backup strategy:**
@@ -494,8 +494,8 @@ curl https://ai-bug-fixer.yourdomain.com/dashboard
 ```bash
 # Automated daily backup of Redis data
 0 2 * * * docker-compose exec redis redis-cli SAVE && \
-  rsync -avz /var/lib/docker/volumes/ai-bug-fixer-redis-data/_data/ \
-  /Volumes/Backup/ai-bug-fixer/redis-$(date +\%Y\%m\%d)/
+  rsync -avz /var/lib/docker/volumes/discharge-redis-data/_data/ \
+  /Volumes/Backup/discharge/redis-$(date +\%Y\%m\%d)/
 ```
 
 ### Network Considerations
@@ -573,9 +573,9 @@ Monitor access:
 ```bash
 # Cloudflare logs (in dashboard)
 # Real-time
-cloudflared tunnel info ai-bug-fixer
+cloudflared tunnel info discharge
 
-# AI Bug Fixer logs
+# Discharge logs
 docker-compose logs -f router | grep "HTTP Request"
 ```
 
@@ -592,7 +592,7 @@ launchctl list | grep cloudflared
 tail -f /tmp/cloudflared.err
 
 # Test connection
-cloudflared tunnel info ai-bug-fixer
+cloudflared tunnel info discharge
 ```
 
 **Common issues:**
@@ -605,7 +605,7 @@ cloudflared tunnel info ai-bug-fixer
 **Test external access:**
 ```bash
 # From outside your network (use phone hotspot)
-curl https://ai-bug-fixer.yourdomain.com/health
+curl https://discharge.yourdomain.com/health
 
 # Should return health check JSON
 ```
@@ -642,7 +642,7 @@ docker-compose -f docker-compose.prod.yml ps
 
 **Monitor Cloudflare tunnel:**
 ```bash
-cloudflared tunnel info ai-bug-fixer
+cloudflared tunnel info discharge
 ```
 
 **Check bandwidth:**
@@ -675,7 +675,7 @@ cloudflared tunnel info ai-bug-fixer
 **For Mac Mini at home:**
 ```
 Mac Mini ($0 - you already have it)
-├─ Docker + AI Bug Fixer (free)
+├─ Docker + Discharge (free)
 ├─ Cloudflare Tunnel (free)
 └─ Custom subdomain ($1/month)
 
@@ -687,9 +687,9 @@ Total: ~$1/month + Anthropic API usage
 - [ ] Install cloudflared on Mac Mini
 - [ ] Create Cloudflare account and add domain
 - [ ] Authenticate: `cloudflared tunnel login`
-- [ ] Create tunnel: `cloudflared tunnel create ai-bug-fixer`
+- [ ] Create tunnel: `cloudflared tunnel create discharge`
 - [ ] Create config file at `~/.cloudflared/config.yml`
-- [ ] Route DNS: `cloudflared tunnel route dns ai-bug-fixer <subdomain>`
+- [ ] Route DNS: `cloudflared tunnel route dns discharge <subdomain>`
 - [ ] Create LaunchAgent plist file
 - [ ] Load service: `launchctl load ~/Library/LaunchAgents/...`
 - [ ] Test: `curl https://<subdomain>/health`

@@ -5,22 +5,22 @@
  * VCS lookups now go through the service registry.
  */
 
-import { registry } from '@ai-bug-fixer/service-locator';
-import type { VCSPlugin } from '@ai-bug-fixer/service-sdk';
-import { GitHubVCS } from '@ai-bug-fixer/service-github';
+import { registry } from '@discharge/service-locator';
+import type { VCSPlugin } from '@discharge/service-sdk';
+import { GitHubVCS } from '@discharge/service-github';
 import { getSecret } from '../secrets';
 import { registerPRProvider, getGitHubPRProvider } from '../pr';
 import * as githubApp from '../github/app-service';
 
 // Re-export types from SDK for backward compatibility
-export type { VCSPlugin } from '@ai-bug-fixer/service-sdk';
-export { formatPRBody } from '@ai-bug-fixer/service-sdk';
+export type { VCSPlugin } from '@discharge/service-sdk';
+export { formatPRBody } from '@discharge/service-sdk';
 
 // Re-export VCS types from SDK
-export type { VCSProjectConfig, PlanFileResult, PullRequest } from '@ai-bug-fixer/service-sdk';
+export type { VCSProjectConfig, PlanFileResult, PullRequest } from '@discharge/service-sdk';
 
 // Re-export GitHubVCS from service-github for consumers that need it
-export { GitHubVCS } from '@ai-bug-fixer/service-github';
+export { GitHubVCS } from '@discharge/service-github';
 
 /**
  * Get GitHub webhook secret for a project (or global default)

@@ -1,7 +1,7 @@
 {
-  "name": "@ai-bug-fixer/service-sdk",
+  "name": "@discharge/service-sdk",
   "version": "1.0.0",
-  "description": "Shared interfaces and types for AI Bug Fixer service plugins",
+  "description": "Shared interfaces and types for Discharge service plugins",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

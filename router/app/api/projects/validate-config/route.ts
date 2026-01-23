@@ -12,7 +12,7 @@ import {
 export const dynamic = 'force-dynamic';
 
 /**
- * Validate a repository's .ai-bugs.json configuration
+ * Validate a repository's .discharge.json configuration
  * Returns config preview including secondary repos access status
  */
 export async function POST(request: NextRequest) {
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Try to fetch .ai-bugs.json
+    // Try to fetch .discharge.json
     const [owner, repo] = repoFullName.split('/');
     let configContent: string | null = null;
 
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       const { data } = await octokit.repos.getContent({
         owner,
         repo,
-        path: '.ai-bugs.json',
+        path: '.discharge.json',
       });
 
       if ('content' in data && data.type === 'file') {
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       if (error.status === 404) {
         return NextResponse.json({
           exists: false,
-          message: 'No .ai-bugs.json found - using default settings',
+          message: 'No .discharge.json found - using default settings',
         });
       }
       throw e;
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     if (!configContent) {
       return NextResponse.json({
         exists: false,
-        message: 'No .ai-bugs.json found - using default settings',
+        message: 'No .discharge.json found - using default settings',
       });
     }
 
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         exists: true,
         valid: false,
-        error: 'Invalid JSON syntax in .ai-bugs.json',
+        error: 'Invalid JSON syntax in .discharge.json',
       });
     }
 

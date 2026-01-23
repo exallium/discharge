@@ -9,7 +9,7 @@ import {
   type SecretsProvider,
   type ProjectProvider,
   type LoggerProvider,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 
 // Default mock project for testing
 export const mockProject = {

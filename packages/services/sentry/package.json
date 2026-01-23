@@ -1,7 +1,7 @@
 {
-  "name": "@ai-bug-fixer/service-sentry",
+  "name": "@discharge/service-sentry",
   "version": "1.0.0",
-  "description": "Sentry service plugin for AI Bug Fixer (trigger)",
+  "description": "Sentry service plugin for Discharge (trigger)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -23,7 +23,7 @@
     }
   },
   "dependencies": {
-    "@ai-bug-fixer/service-sdk": "^1.0.0"
+    "@discharge/service-sdk": "^1.0.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.11",

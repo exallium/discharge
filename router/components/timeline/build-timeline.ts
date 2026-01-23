@@ -10,7 +10,7 @@ import type {
   JobStartedEventData,
   JobCompletedEventData,
   JobFailedEventData,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 
 /**
  * Message data from the database

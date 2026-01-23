@@ -1,6 +1,6 @@
 # Custom Agents & Components
 
-This document describes how to create custom agents and components to extend the AI Bug Fixer system.
+This document describes how to create custom agents and components to extend the Discharge system.
 
 ## Table of Contents
 
@@ -969,7 +969,7 @@ interface ToolGenerator {
 
 ## Repository Configuration
 
-Target repositories can include a `.ai-bugs.json` file to customize how Claude investigates and fixes different types of bugs.
+Target repositories can include a `.discharge.json` file to customize how Claude investigates and fixes different types of bugs.
 
 ### Schema Reference
 

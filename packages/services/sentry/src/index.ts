@@ -7,7 +7,7 @@
 import type {
   ServiceManifest,
   SecretRequirement,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 import { SentryTrigger } from './trigger';
 
 // Export the trigger class for direct use

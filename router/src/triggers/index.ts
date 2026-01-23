@@ -7,11 +7,11 @@
  * All trigger lookups now go through the service registry.
  */
 
-import { registry } from '@ai-bug-fixer/service-locator';
-import type { TriggerPlugin } from '@ai-bug-fixer/service-sdk';
+import { registry } from '@discharge/service-locator';
+import type { TriggerPlugin } from '@discharge/service-sdk';
 
 // Re-export TriggerPlugin type from SDK for backward compatibility
-export type { TriggerPlugin } from '@ai-bug-fixer/service-sdk';
+export type { TriggerPlugin } from '@discharge/service-sdk';
 
 // Re-export from base for backward compatibility
 export * from './base';

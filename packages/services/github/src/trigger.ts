@@ -31,7 +31,7 @@ import {
   getVCSAuthProvider,
   getLogger,
   getErrorMessage,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 import {
   GitHubIssueEventPayload,
   GitHubIssueCommentEventPayload,

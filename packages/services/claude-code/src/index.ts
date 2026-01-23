@@ -8,8 +8,8 @@
 import type {
   ServiceManifest,
   SecretRequirement,
-} from '@ai-bug-fixer/service-sdk';
-import { getLogger } from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
+import { getLogger } from '@discharge/service-sdk';
 import { ClaudeCodeRunner } from './runner';
 
 // Re-export runner class for advanced use cases

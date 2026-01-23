@@ -1,7 +1,7 @@
 /**
  * Bug Fix Configuration Schema
  *
- * Defines the structure of .ai-bugs.json files that live in target repositories.
+ * Defines the structure of .discharge.json files that live in target repositories.
  * This schema uses a rules + agents system that supports:
  * - Global rules (file paths or inline strings)
  * - Named agents with model selection (small/medium/large)
@@ -13,7 +13,7 @@ import { readFile } from 'fs/promises';
 import { join } from 'path';
 
 // Re-export types from SDK - this is the single source of truth
-export type { TriageResult, InvestigationContext } from '@ai-bug-fixer/service-sdk';
+export type { TriageResult, InvestigationContext } from '@discharge/service-sdk';
 
 // ============================================================================
 // Types
@@ -89,7 +89,7 @@ export interface AiBugsConfigOptions {
 }
 
 /**
- * Root configuration from .ai-bugs.json
+ * Root configuration from .discharge.json
  */
 export interface AiBugsConfig {
   /** Schema version, e.g., "2" */

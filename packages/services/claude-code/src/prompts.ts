@@ -10,7 +10,7 @@ import type {
   ConversationMessage,
   PlanFile,
   RouteMode,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 
 /**
  * Build the system prompt for conversation mode

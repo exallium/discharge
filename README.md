@@ -1,6 +1,10 @@
-# AI Bug Fixer
+# Discharge
 
-A self-hosted automation system that uses AI agents to automatically investigate and fix bugs from various sources (GitHub Issues, Sentry, CircleCI, etc.).
+[![CI](https://github.com/exallium/discharge/actions/workflows/ci.yml/badge.svg)](https://github.com/exallium/discharge/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org/)
+
+AI-powered bug fixing, powered by Claude. A self-hosted automation system that uses AI agents to automatically investigate and fix bugs from various sources (GitHub Issues, Sentry, CircleCI, etc.).
 
 ## 🌟 Features
 
@@ -34,7 +38,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed component breakdown, data 
 ## 📁 Project Structure
 
 ```
-ai-bug-fixer/
+discharge/
 ├── router/                          # Main application (Next.js)
 │   ├── app/                         # Next.js App Router
 │   │   ├── api/                     # API routes
@@ -51,7 +55,7 @@ ai-bug-fixer/
 │   │   ├── runner/                  # AI agent orchestration
 │   │   │   ├── orchestrator.ts      # Core workflow
 │   │   │   ├── prompts.ts           # Prompt templates
-│   │   │   └── bug-config.ts        # .ai-bugs.json handling
+│   │   │   └── bug-config.ts        # .discharge.json handling
 │   │   ├── vcs/                     # VCS plugin interfaces
 │   │   │   └── base.ts              # VCSPlugin interface
 │   │   ├── queue/                   # BullMQ job queue
@@ -90,7 +94,7 @@ ai-bug-fixer/
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/ai-bug-fixer.git
+git clone https://github.com/exallium/discharge.git
 cd ai-bug-fixer
 
 # Run automated setup
@@ -121,7 +125,7 @@ curl http://localhost:3000/health
 #### 1. Clone and Configure
 
 ```bash
-git clone https://github.com/yourusername/ai-bug-fixer.git
+git clone https://github.com/exallium/discharge.git
 cd ai-bug-fixer
 
 # Copy environment template
@@ -287,22 +291,22 @@ brew install cloudflared
 cloudflared tunnel login
 
 # Create tunnel
-cloudflared tunnel create ai-bug-fixer
+cloudflared tunnel create discharge
 
 # Configure (~/.cloudflared/config.yml)
 tunnel: <TUNNEL-ID>
 credentials-file: ~/.cloudflared/<TUNNEL-ID>.json
 
 ingress:
-  - hostname: ai-bug-fixer.yourdomain.com
+  - hostname: discharge.yourdomain.com
     service: http://localhost:3000
   - service: http_status:404
 
 # Route DNS
-cloudflared tunnel route dns ai-bug-fixer ai-bug-fixer.yourdomain.com
+cloudflared tunnel route dns discharge discharge.yourdomain.com
 
 # Run
-cloudflared tunnel run ai-bug-fixer
+cloudflared tunnel run discharge
 ```
 
 **Benefits:**
@@ -318,24 +322,24 @@ cloudflared tunnel run ai-bug-fixer
 Once exposed, configure your services:
 
 **GitHub Issues:**
-- URL: `https://ai-bug-fixer.yourdomain.com/webhooks/github-issues`
+- URL: `https://discharge.yourdomain.com/webhooks/github-issues`
 - Content type: `application/json`
 - Secret: Your `GITHUB_WEBHOOK_SECRET`
 - Events: `Issues`, `Issue comments`
 
 **Sentry:**
-- URL: `https://ai-bug-fixer.yourdomain.com/webhooks/sentry`
+- URL: `https://discharge.yourdomain.com/webhooks/sentry`
 - Events: Issue created
 
 **CircleCI:**
-- URL: `https://ai-bug-fixer.yourdomain.com/webhooks/circleci`
+- URL: `https://discharge.yourdomain.com/webhooks/circleci`
 - Events: Workflow completed
 
 ## 🎯 Repository Configuration
 
-Customize how AI Bug Fixer handles bugs in your repository by adding a `.ai-bugs.json` file to your repo root.
+Customize how Discharge handles bugs in your repository by adding a `.discharge.json` file to your repo root.
 
-### Why Use `.ai-bugs.json`?
+### Why Use `.discharge.json`?
 
 - **Different bug types need different approaches** - UI bugs need visual testing, database bugs need migration safety checks
 - **Per-category infrastructure** - Only spin up Supabase/Postgres when the bug actually needs it
@@ -346,7 +350,7 @@ Customize how AI Bug Fixer handles bugs in your repository by adding a `.ai-bugs
 Copy the sample config to your repository:
 
 ```bash
-cp .ai-bugs.json.sample /path/to/your/repo/.ai-bugs.json
+cp .discharge.json.sample /path/to/your/repo/.discharge.json
 ```
 
 ### Example Configuration
@@ -383,7 +387,7 @@ cp .ai-bugs.json.sample /path/to/your/repo/.ai-bugs.json
 ### How It Works
 
 1. When a bug is triggered (e.g., GitHub issue with label `database`), the runner clones your repo
-2. It reads `.ai-bugs.json` and matches the issue labels to a category
+2. It reads `.discharge.json` and matches the issue labels to a category
 3. If the category has `infrastructure`, it runs the setup command before Claude starts
 4. Claude receives the category-specific requirements and test command in its prompt
 5. After Claude finishes, infrastructure is torn down automatically
@@ -562,8 +566,8 @@ docker-compose -f docker-compose.prod.yml logs -f router
 {
   "timestamp": "2024-01-10T12:00:00.000Z",
   "level": "info",
-  "message": "AI Bug Fixer Router started",
-  "service": "ai-bug-fixer-router",
+  "message": "Discharge Router started",
+  "service": "discharge-router",
   "port": 3000,
   "nodeEnv": "production"
 }
@@ -624,7 +628,7 @@ kubectl apply -f k8s/
 
 # Check status
 kubectl get pods
-kubectl logs -f deployment/ai-bug-fixer-router
+kubectl logs -f deployment/discharge-router
 ```
 
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for:
@@ -665,7 +669,7 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for:
 ```
 Hardware:           $0 (you own it)
 Docker:             $0 (free)
-AI Bug Fixer:       $0 (open source)
+Discharge:       $0 (open source)
 Cloudflare Tunnel:  $0 (free tier)
 Domain name:        ~$10/year (~$1/month)
 ──────────────────────────────────────
@@ -771,9 +775,17 @@ The system is **production-ready** and can be deployed today for:
 - Test failure investigation from CircleCI
 - Custom triggers via plugin development
 
+## 🤝 Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+
+- Report bugs via [GitHub Issues](https://github.com/exallium/discharge/issues)
+- Suggest features via [GitHub Discussions](https://github.com/exallium/discharge/discussions)
+- Submit pull requests following our PR template
+
 ## 📄 License
 
-MIT License - See LICENSE file for details
+MIT License - See [LICENSE](./LICENSE) file for details.
 
 ---
 

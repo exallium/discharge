@@ -1,6 +1,6 @@
 import { Worker, Job } from 'bullmq';
-import { registry } from '@ai-bug-fixer/service-locator';
-import type { TriggerEvent } from '@ai-bug-fixer/service-sdk';
+import { registry } from '@discharge/service-locator';
+import type { TriggerEvent } from '@discharge/service-sdk';
 import { getConnection } from './index';
 import { FixJobData, FixJobResult } from './types';
 import { orchestrateFix, orchestrateConversation } from '../runner/orchestrator';
@@ -202,7 +202,7 @@ async function processConversationJob(
           startingMessage = '🔍 Analyzing this issue...';
         }
 
-        await trigger.postFeedback(triggerEvent, startingMessage).catch((err) => {
+        await trigger.postFeedback(triggerEvent, startingMessage).catch((err: unknown) => {
           // Don't fail the job if we can't post the starting comment
           logger.warn('Failed to post starting comment', {
             conversationId,

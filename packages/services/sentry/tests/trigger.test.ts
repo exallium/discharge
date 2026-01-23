@@ -4,8 +4,8 @@
 
 import crypto from 'crypto';
 import { SentryTrigger } from '../src/trigger';
-import type { TriggerEvent } from '@ai-bug-fixer/service-sdk';
-import { configureProviders, resetProviders } from '@ai-bug-fixer/service-sdk';
+import type { TriggerEvent } from '@discharge/service-sdk';
+import { configureProviders, resetProviders } from '@discharge/service-sdk';
 import { mockWebhookPayloads } from './fixtures/webhook-payloads';
 import { createMockWebhookRequest } from './helpers/webhook-request';
 import { mockProject, mockProjectProvider, mockSecretsProvider, mockLoggerProvider } from './setup';

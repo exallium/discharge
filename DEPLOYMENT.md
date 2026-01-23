@@ -1,6 +1,6 @@
 # Production Deployment Guide
 
-This guide covers deploying the AI Bug Fixer to production with best practices for security, reliability, and monitoring.
+This guide covers deploying the Discharge to production with best practices for security, reliability, and monitoring.
 
 ## Table of Contents
 
@@ -45,8 +45,8 @@ For the fastest production deployment:
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/yourusername/ai-bug-fixer.git
-cd ai-bug-fixer
+git clone https://github.com/exallium/discharge.git
+cd discharge
 
 # 2. Run setup script
 bash setup.sh
@@ -86,22 +86,22 @@ brew install cloudflared
 cloudflared tunnel login
 
 # 3. Create tunnel
-cloudflared tunnel create ai-bug-fixer
+cloudflared tunnel create discharge
 
 # 4. Create config file at ~/.cloudflared/config.yml:
 tunnel: <TUNNEL-ID>
 credentials-file: /Users/yourusername/.cloudflared/<TUNNEL-ID>.json
 
 ingress:
-  - hostname: ai-bug-fixer.yourdomain.com
+  - hostname: discharge.yourdomain.com
     service: http://localhost:3000
   - service: http_status:404
 
 # 5. Route DNS
-cloudflared tunnel route dns ai-bug-fixer ai-bug-fixer.yourdomain.com
+cloudflared tunnel route dns discharge discharge.yourdomain.com
 
 # 6. Start tunnel
-cloudflared tunnel run ai-bug-fixer
+cloudflared tunnel run discharge
 ```
 
 ### Run as Background Service
@@ -124,19 +124,19 @@ For Mac Mini, create `~/Library/LaunchAgents/com.cloudflare.cloudflared.plist` t
 Once your tunnel is running, configure your services:
 
 **GitHub:**
-- URL: `https://ai-bug-fixer.yourdomain.com/webhooks/github-issues`
+- URL: `https://discharge.yourdomain.com/webhooks/github-issues`
 - Secret: Your `GITHUB_WEBHOOK_SECRET` from `.env`
 
 **Sentry:**
-- URL: `https://ai-bug-fixer.yourdomain.com/webhooks/sentry`
+- URL: `https://discharge.yourdomain.com/webhooks/sentry`
 
 **CircleCI:**
-- URL: `https://ai-bug-fixer.yourdomain.com/webhooks/circleci`
+- URL: `https://discharge.yourdomain.com/webhooks/circleci`
 
 **Verify it works:**
 ```bash
 # From anywhere on the internet
-curl https://ai-bug-fixer.yourdomain.com/api/health
+curl https://discharge.yourdomain.com/api/health
 ```
 
 ## Environment Setup
@@ -144,8 +144,8 @@ curl https://ai-bug-fixer.yourdomain.com/api/health
 ### 1. Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/ai-bug-fixer.git
-cd ai-bug-fixer
+git clone https://github.com/exallium/discharge.git
+cd discharge
 ```
 
 ### 2. Run Automated Setup

@@ -7,7 +7,7 @@
 import { GitPullRequest, GitMerge } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { formatRelativeTime } from '@/lib/utils';
-import type { PRCreatedEventData, PRMergedEventData } from '@ai-bug-fixer/service-sdk';
+import type { PRCreatedEventData, PRMergedEventData } from '@discharge/service-sdk';
 import type { TimelineEntry } from './build-timeline';
 
 type PREventType = 'pr_created' | 'pr_merged';

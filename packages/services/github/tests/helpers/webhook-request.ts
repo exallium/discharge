@@ -2,7 +2,7 @@
  * Test helpers for creating mock webhook requests
  */
 
-import type { WebhookHeaders, WebhookRequest } from '@ai-bug-fixer/service-sdk';
+import type { WebhookHeaders, WebhookRequest } from '@discharge/service-sdk';
 
 /**
  * Create mock headers that match the WebhookHeaders interface

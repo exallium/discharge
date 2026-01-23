@@ -12,7 +12,7 @@ import type {
   VCSAuthProvider,
   LoggerProvider,
   TriggerProjectConfig,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 import { getSecret } from '../secrets';
 import {
   findProjectByRepo,

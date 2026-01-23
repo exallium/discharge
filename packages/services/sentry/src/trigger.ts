@@ -24,7 +24,7 @@ import {
   getProjectProvider,
   getLogger,
   getErrorMessage,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 import {
   SentryWebhookPayload,
   SentryTag,
@@ -156,7 +156,7 @@ export class SentryTrigger implements TriggerPlugin {
     // Get environment
     const environment = (issue.tags || []).find((tag: SentryTag) => tag.key === 'environment')?.value;
 
-    // Get Sentry config from project (may have instanceUrl from .ai-bugs.json sync)
+    // Get Sentry config from project (may have instanceUrl from .discharge.json sync)
     const sentryConfig = project.triggers.sentry as { organization?: string; instanceUrl?: string } | undefined;
     const sentryBaseUrl = sentryConfig?.instanceUrl || 'https://sentry.io';
 

@@ -1,4 +1,4 @@
-import type { TriggerEvent } from '@ai-bug-fixer/service-sdk';
+import type { TriggerEvent } from '@discharge/service-sdk';
 import type { ConversationEvent, RouteMode } from '../types/conversation';
 
 /**

@@ -12,8 +12,8 @@ import type {
   VCSPluginFactory,
   VCSPlugin,
   VCSAuthProvider,
-} from '@ai-bug-fixer/service-sdk';
-import { getVCSAuthProvider, getLogger } from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
+import { getVCSAuthProvider, getLogger } from '@discharge/service-sdk';
 import { GitHubIssuesTrigger } from './trigger';
 import { GitHubVCS } from './vcs';
 

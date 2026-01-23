@@ -5,8 +5,8 @@
  * Shared secrets (same ID used by multiple plugins) appear once with "usedBy" metadata.
  */
 
-import { registry } from '@ai-bug-fixer/service-locator';
-import type { SecretRequirement } from '@ai-bug-fixer/service-sdk';
+import { registry } from '@discharge/service-locator';
+import type { SecretRequirement } from '@discharge/service-sdk';
 import { ProjectConfig } from '../config/projects';
 import { getRunner, getAllRunners } from '../runner/base';
 

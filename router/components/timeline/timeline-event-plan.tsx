@@ -11,7 +11,7 @@ import type {
   PlanCreatedEventData,
   PlanUpdatedEventData,
   PlanApprovedEventData,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 import type { TimelineEntry } from './build-timeline';
 
 type PlanEventType = 'plan_created' | 'plan_updated' | 'plan_approved';

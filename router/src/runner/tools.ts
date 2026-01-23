@@ -1,6 +1,6 @@
 import { writeFile, mkdir, chmod } from 'fs/promises';
 import { join } from 'path';
-import type { Tool } from '@ai-bug-fixer/service-sdk';
+import type { Tool } from '@discharge/service-sdk';
 
 /**
  * Generate tool scripts and write them to a directory

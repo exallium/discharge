@@ -5,11 +5,11 @@
  * and fix bugs. Each runner implements a standard interface for execution.
  *
  * This module bridges between the legacy runner system and the new service-based architecture.
- * All types are now defined in @ai-bug-fixer/service-sdk and re-exported here for
+ * All types are now defined in @discharge/service-sdk and re-exported here for
  * backward compatibility.
  */
 
-import { registry } from '@ai-bug-fixer/service-locator';
+import { registry } from '@discharge/service-locator';
 
 // Re-export all runner types from the SDK - this is the single source of truth
 export type {
@@ -20,10 +20,10 @@ export type {
   TriageResult,
   InvestigationContext,
   AnalysisResult,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 
 // Import types for use in this file
-import type { RunnerPlugin } from '@ai-bug-fixer/service-sdk';
+import type { RunnerPlugin } from '@discharge/service-sdk';
 
 /**
  * @deprecated Use the service registry directly

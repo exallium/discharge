@@ -2,7 +2,7 @@
  * Trigger Plugin System - Pluggable bug tracking integrations
  *
  * This module bridges between the legacy trigger system and the new service-based architecture.
- * Core types are now defined in @ai-bug-fixer/service-sdk and re-exported here for
+ * Core types are now defined in @discharge/service-sdk and re-exported here for
  * backward compatibility.
  */
 
@@ -20,7 +20,7 @@ export type {
   WebhookConfig,
   PrefetchedData,
   SecretRequirement,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 
 // Import types for use in this file
 import type {
@@ -31,7 +31,7 @@ import type {
   WebhookConfig,
   PrefetchedData,
   SecretRequirement,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 
 /**
  * Trigger plugin interface - all bug tracking systems implement this

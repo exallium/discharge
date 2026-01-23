@@ -10,12 +10,12 @@
  * 3. Register services with the service registry
  */
 
-import { registry } from '@ai-bug-fixer/service-locator';
-import { configureProviders } from '@ai-bug-fixer/service-sdk';
-import { createGitHubService } from '@ai-bug-fixer/service-github';
-import { createSentryService } from '@ai-bug-fixer/service-sentry';
-import { createCircleCIService } from '@ai-bug-fixer/service-circleci';
-import { createClaudeCodeService } from '@ai-bug-fixer/service-claude-code';
+import { registry } from '@discharge/service-locator';
+import { configureProviders } from '@discharge/service-sdk';
+import { createGitHubService } from '@discharge/service-github';
+import { createSentryService } from '@discharge/service-sentry';
+import { createCircleCIService } from '@discharge/service-circleci';
+import { createClaudeCodeService } from '@discharge/service-claude-code';
 import { logger } from '../logger';
 
 // Import provider adapters
@@ -93,4 +93,4 @@ export type {
   VCSPlugin,
   VCSPluginFactory,
   RunnerPlugin,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';

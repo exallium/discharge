@@ -38,7 +38,7 @@ jest.mock('../../../src/logger', () => ({
   },
 }));
 
-jest.mock('@ai-bug-fixer/service-sdk', () => ({
+jest.mock('@discharge/service-sdk', () => ({
   getVCSAuthProvider: jest.fn(() => ({
     getToken: jest.fn().mockResolvedValue('ghp_test_token'),
   })),

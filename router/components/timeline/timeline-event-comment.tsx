@@ -7,7 +7,7 @@
 import { MessageSquare } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { formatRelativeTime } from '@/lib/utils';
-import type { CommentPostedEventData } from '@ai-bug-fixer/service-sdk';
+import type { CommentPostedEventData } from '@discharge/service-sdk';
 import type { TimelineEntry } from './build-timeline';
 
 interface TimelineEventCommentProps {

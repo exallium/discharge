@@ -1,7 +1,7 @@
 {
-  "name": "@ai-bug-fixer/service-claude-code",
+  "name": "@discharge/service-claude-code",
   "version": "1.0.0",
-  "description": "Claude Code service plugin for AI Bug Fixer (runner)",
+  "description": "Claude Code service plugin for Discharge (runner)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -21,7 +21,7 @@
     }
   },
   "dependencies": {
-    "@ai-bug-fixer/service-sdk": "^1.0.0"
+    "@discharge/service-sdk": "^1.0.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

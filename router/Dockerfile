@@ -24,12 +24,12 @@ RUN npm install --workspaces --ignore-scripts
 RUN npm rebuild bcrypt
 
 # Build workspace packages first (SDK, service-locator, services)
-RUN npm run build --workspace=@ai-bug-fixer/service-sdk
-RUN npm run build --workspace=@ai-bug-fixer/service-locator
-RUN npm run build --workspace=@ai-bug-fixer/service-github
-RUN npm run build --workspace=@ai-bug-fixer/service-sentry
-RUN npm run build --workspace=@ai-bug-fixer/service-circleci
-RUN npm run build --workspace=@ai-bug-fixer/service-claude-code
+RUN npm run build --workspace=@discharge/service-sdk
+RUN npm run build --workspace=@discharge/service-locator
+RUN npm run build --workspace=@discharge/service-github
+RUN npm run build --workspace=@discharge/service-sentry
+RUN npm run build --workspace=@discharge/service-circleci
+RUN npm run build --workspace=@discharge/service-claude-code
 
 # Copy router source files for Next.js
 COPY router/tsconfig.json ./router/
@@ -43,7 +43,7 @@ COPY router/components ./router/components
 COPY router/lib ./router/lib
 
 # Build Next.js app and worker
-RUN npm run build --workspace=ai-bug-fixer-router
+RUN npm run build --workspace=discharge-router
 
 # =============================================================================
 # Production Stage

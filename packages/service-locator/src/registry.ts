@@ -12,7 +12,7 @@ import type {
   VCSPluginFactory,
   RunnerPlugin,
   SecretRequirement,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 
 /**
  * Service Registry

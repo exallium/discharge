@@ -51,7 +51,7 @@ docker-compose -f docker-compose.prod.yml up -d  # Production
 
 ## Architecture Overview
 
-This is an **AI-powered bug fixing system** that receives webhooks from bug sources, runs AI agents to investigate and fix issues, then creates PRs with the fixes.
+This is an **AI-powered bug fixing, powered by Claude** that receives webhooks from bug sources, runs AI agents to investigate and fix issues, then creates PRs with the fixes.
 
 ### Service-Oriented Architecture
 
@@ -95,14 +95,14 @@ Webhook → POST /api/webhooks/:triggerId → Parse → BullMQ Queue → Worker 
 - `router/app/api/health/` - Health check endpoint
 - `router/src/runner/orchestrator.ts` - Core workflow: run AI, create PR, post results
 - `router/src/runner/prompts.ts` - Prompt templates for AI agents
-- `router/src/runner/bug-config.ts` - `.ai-bugs.json` schema and validation
+- `router/src/runner/bug-config.ts` - `.discharge.json` schema and validation
 - `router/src/queue/` - BullMQ job queue (Redis backend)
 - `router/src/db/` - Drizzle ORM database schema
 - `router/src/worker.ts` - Background job processor
 
-### Repository Configuration (`.ai-bugs.json`)
+### Repository Configuration (`.discharge.json`)
 
-Target repositories can include a `.ai-bugs.json` file to customize fix behavior:
+Target repositories can include a `.discharge.json` file to customize fix behavior:
 - **Categories**: Different requirements/deliverables per bug type (UI, database, API, etc.)
 - **Infrastructure**: Per-category setup/teardown commands (e.g., `supabase start`)
 - **Labels**: Match issue labels to categories for automatic selection

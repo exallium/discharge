@@ -14,7 +14,7 @@ import {
   SecretRequirement,
   getLogger,
   getErrorMessage,
-} from '@ai-bug-fixer/service-sdk';
+} from '@discharge/service-sdk';
 
 /**
  * GitHub VCS plugin using Octokit

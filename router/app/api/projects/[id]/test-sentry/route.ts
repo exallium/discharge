@@ -42,7 +42,7 @@ export async function POST(
     if (!sentryOrg || !sentryProject) {
       return NextResponse.json({
         success: false,
-        message: 'Sentry organization and project must be configured in .ai-bugs.json',
+        message: 'Sentry organization and project must be configured in .discharge.json',
       });
     }
 
@@ -90,7 +90,7 @@ export async function POST(
       if (response.status === 404) {
         return NextResponse.json({
           success: false,
-          message: `Project not found: ${sentryOrg}/${sentryProject}. Check your .ai-bugs.json config.`,
+          message: `Project not found: ${sentryOrg}/${sentryProject}. Check your .discharge.json config.`,
         });
       }
       return NextResponse.json({
