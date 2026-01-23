@@ -40,6 +40,7 @@ COPY router/tailwind.config.ts ./router/
 COPY router/src ./router/src
 COPY router/app ./router/app
 COPY router/components ./router/components
+COPY router/hooks ./router/hooks
 COPY router/lib ./router/lib
 
 # Build Next.js app and worker
