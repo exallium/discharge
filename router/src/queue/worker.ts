@@ -77,6 +77,7 @@ async function processFixJob(job: Job<FixJobData>): Promise<FixJobResult> {
         fixed: fixStatus.fixed,
         reason: fixStatus.reason,
         prUrl: fixStatus.prUrl,
+        branchName: fixStatus.branchName,
         analysis: fixStatus.analysis ? {
           fixed: fixStatus.fixed,
           reason: fixStatus.reason || '',
@@ -85,6 +86,21 @@ async function processFixJob(job: Job<FixJobData>): Promise<FixJobResult> {
       });
     } catch (error) {
       console.error('Failed to mark job as complete:', error);
+    }
+
+    // Publish real-time event for CLI jobs
+    if (event.metadata?.source === 'cli') {
+      await publishConversationEvent(jobId, {
+        type: 'job_completed',
+        data: {
+          jobId,
+          fixed: fixStatus.fixed,
+          reason: fixStatus.reason,
+          prUrl: fixStatus.prUrl,
+          branchName: fixStatus.branchName,
+          durationMs: Date.now() - startTime,
+        },
+      }).catch(() => {});
     }
 
     console.log(`Job ${jobId} completed`, result);

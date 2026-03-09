@@ -131,6 +131,17 @@ async function createTables(
     CREATE INDEX IF NOT EXISTS idx_job_history_trigger ON job_history(trigger_type, trigger_id)
   `);
 
+  // Add CLI/kanban columns to job_history
+  await db.execute(sql`
+    ALTER TABLE job_history ADD COLUMN IF NOT EXISTS branch_name VARCHAR(255)
+  `);
+  await db.execute(sql`
+    ALTER TABLE job_history ADD COLUMN IF NOT EXISTS source VARCHAR(50)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_job_history_source ON job_history(source)
+  `);
+
   // Audit log table
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS audit_log (

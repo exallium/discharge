@@ -8,8 +8,10 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { randomUUID } from 'crypto';
-import { rm, readFile, writeFile, mkdir, chmod } from 'fs/promises';
-import { join } from 'path';
+import { rm, readFile, writeFile, mkdir, chmod, copyFile } from 'fs/promises';
+import { join, dirname } from 'path';
+import { existsSync } from 'fs';
+import { homedir } from 'os';
 import type {
   RunnerPlugin,
   RunOptions,
@@ -45,6 +47,7 @@ import {
 } from './bug-config';
 import {
   createWorktree,
+  createLocalWorktree,
   removeWorktree,
   resolveSecondaryRepos,
   cloneSecondaryRepos,
@@ -192,7 +195,27 @@ interface ClaudeConfigPaths {
  * - {workspace}/.claude-config/ -> mounted to /home/agent/.claude/
  * - {workspace}/.claude.json -> mounted to /home/agent/.claude.json
  */
-async function prepareClaudeConfig(workspacePath: string, projectId?: string): Promise<ClaudeConfigPaths> {
+/**
+ * Read user's global Claude settings (~/.claude/settings.json) for MCP passthrough
+ */
+async function readUserClaudeSettings(): Promise<Record<string, unknown> | null> {
+  try {
+    const settingsPath = join(homedir(), '.claude', 'settings.json');
+    if (!existsSync(settingsPath)) {
+      return null;
+    }
+    const content = await readFile(settingsPath, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+async function prepareClaudeConfig(
+  workspacePath: string,
+  projectId?: string,
+  passThroughMcpServers?: boolean
+): Promise<ClaudeConfigPaths> {
   const logger = getLogger();
   // Directory for Claude Code's internal state (projects, debug, statsig)
   const claudeDir = join(workspacePath, '.claude-config');
@@ -209,16 +232,35 @@ async function prepareClaudeConfig(workspacePath: string, projectId?: string): P
   // Build config with hasCompletedOnboarding (required for non-interactive auth)
   const claudeConfig: Record<string, unknown> = { hasCompletedOnboarding: true };
 
-  // Configure MCP server if enabled
+  // Start with user's global MCP servers if passthrough is enabled
+  let mcpServersConfig: Record<string, unknown> = {};
+
+  if (passThroughMcpServers) {
+    const userSettings = await readUserClaudeSettings();
+    if (userSettings?.mcpServers && typeof userSettings.mcpServers === 'object') {
+      mcpServersConfig = { ...(userSettings.mcpServers as Record<string, unknown>) };
+      logger.info(`[ClaudeCode] Passing through ${Object.keys(mcpServersConfig).length} user MCP servers`);
+    }
+
+    // Also copy user's settings.json into container's ~/.claude/ for other settings
+    const userSettingsPath = join(homedir(), '.claude', 'settings.json');
+    if (existsSync(userSettingsPath)) {
+      const settingsContent = await readFile(userSettingsPath, 'utf-8');
+      await writeFile(join(claudeDir, 'settings.json'), settingsContent);
+    }
+  }
+
+  // Configure Discharge MCP server if enabled (takes priority over user MCPs)
   if (ENABLE_MCP_SERVER && projectId) {
-    const mcpServersConfig = {
-      'discharge': {
-        type: 'sse',
-        url: `${MCP_AGENT_URL}/sse?projectId=${encodeURIComponent(projectId)}`,
-      },
+    mcpServersConfig['discharge'] = {
+      type: 'sse',
+      url: `${MCP_AGENT_URL}/sse?projectId=${encodeURIComponent(projectId)}`,
     };
-    claudeConfig.mcpServers = mcpServersConfig;
     logger.info(`[ClaudeCode] MCP servers configured for project ${projectId}`);
+  }
+
+  if (Object.keys(mcpServersConfig).length > 0) {
+    claudeConfig.mcpServers = mcpServersConfig;
   }
 
   await writeFile(claudeJsonFile, JSON.stringify(claudeConfig, null, 2));
@@ -321,7 +363,20 @@ export class ClaudeCodeRunner implements RunnerPlugin {
     });
 
     try {
-      if (useWorktrees) {
+      if (options.localRepoPath) {
+        // CLI/kanban mode: create worktree from local repo
+        logger.debug(`[ClaudeCode:${jobId}] Creating local worktree from ${options.localRepoPath}...`);
+        workspacePath = await createLocalWorktree(
+          options.localRepoPath,
+          jobId,
+          options.branch,
+          options.worktreeCommand,
+          options.copyFiles
+        );
+        fixBranch = `fix/auto-${jobId.slice(0, 8)}`;
+        await execAsync(`git checkout -b "${fixBranch}"`, { cwd: workspacePath });
+        logger.debug(`[ClaudeCode:${jobId}] Local worktree created at ${workspacePath}`);
+      } else if (useWorktrees) {
         // Use workspace manager for efficient worktree-based execution
         logger.debug(`[ClaudeCode:${jobId}] Creating worktree...`);
         workspacePath = await createWorktree(
@@ -409,6 +464,14 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         ...options.env,
       };
 
+      // Add git author env vars if specified
+      if (options.gitAuthor) {
+        envVars.GIT_AUTHOR_NAME = options.gitAuthor.name;
+        envVars.GIT_AUTHOR_EMAIL = options.gitAuthor.email;
+        envVars.GIT_COMMITTER_NAME = options.gitAuthor.name;
+        envVars.GIT_COMMITTER_EMAIL = options.gitAuthor.email;
+      }
+
       const envFlags = Object.entries(envVars)
         .filter(([_, v]) => v) // Only include non-empty values
         .map(([k, v]) => `-e ${k}="${v}"`)
@@ -429,7 +492,11 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       await writeFile(promptFile, enhancedPrompt, 'utf-8');
 
       // Prepare writable .claude config directory and config file (with MCP config if project ID available)
-      const { claudeDir, claudeJsonFile } = await prepareClaudeConfig(workspacePath, options.projectId);
+      const { claudeDir, claudeJsonFile } = await prepareClaudeConfig(
+        workspacePath,
+        options.projectId,
+        options.passThroughMcpServers
+      );
 
       // Docker socket mount for running containers inside agent (e.g., Supabase)
       const dockerMount = ENABLE_DOCKER_IN_AGENT
@@ -531,10 +598,12 @@ export class ClaudeCodeRunner implements RunnerPlugin {
         // Investigation result is optional - only present when running investigate agent
       }
 
-      // Push branch if there's a commit
-      if (hasCommit) {
+      // Push branch if there's a commit (unless skipPush is set)
+      if (hasCommit && !options.skipPush) {
         logger.info(`[ClaudeCode:${jobId}] Pushing branch ${fixBranch}...`);
         await execAsync(`git push origin ${fixBranch}`, { cwd: workspacePath });
+      } else if (hasCommit && options.skipPush) {
+        logger.info(`[ClaudeCode:${jobId}] Skipping push (skipPush=true), branch: ${fixBranch}`);
       }
 
       return {
@@ -571,23 +640,32 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       }
 
       // Cleanup workspace
-      logger.debug(`[ClaudeCode:${jobId}] Cleaning up workspace...`);
-      if (useWorktrees && options.projectId) {
-        // Use workspace manager for worktree cleanup
-        await removeWorktree(options.projectId, jobId).catch((err) => {
-          logger.error(
-            `[ClaudeCode:${jobId}] Failed to remove worktree:`,
-            { error: getErrorMessage(err) }
-          );
-        });
+      if (options.skipCleanup) {
+        // CLI/kanban mode: don't remove worktree, mark as completed
+        logger.info(`[ClaudeCode:${jobId}] Skipping cleanup (skipCleanup=true), worktree at ${workspacePath}`);
+        if (useWorktrees && options.projectId) {
+          const { updateWorktreeStatus } = await import('./workspace');
+          await updateWorktreeStatus(options.projectId, jobId, 'completed').catch(() => {});
+        }
       } else {
-        // Traditional cleanup
-        await rm(workspacePath, { recursive: true, force: true }).catch((err) => {
-          logger.error(
-            `[ClaudeCode:${jobId}] Failed to cleanup workspace:`,
-            { error: getErrorMessage(err) }
-          );
-        });
+        logger.debug(`[ClaudeCode:${jobId}] Cleaning up workspace...`);
+        if (useWorktrees && options.projectId) {
+          // Use workspace manager for worktree cleanup
+          await removeWorktree(options.projectId, jobId).catch((err) => {
+            logger.error(
+              `[ClaudeCode:${jobId}] Failed to remove worktree:`,
+              { error: getErrorMessage(err) }
+            );
+          });
+        } else if (!options.localRepoPath) {
+          // Traditional cleanup (don't clean up local repo worktrees)
+          await rm(workspacePath, { recursive: true, force: true }).catch((err) => {
+            logger.error(
+              `[ClaudeCode:${jobId}] Failed to cleanup workspace:`,
+              { error: getErrorMessage(err) }
+            );
+          });
+        }
       }
     }
   }
@@ -838,7 +916,11 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       }
 
       // Prepare writable .claude config directory and config file (with MCP config if project ID available)
-      const { claudeDir, claudeJsonFile } = await prepareClaudeConfig(workspacePath, options.projectId);
+      const { claudeDir, claudeJsonFile } = await prepareClaudeConfig(
+        workspacePath,
+        options.projectId,
+        options.passThroughMcpServers
+      );
 
       // Docker socket mount for running containers inside agent (e.g., Supabase)
       const dockerMount = ENABLE_DOCKER_IN_AGENT

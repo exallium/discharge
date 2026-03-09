@@ -87,6 +87,7 @@ export async function queueFixJob(
       projectId: data.event.projectId,
       triggerType: data.triggerType,
       triggerId: data.event.triggerId,
+      source: (data.event.metadata?.source as string) || 'webhook',
     });
   } catch (error) {
     console.error('Failed to create job history entry:', error);

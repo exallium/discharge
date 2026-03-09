@@ -18,6 +18,7 @@
     "packages/service-sdk",
     "packages/service-locator",
     "packages/services/*",
+    "packages/cli",
     "router"
   ],
   "scripts": {

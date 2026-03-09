@@ -87,6 +87,15 @@ export interface RunOptions {
   env?: Record<string, string>; // Environment variables
   eventLabels?: string[];    // Labels from trigger event (for category matching)
   projectId?: string;        // Project ID for looking up secrets
+
+  // CLI/kanban mode options
+  skipPush?: boolean;        // Skip git push origin (branch stays local)
+  skipCleanup?: boolean;     // Skip worktree removal after completion (mark 'completed' instead)
+  localRepoPath?: string;    // Path to local repo for worktree creation (instead of remote clone)
+  worktreeCommand?: string;  // Custom script to create worktree
+  copyFiles?: string[];      // Untracked files to copy from local repo into worktree
+  passThroughMcpServers?: boolean; // Merge user's ~/.claude/settings.json MCP servers
+  gitAuthor?: { name: string; email: string }; // Custom git commit author
 }
 
 /**

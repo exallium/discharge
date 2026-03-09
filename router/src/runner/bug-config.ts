@@ -77,6 +77,38 @@ export interface CircleCIConfig {
 /**
  * Additional configuration options
  */
+/**
+ * CLI configuration for local/kanban mode
+ */
+export interface CliConfigOptions {
+  /** Server URL for discharge link auto-detection */
+  serverUrl?: string;
+
+  /** Project ID for discharge link auto-detection */
+  projectId?: string;
+
+  /** Default: skip PR for CLI tasks */
+  skipPR?: boolean;
+
+  /** Default execution mode for CLI tasks */
+  defaultMode?: 'triage' | 'investigate';
+
+  /** Path to local repo for worktree creation */
+  localRepoPath?: string;
+
+  /** Custom script to create worktree (receives $WORKTREE_PATH, $BASE_BRANCH, $JOB_ID) */
+  worktreeCommand?: string;
+
+  /** Branch to cut worktrees from (default: project's branch) */
+  baseBranch?: string;
+
+  /** Untracked files to copy from local repo into worktree */
+  copyFiles?: string[];
+
+  /** Commit author. 'auto' reads from local git config. */
+  gitAuthor?: 'auto' | { name: string; email: string };
+}
+
 export interface AiBugsConfigOptions {
   /** Secondary repos for cross-referencing */
   secondaryRepos?: string[];
@@ -86,6 +118,9 @@ export interface AiBugsConfigOptions {
 
   /** CircleCI CI/CD configuration */
   circleci?: CircleCIConfig;
+
+  /** CLI/kanban mode configuration */
+  cli?: CliConfigOptions;
 }
 
 /**
@@ -357,6 +392,64 @@ function validateCircleCIConfig(circleci: unknown): string | null {
 }
 
 /**
+ * Validate CLI configuration
+ */
+function validateCliConfig(cli: unknown): string | null {
+  if (!cli || typeof cli !== 'object') {
+    return 'config.cli must be an object';
+  }
+
+  const cliObj = cli as Record<string, unknown>;
+
+  // Validate optional string fields
+  const stringFields = ['serverUrl', 'projectId', 'localRepoPath', 'worktreeCommand', 'baseBranch'];
+  for (const field of stringFields) {
+    if (cliObj[field] !== undefined && typeof cliObj[field] !== 'string') {
+      return `config.cli.${field} must be a string`;
+    }
+  }
+
+  // Validate skipPR if present
+  if (cliObj.skipPR !== undefined && typeof cliObj.skipPR !== 'boolean') {
+    return 'config.cli.skipPR must be a boolean';
+  }
+
+  // Validate defaultMode if present
+  if (cliObj.defaultMode !== undefined) {
+    if (!['triage', 'investigate'].includes(cliObj.defaultMode as string)) {
+      return 'config.cli.defaultMode must be "triage" or "investigate"';
+    }
+  }
+
+  // Validate copyFiles if present
+  if (cliObj.copyFiles !== undefined) {
+    if (!Array.isArray(cliObj.copyFiles)) {
+      return 'config.cli.copyFiles must be an array of strings';
+    }
+    for (const file of cliObj.copyFiles) {
+      if (typeof file !== 'string') {
+        return 'config.cli.copyFiles must contain only strings';
+      }
+    }
+  }
+
+  // Validate gitAuthor if present
+  if (cliObj.gitAuthor !== undefined) {
+    if (cliObj.gitAuthor !== 'auto') {
+      if (typeof cliObj.gitAuthor !== 'object' || cliObj.gitAuthor === null) {
+        return 'config.cli.gitAuthor must be "auto" or { name, email }';
+      }
+      const author = cliObj.gitAuthor as Record<string, unknown>;
+      if (typeof author.name !== 'string' || typeof author.email !== 'string') {
+        return 'config.cli.gitAuthor must have string name and email';
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Validate a bug fix config
  */
 export function validateBugConfig(
@@ -432,6 +525,14 @@ export function validateBugConfig(
       const circleciError = validateCircleCIConfig(configOptions.circleci);
       if (circleciError) {
         return { valid: false, error: circleciError };
+      }
+    }
+
+    // Validate cli config if present
+    if (configOptions.cli !== undefined) {
+      const cliError = validateCliConfig(configOptions.cli);
+      if (cliError) {
+        return { valid: false, error: cliError };
       }
     }
   }

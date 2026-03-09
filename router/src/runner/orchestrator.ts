@@ -579,6 +579,18 @@ export async function orchestrateFix(
       };
     }
 
+    // CLI/kanban mode: skip PR creation, return branch info
+    if (event.metadata?.skipPR) {
+      console.log(`[Orchestrator] Skipping PR creation (skipPR=true), branch: ${result.branchName}`);
+      return {
+        fixed: true,
+        reason: 'fix_applied_no_pr',
+        analysis,
+        prUrl: undefined,
+        branchName: result.branchName,
+      };
+    }
+
     // Success! Create PR using PR provider
     console.log(`[Orchestrator] Creating PR for branch ${result.branchName}`);
 

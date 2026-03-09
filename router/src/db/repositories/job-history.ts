@@ -35,6 +35,8 @@ export interface JobHistoryEntry {
   completedAt: Date | null;
   durationMs: number | null;
   error: string | null;
+  branchName: string | null;
+  source: string | null;
   createdAt: Date;
 }
 
@@ -80,6 +82,8 @@ function toJobHistoryEntry(row: JobHistory): JobHistoryEntry {
     completedAt: row.completedAt,
     durationMs: row.durationMs,
     error: row.error,
+    branchName: row.branchName,
+    source: row.source,
     createdAt: row.createdAt,
   };
 }
@@ -93,6 +97,7 @@ export async function create(entry: {
   triggerType: string;
   triggerId: string;
   queuedAt?: Date;
+  source?: string;
 }): Promise<JobHistoryEntry> {
   const db = getDatabase();
 
@@ -103,6 +108,7 @@ export async function create(entry: {
     triggerId: entry.triggerId,
     status: 'pending',
     queuedAt: entry.queuedAt ?? new Date(),
+    source: entry.source ?? null,
   };
 
   const result = await db.insert(jobHistory).values(newEntry).returning();
@@ -141,6 +147,7 @@ export async function complete(
     prUrl?: string;
     analysis?: JobHistoryEntry['analysis'];
     error?: string;
+    branchName?: string;
   }
 ): Promise<void> {
   const db = getDatabase();
@@ -166,6 +173,7 @@ export async function complete(
       prUrl: result.prUrl ?? null,
       analysis: result.analysis ?? null,
       error: result.error ?? null,
+      branchName: result.branchName ?? null,
       completedAt: now,
       durationMs,
     })
@@ -271,6 +279,37 @@ export async function findAll(options?: PaginationOptions): Promise<JobHistoryEn
   let query = db
     .select()
     .from(jobHistory)
+    .orderBy(desc(jobHistory.createdAt));
+
+  if (options?.limit) {
+    query = query.limit(options.limit) as typeof query;
+  }
+  if (options?.offset) {
+    query = query.offset(options.offset) as typeof query;
+  }
+
+  const result = await query;
+  return result.map(toJobHistoryEntry);
+}
+
+/**
+ * Find jobs by project with optional status filter
+ */
+export async function findByProjectFiltered(
+  projectId: string,
+  options?: PaginationOptions & { status?: string }
+): Promise<JobHistoryEntry[]> {
+  const db = getDatabase();
+
+  const conditions = [eq(jobHistory.projectId, projectId)];
+  if (options?.status) {
+    conditions.push(eq(jobHistory.status, options.status));
+  }
+
+  let query = db
+    .select()
+    .from(jobHistory)
+    .where(and(...conditions))
     .orderBy(desc(jobHistory.createdAt));
 
   if (options?.limit) {

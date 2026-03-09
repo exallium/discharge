@@ -15,9 +15,9 @@
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { mkdir, rm, readFile, writeFile, readdir } from 'fs/promises';
+import { mkdir, rm, readFile, writeFile, readdir, copyFile } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import {
   getVCSAuthProvider,
   getLogger,
@@ -300,6 +300,75 @@ export async function createWorktree(
     });
     throw error;
   }
+}
+
+/**
+ * Create a worktree from a local repository on disk (for CLI/kanban jobs)
+ *
+ * @param localRepoPath - Path to the local git repository
+ * @param jobId - Job identifier
+ * @param baseBranch - Branch to base the worktree on
+ * @param worktreeCommand - Optional custom script to create the worktree
+ * @param copyFiles - Optional list of files to copy from local repo into worktree
+ * @returns Path to the created worktree
+ */
+export async function createLocalWorktree(
+  localRepoPath: string,
+  jobId: string,
+  baseBranch: string,
+  worktreeCommand?: string,
+  copyFiles?: string[]
+): Promise<string> {
+  const logger = getLogger();
+  const worktreeDir = process.env.WORKTREE_DIR || '/workspaces';
+  const worktreePath = join(worktreeDir, `local-${jobId}`);
+
+  await mkdir(worktreeDir, { recursive: true });
+
+  if (worktreeCommand) {
+    // Custom command mode
+    logger.info('Running custom worktree command', { localRepoPath, worktreeCommand, jobId });
+    await execAsync(worktreeCommand, {
+      cwd: localRepoPath,
+      timeout: 120000,
+      env: {
+        ...process.env,
+        WORKTREE_PATH: worktreePath,
+        BASE_BRANCH: baseBranch,
+        JOB_ID: jobId,
+      },
+    });
+
+    // Verify the worktree was created
+    if (!existsSync(worktreePath)) {
+      throw new Error(`Custom worktree command did not create directory at ${worktreePath}`);
+    }
+  } else {
+    // Default: git worktree add
+    logger.info('Creating local worktree', { localRepoPath, baseBranch, jobId });
+    await execAsync(
+      `git worktree add "${worktreePath}" "${baseBranch}" --detach`,
+      { cwd: localRepoPath, timeout: 60000 }
+    );
+  }
+
+  // Copy specified files from local repo into worktree
+  if (copyFiles && copyFiles.length > 0) {
+    for (const file of copyFiles) {
+      const srcPath = join(localRepoPath, file);
+      const destPath = join(worktreePath, file);
+      if (existsSync(srcPath)) {
+        await mkdir(dirname(destPath), { recursive: true });
+        await copyFile(srcPath, destPath);
+        logger.debug('Copied file to worktree', { file });
+      } else {
+        logger.debug('File to copy not found, skipping', { file });
+      }
+    }
+  }
+
+  logger.info('Local worktree created', { worktreePath, baseBranch });
+  return worktreePath;
 }
 
 /**

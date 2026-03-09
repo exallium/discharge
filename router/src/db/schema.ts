@@ -159,6 +159,10 @@ export const jobHistory = pgTable(
     // Error info
     error: text('error'),
 
+    // CLI/kanban fields
+    branchName: varchar('branch_name', { length: 255 }),
+    source: varchar('source', { length: 50 }), // 'webhook' | 'manual' | 'cli'
+
     // Timestamps
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -167,6 +171,7 @@ export const jobHistory = pgTable(
     index('idx_job_history_status').on(table.status),
     index('idx_job_history_created_at').on(table.createdAt),
     index('idx_job_history_trigger').on(table.triggerType, table.triggerId),
+    index('idx_job_history_source').on(table.source),
   ]
 );
 

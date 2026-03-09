@@ -90,6 +90,8 @@ export interface FixStatus {
   reason?: string;
   analysis?: AnalysisResult;
   prUrl?: string;
+  /** Branch name where the fix was committed */
+  branchName?: string;
   /** Investigation context when running in investigate or investigate_and_fix mode */
   investigationContext?: {
     rootCause: string;

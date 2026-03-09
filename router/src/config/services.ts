@@ -16,6 +16,7 @@ import { createGitHubService } from '@discharge/service-github';
 import { createSentryService } from '@discharge/service-sentry';
 import { createCircleCIService } from '@discharge/service-circleci';
 import { createClaudeCodeService } from '@discharge/service-claude-code';
+import { createKanbanService } from '@discharge/service-kanban';
 import { logger } from '../logger';
 
 // Import provider adapters
@@ -64,6 +65,10 @@ export async function initializeServices(): Promise<void> {
   // Claude Code service (runner only)
   const claudeCodeService = createClaudeCodeService();
   registry.register(claudeCodeService);
+
+  // Kanban/CLI service (trigger only)
+  const kanbanService = createKanbanService();
+  registry.register(kanbanService);
 
   // Step 3: Initialize all registered services
   await registry.initialize();

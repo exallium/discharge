@@ -399,6 +399,12 @@ The \`discharge\` MCP server is already configured and connected to Sentry. Do N
     parts.push('');
   }
 
+  // Local mode guardrails (for CLI/kanban jobs)
+  if (shouldUseLocalGuardrails(event)) {
+    parts.push(buildLocalModeGuardrails());
+    parts.push('');
+  }
+
   // Agent-specific instructions
   parts.push(getAgentInstructions(agentName));
   parts.push('');
@@ -680,6 +686,28 @@ export function buildPrefetchedDataSection(data: PrefetchedData | undefined): st
   }
 
   return parts.join('\n').trim();
+}
+
+/**
+ * Build local-mode guardrails section for CLI/kanban jobs
+ * Prevents the AI from using GitHub CLI, pushing code, or creating PRs
+ */
+export function buildLocalModeGuardrails(): string {
+  return `
+## Important Constraints
+- Do NOT use the \`gh\` CLI tool or GitHub API for any operations
+- Do NOT attempt to create pull requests, issues, or interact with any remote services
+- Do NOT push code to any remote repository
+- Focus exclusively on making changes in the local workspace
+- When done, commit your changes locally — the system will handle everything else
+`.trim();
+}
+
+/**
+ * Check if an event should use local-mode guardrails
+ */
+export function shouldUseLocalGuardrails(event: TriggerEvent): boolean {
+  return event.metadata?.source === 'cli' || event.triggerType === 'kanban';
 }
 
 /**
