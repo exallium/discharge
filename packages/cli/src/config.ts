@@ -4,7 +4,7 @@
  * Resolution order (project-local first):
  * 1. .discharge.json `cli` section in current directory
  * 2. ~/.config/discharge/config.json (global fallback)
- * 3. Token always from DISCHARGE_TOKEN env var
+ * 3. Token from: DISCHARGE_TOKEN env var → .discharge.env file
  */
 
 import { readFileSync, existsSync } from 'fs';
@@ -55,6 +55,26 @@ function readDischargeJson(): DischargeJson | null {
   }
 }
 
+/**
+ * Read token from .discharge.env file (KEY=VALUE format)
+ */
+function readDischargeEnv(): string | null {
+  const path = join(process.cwd(), '.discharge.env');
+  if (!existsSync(path)) return null;
+  try {
+    const content = readFileSync(path, 'utf-8');
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('DISCHARGE_TOKEN=')) {
+        return trimmed.slice('DISCHARGE_TOKEN='.length).trim();
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function readGlobalConfig(): GlobalConfig | null {
   const path = join(homedir(), '.config', 'discharge', 'config.json');
   if (!existsSync(path)) return null;
@@ -66,7 +86,7 @@ function readGlobalConfig(): GlobalConfig | null {
 }
 
 export function resolveConfig(): CliConfig | null {
-  const token = process.env.DISCHARGE_TOKEN;
+  const token = process.env.DISCHARGE_TOKEN || readDischargeEnv();
   if (!token) {
     return null;
   }

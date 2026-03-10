@@ -6,6 +6,7 @@ import { settingsRepo } from '@/src/db/repositories';
 import { SecuritySection } from './security-section';
 import { GitHubAppSection } from './github-app-section';
 import { PasswordSection } from './password-section';
+import { ApiTokensSection } from './api-tokens-section';
 
 export default async function SettingsPage() {
   // Fetch TOTP status server-side for initial render
@@ -20,6 +21,7 @@ export default async function SettingsPage() {
 
       <div className="grid gap-6">
         <GitHubAppSection />
+        <ApiTokensSection />
         <PasswordSection />
         <SecuritySection initialTotpEnabled={totpEnabled} />
       </div>

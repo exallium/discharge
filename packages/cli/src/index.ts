@@ -8,6 +8,7 @@
 
 import { Command } from 'commander';
 import { resolveConfig, CliConfig } from './config';
+import { initCommand } from './commands/init';
 import { linkCommand } from './commands/link';
 import { pushCommand } from './commands/push';
 import { lsCommand } from './commands/ls';
@@ -30,8 +31,9 @@ function requireConfig(): CliConfig {
   const config = resolveConfig();
   if (!config) {
     error(
-      'Not configured. Run `discharge link <url> <project-id>` first.\n' +
-      'Also ensure DISCHARGE_TOKEN is set in your environment.'
+      'Not configured. Run `discharge init` to set up, or:\n' +
+      '  discharge link <url> <project-id>\n' +
+      '  export DISCHARGE_TOKEN=<token>'
     );
     process.exit(1);
   }
@@ -41,6 +43,14 @@ function requireConfig(): CliConfig {
 // ──────────────────────────────────────────
 // Commands
 // ──────────────────────────────────────────
+
+program
+  .command('init')
+  .description('Set up Discharge for this project (interactive)')
+  .option('--server <url>', 'Discharge server URL')
+  .action(async (options: { server?: string }) => {
+    await initCommand(options);
+  });
 
 program
   .command('link <url> <project-id>')

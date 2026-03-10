@@ -640,32 +640,23 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       }
 
       // Cleanup workspace
-      if (options.skipCleanup) {
-        // CLI/kanban mode: don't remove worktree, mark as completed
-        logger.info(`[ClaudeCode:${jobId}] Skipping cleanup (skipCleanup=true), worktree at ${workspacePath}`);
-        if (useWorktrees && options.projectId) {
-          const { updateWorktreeStatus } = await import('./workspace');
-          await updateWorktreeStatus(options.projectId, jobId, 'completed').catch(() => {});
-        }
-      } else {
-        logger.debug(`[ClaudeCode:${jobId}] Cleaning up workspace...`);
-        if (useWorktrees && options.projectId) {
-          // Use workspace manager for worktree cleanup
-          await removeWorktree(options.projectId, jobId).catch((err) => {
-            logger.error(
-              `[ClaudeCode:${jobId}] Failed to remove worktree:`,
-              { error: getErrorMessage(err) }
-            );
-          });
-        } else if (!options.localRepoPath) {
-          // Traditional cleanup (don't clean up local repo worktrees)
-          await rm(workspacePath, { recursive: true, force: true }).catch((err) => {
-            logger.error(
-              `[ClaudeCode:${jobId}] Failed to cleanup workspace:`,
-              { error: getErrorMessage(err) }
-            );
-          });
-        }
+      logger.debug(`[ClaudeCode:${jobId}] Cleaning up workspace...`);
+      if (useWorktrees && options.projectId) {
+        // Use workspace manager for worktree cleanup
+        await removeWorktree(options.projectId, jobId).catch((err) => {
+          logger.error(
+            `[ClaudeCode:${jobId}] Failed to remove worktree:`,
+            { error: getErrorMessage(err) }
+          );
+        });
+      } else if (!options.localRepoPath) {
+        // Traditional cleanup (don't clean up local repo worktrees)
+        await rm(workspacePath, { recursive: true, force: true }).catch((err) => {
+          logger.error(
+            `[ClaudeCode:${jobId}] Failed to cleanup workspace:`,
+            { error: getErrorMessage(err) }
+          );
+        });
       }
     }
   }

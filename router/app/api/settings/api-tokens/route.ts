@@ -12,10 +12,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase, settings } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { generateApiToken } from '@/src/middleware/api-token';
+import { getSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+async function requireSession(): Promise<NextResponse | null> {
+  const session = await getSession();
+  if (!session.isLoggedIn) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  return null;
+}
+
 export async function POST(request: NextRequest) {
+  const authError = await requireSession();
+  if (authError) return authError;
+
   try {
     const body = await request.json().catch(() => ({}));
     const label = (body as { label?: string }).label || 'CLI Token';
@@ -52,6 +64,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(_request: NextRequest) {
+  const authError = await requireSession();
+  if (authError) return authError;
+
   try {
     const db = getDatabase();
     const tokens = await db
@@ -80,6 +95,9 @@ export async function GET(_request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const authError = await requireSession();
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const { key } = body as { key?: string };
