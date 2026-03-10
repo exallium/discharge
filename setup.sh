@@ -269,8 +269,14 @@ setup_env_file() {
     read -s -p "Admin password (press Enter to skip): " ADMIN_PASSWORD
     echo
     if [ -n "$ADMIN_PASSWORD" ]; then
-        sed -i.bak "s|#\?ADMIN_PASSWORD=.*|ADMIN_PASSWORD=$ADMIN_PASSWORD|" .env
-        print_success "Admin password configured (username: admin)"
+        read -s -p "Confirm password: " ADMIN_PASSWORD_CONFIRM
+        echo
+        if [ "$ADMIN_PASSWORD" != "$ADMIN_PASSWORD_CONFIRM" ]; then
+            print_error "Passwords do not match. Skipping — set it later at /setup"
+        else
+            sed -i.bak "s|#\?ADMIN_PASSWORD=.*|ADMIN_PASSWORD=$ADMIN_PASSWORD|" .env
+            print_success "Admin password configured (username: admin)"
+        fi
     else
         print_info "Skipping — a random password will be shown in the server logs on first run"
     fi
