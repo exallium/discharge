@@ -8,7 +8,7 @@
     "discharge": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && chmod +x dist/index.js",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "dev": "ts-node src/index.ts"

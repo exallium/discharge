@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "build:packages": "npm run build -w @discharge/service-sdk && npm run build -w @discharge/service-locator && npm run build -w @discharge/service-github && npm run build -w @discharge/service-sentry && npm run build -w @discharge/service-circleci && npm run build -w @discharge/service-claude-code",
+    "build:packages": "npm run build -w @discharge/service-sdk && npm run build -w @discharge/service-locator && npm run build -w @discharge/service-github && npm run build -w @discharge/service-sentry && npm run build -w @discharge/service-circleci && npm run build -w @discharge/service-claude-code && npm run build -w @discharge/service-kanban && npm run build -w @discharge/cli",
     "dev": "npm run dev -w router",
     "dev:up": "npm run dev:up -w router",
     "dev:setup": "npm run dev:setup -w router",
