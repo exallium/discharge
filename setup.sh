@@ -45,6 +45,44 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Reset everything for a clean re-setup
+reset_local() {
+    print_header "Discharge Reset"
+
+    echo "This will:"
+    echo "  - Stop and remove Docker containers"
+    echo "  - Delete database and Redis data volumes"
+    echo "  - Remove .env file"
+    echo "  - Remove node_modules and build artifacts"
+    echo ""
+    print_warning "All data (projects, jobs, settings, tokens) will be lost."
+    echo ""
+    read -p "Are you sure? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        print_info "Reset cancelled."
+        exit 0
+    fi
+
+    # Stop containers and remove volumes
+    if [ -f "docker-compose.yml" ]; then
+        print_info "Stopping containers and removing volumes..."
+        docker compose down -v 2>/dev/null || true
+    fi
+
+    # Remove env file
+    if [ -f ".env" ]; then
+        rm .env
+        print_success "Removed .env"
+    fi
+
+    # Remove node_modules and build artifacts
+    print_info "Cleaning node_modules and build artifacts..."
+    npm run clean 2>/dev/null || true
+
+    print_success "Reset complete. Run 'bash setup.sh' to set up again."
+}
+
 # Main setup
 main() {
     print_header "Discharge Setup"
@@ -460,5 +498,9 @@ run_tests() {
     fi
 }
 
-# Run main function
-main
+# Parse arguments
+if [ "${1:-}" = "--reset" ] || [ "${1:-}" = "reset" ]; then
+    reset_local
+else
+    main
+fi
