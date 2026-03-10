@@ -14,7 +14,7 @@ const sessionOptions = {
 };
 
 // Paths that don't require authentication
-const publicPaths = ['/login', '/setup', '/api/auth', '/api/webhooks'];
+const publicPaths = ['/login', '/setup', '/api/auth', '/api/webhooks', '/api/cli'];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
