@@ -218,9 +218,27 @@ setup_env_file() {
     cp .env.example .env
     print_success "Created .env file from template"
 
-    # Prompt for plugin-specific values
+    # Prompt for configuration
     print_info "Let's configure your environment variables"
-    print_info "All integrations are optional - skip any you don't need"
+    echo ""
+
+    # Admin password
+    print_info "Set an admin password for the Discharge web UI and CLI."
+    print_info "If you skip this, a random password will be generated on first"
+    print_info "startup and printed to the console. You can set a permanent"
+    print_info "password later at http://localhost:3000/setup"
+    echo ""
+    read -s -p "Admin password (press Enter to skip): " ADMIN_PASSWORD
+    echo
+    if [ -n "$ADMIN_PASSWORD" ]; then
+        sed -i.bak "s|#\?ADMIN_PASSWORD=.*|ADMIN_PASSWORD=$ADMIN_PASSWORD|" .env
+        print_success "Admin password configured (username: admin)"
+    else
+        print_info "Skipping — a random password will be shown in the server logs on first run"
+    fi
+    echo ""
+
+    print_info "The following integrations are optional - skip any you don't need"
     echo ""
 
     # GitHub Token (optional - only needed for GitHub VCS/trigger)
