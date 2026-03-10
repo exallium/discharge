@@ -8,44 +8,11 @@
 import { writeFileSync, readFileSync, existsSync, appendFileSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
-import { createInterface } from 'readline';
 import http from 'http';
 import https from 'https';
 import { URL } from 'url';
+import { input, password } from '@inquirer/prompts';
 import { success, error, info } from '../output';
-
-function prompt(question: string, defaultValue?: string): Promise<string> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const suffix = defaultValue ? ` (${defaultValue})` : '';
-  return new Promise((resolve) => {
-    rl.question(`${question}${suffix}: `, (answer) => {
-      rl.close();
-      resolve(answer.trim() || defaultValue || '');
-    });
-  });
-}
-
-function promptSecret(question: string): Promise<string> {
-  return new Promise((resolve) => {
-    if (process.stdin.isTTY) {
-      // Disable echo via stty
-      execSync('stty -echo', { stdio: ['inherit', 'pipe', 'pipe'] });
-      const rl = createInterface({ input: process.stdin, output: process.stdout });
-      rl.question(`${question}: `, (answer) => {
-        rl.close();
-        execSync('stty echo', { stdio: ['inherit', 'pipe', 'pipe'] });
-        process.stdout.write('\n');
-        resolve(answer.trim());
-      });
-    } else {
-      const rl = createInterface({ input: process.stdin, output: process.stdout });
-      rl.question(`${question}: `, (answer) => {
-        rl.close();
-        resolve(answer.trim());
-      });
-    }
-  });
-}
 
 function gitExec(cmd: string): string | null {
   try {
@@ -147,15 +114,18 @@ export async function initCommand(options: { server?: string }) {
   }
 
   // 2. Server URL
-  const serverUrl = options.server || await prompt('Discharge server URL', 'http://localhost:3000');
+  const serverUrl = options.server || await input({
+    message: 'Discharge server URL',
+    default: 'http://localhost:3000',
+  });
 
   // 3. Credentials
   console.log('');
   info('Authenticate with your Discharge admin account:');
-  const username = await prompt('Username', 'admin');
-  const password = await promptSecret('Password');
+  const username = await input({ message: 'Username', default: 'admin' });
+  const pw = await password({ message: 'Password', mask: '*' });
 
-  if (!password) {
+  if (!pw) {
     error('Password is required.');
     process.exit(1);
   }
@@ -163,9 +133,9 @@ export async function initCommand(options: { server?: string }) {
   // 4. Project info
   console.log('');
   const defaultId = git.repoFullName?.replace(/\//g, '-') || 'my-project';
-  const projectId = await prompt('Project ID', defaultId);
-  const repoFullName = await prompt('Repository', git.repoFullName || '');
-  const branch = await prompt('Default branch', git.branch || 'main');
+  const projectId = await input({ message: 'Project ID', default: defaultId });
+  const repoFullName = await input({ message: 'Repository', default: git.repoFullName || '' });
+  const branch = await input({ message: 'Default branch', default: git.branch || 'main' });
 
   if (!repoFullName) {
     error('Repository name (owner/repo) is required.');
@@ -180,7 +150,7 @@ export async function initCommand(options: { server?: string }) {
   try {
     result = await postJson(serverUrl, '/api/cli/init', {
       username,
-      password,
+      password: pw,
       project: {
         id: projectId,
         repoFullName,
