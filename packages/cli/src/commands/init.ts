@@ -27,37 +27,18 @@ function prompt(question: string, defaultValue?: string): Promise<string> {
 
 function promptSecret(question: string): Promise<string> {
   return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    // Disable echo for password
     if (process.stdin.isTTY) {
-      process.stdout.write(`${question}: `);
-      const stdin = process.stdin;
-      const wasRaw = stdin.isRaw;
-      stdin.setRawMode(true);
-      stdin.resume();
-
-      let input = '';
-      const onData = (ch: Buffer) => {
-        const c = ch.toString('utf8');
-        if (c === '\n' || c === '\r') {
-          stdin.removeListener('data', onData);
-          stdin.setRawMode(wasRaw ?? false);
-          stdin.pause();
-          rl.close();
-          process.stdout.write('\n');
-          resolve(input);
-        } else if (c === '\u0003') {
-          // Ctrl+C
-          process.exit(1);
-        } else if (c === '\u007f' || c === '\b') {
-          // Backspace
-          input = input.slice(0, -1);
-        } else {
-          input += c;
-        }
-      };
-      stdin.on('data', onData);
+      // Disable echo via stty
+      execSync('stty -echo', { stdio: ['inherit', 'pipe', 'pipe'] });
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      rl.question(`${question}: `, (answer) => {
+        rl.close();
+        execSync('stty echo', { stdio: ['inherit', 'pipe', 'pipe'] });
+        process.stdout.write('\n');
+        resolve(answer.trim());
+      });
     } else {
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
       rl.question(`${question}: `, (answer) => {
         rl.close();
         resolve(answer.trim());
