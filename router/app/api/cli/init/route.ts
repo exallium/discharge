@@ -15,11 +15,23 @@ import { verifyCredentials } from '@/lib/auth';
 import { getDatabase, settings } from '@/src/db';
 import { generateApiToken } from '@/src/middleware/api-token';
 import { projectsRepo } from '@/src/db/repositories';
+import { authRateLimiter } from '@/src/middleware/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+      || request.headers.get('x-real-ip')
+      || 'unknown';
+    const limit = authRateLimiter(ip);
+    if (limit.limited) {
+      return NextResponse.json(
+        { error: 'Too many attempts. Try again later.' },
+        { status: 429, headers: { 'Retry-After': String(Math.ceil((limit.retryAfterMs || 0) / 1000)) } }
+      );
+    }
+
     const body = await request.json();
     const { username, password, project } = body as {
       username: string;

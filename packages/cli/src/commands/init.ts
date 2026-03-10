@@ -130,6 +130,24 @@ export async function initCommand(options: { server?: string }) {
     process.exit(1);
   }
 
+  // 3b. Verify credentials before continuing
+  info('Verifying credentials...');
+  try {
+    const verifyResult = await postJson(serverUrl, '/api/cli/verify', { username, password: pw });
+    if (verifyResult.status === 401) {
+      error('Invalid credentials. Check your username and password.');
+      process.exit(1);
+    }
+    if (verifyResult.status >= 400) {
+      error(String(verifyResult.data.error || `Server returned ${verifyResult.status}`));
+      process.exit(1);
+    }
+    success('Authenticated');
+  } catch (err) {
+    error(`Failed to connect to ${serverUrl}: ${err instanceof Error ? err.message : err}`);
+    process.exit(1);
+  }
+
   // 4. Project info
   console.log('');
   const defaultId = git.repoFullName?.replace(/\//g, '-') || 'my-project';
