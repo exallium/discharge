@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # =============================================================================
-# AI Bug Fixer - Automated Setup Script
+# Discharge - Automated Setup Script
 # =============================================================================
-# This script helps you set up the AI Bug Fixer environment
+# This script helps you set up the Discharge environment
 # Run with: bash setup.sh
 # =============================================================================
 
@@ -14,13 +14,14 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
 # Helper functions
 print_header() {
-    echo -e "\n${BLUE}========================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}========================================${NC}\n"
+    echo -e "\n${PURPLE}========================================${NC}"
+    echo -e "${PURPLE}$1${NC}"
+    echo -e "${PURPLE}========================================${NC}\n"
 }
 
 print_success() {
@@ -46,9 +47,9 @@ command_exists() {
 
 # Main setup
 main() {
-    print_header "AI Bug Fixer Setup"
+    print_header "Discharge Setup"
 
-    echo "This script will guide you through setting up the AI Bug Fixer."
+    echo "This script will guide you through setting up Discharge."
     echo "It will check dependencies, create configuration files, and prepare your environment."
     echo ""
     read -p "Press Enter to continue..."
@@ -74,24 +75,32 @@ main() {
     # Step 7: Verify Claude CLI authentication
     verify_claude_auth
 
-    # Step 8: Run tests
+    # Step 8: Install Discharge CLI (optional)
+    install_discharge_cli
+
+    # Step 9: Run tests
     run_tests
 
     # Done!
     print_header "Setup Complete!"
-    print_success "AI Bug Fixer is ready to use"
+    print_success "Discharge is ready to use"
     echo ""
-    print_info "Next steps:"
-    echo "  1. Review and update .env file with your credentials"
-    echo "  2. Configure your projects in router/src/config/projects.ts"
-    echo "  3. Set up webhooks in GitHub/Sentry/CircleCI (see plugin READMEs)"
-    echo "  4. Start the server: npm start"
+    print_info "Quick start:"
+    echo "  npm run dev:up         - Start Postgres, Redis, and dev server"
+    echo "  npm run worker:dev     - Start the job worker (separate terminal)"
     echo ""
-    print_info "Useful commands:"
-    echo "  npm start              - Start the server"
+    print_info "Then visit http://localhost:3000 to set your admin password."
+    echo ""
+    if command_exists discharge; then
+        print_info "CLI setup (run from your project directory):"
+        echo "  discharge init         - Connect a project to Discharge"
+        echo "  discharge push \"Fix X\" - Submit a task"
+        echo ""
+    fi
+    print_info "Other commands:"
     echo "  npm test               - Run tests"
-    echo "  npm run dev            - Start in development mode"
-    echo "  docker-compose up      - Start Redis and supporting services"
+    echo "  npm run dev            - Start dev server only"
+    echo "  npm run db:studio      - Open database viewer"
     echo ""
 }
 
@@ -106,11 +115,11 @@ check_dependencies() {
         NODE_VERSION=$(node --version)
         print_success "Node.js $NODE_VERSION"
 
-        # Check version (need >= 18)
+        # Check version (need >= 20)
         NODE_MAJOR=$(echo $NODE_VERSION | cut -d'v' -f2 | cut -d'.' -f1)
-        if [ "$NODE_MAJOR" -lt 18 ]; then
-            print_error "Node.js 18 or higher is required (you have $NODE_VERSION)"
-            missing_deps+=("node>=18")
+        if [ "$NODE_MAJOR" -lt 20 ]; then
+            print_error "Node.js 20 or higher is required (you have $NODE_VERSION)"
+            missing_deps+=("node>=20")
         fi
     else
         print_error "Node.js not found"
@@ -161,13 +170,13 @@ check_dependencies() {
         missing_deps+=("git")
     fi
 
-    # Check Claude CLI (optional but recommended)
+    # Check Claude CLI (required for the runner)
     if command_exists claude; then
         CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "unknown")
         print_success "Claude Code CLI installed ($CLAUDE_VERSION)"
     else
         print_warning "Claude Code CLI not found"
-        print_info "Claude CLI is required for the AI Bug Fixer to work"
+        print_info "Claude CLI is required for Discharge to run AI agents"
         print_info "Install from: https://github.com/anthropics/claude-code"
     fi
 
@@ -198,6 +207,11 @@ setup_env_file() {
             print_info "Keeping existing .env file"
             return
         fi
+    fi
+
+    if [ ! -f ".env.example" ]; then
+        print_warning ".env.example not found, skipping env setup"
+        return
     fi
 
     # Copy example file
@@ -259,11 +273,11 @@ setup_docker() {
     print_header "Setting Up Docker"
 
     # Create Docker network if it doesn't exist
-    NETWORK_NAME="ai-bug-fixer_internal"
+    NETWORK_NAME="discharge_internal"
     if docker network ls | grep -q "$NETWORK_NAME"; then
         print_success "Docker network '$NETWORK_NAME' already exists"
     else
-        docker network create "$NETWORK_NAME"
+        docker network create "$NETWORK_NAME" 2>/dev/null || true
         print_success "Created Docker network '$NETWORK_NAME'"
     fi
 }
@@ -287,12 +301,12 @@ setup_redis() {
 
     # Start Redis
     print_info "Starting Redis with Docker Compose..."
-    docker-compose up -d redis
+    docker compose up -d redis
 
     # Wait for Redis to be ready
     print_info "Waiting for Redis to be ready..."
     for i in {1..30}; do
-        if docker-compose exec -T redis redis-cli ping >/dev/null 2>&1; then
+        if docker compose exec -T redis redis-cli ping >/dev/null 2>&1; then
             print_success "Redis is ready"
             return
         fi
@@ -306,8 +320,6 @@ setup_redis() {
 install_node_dependencies() {
     print_header "Installing Node Dependencies"
 
-    cd router
-
     if [ -d "node_modules" ]; then
         print_info "node_modules exists, updating dependencies..."
         npm ci
@@ -316,23 +328,27 @@ install_node_dependencies() {
         npm install
     fi
 
-    print_success "Dependencies installed"
-    cd ..
+    # Build workspace packages
+    print_info "Building workspace packages..."
+    npm run build:packages
+
+    print_success "Dependencies installed and packages built"
 }
 
 # Build Docker images
 build_docker_images() {
     print_header "Building Docker Images"
 
-    # Check if Dockerfile for runner exists
-    if [ ! -f "runner/Dockerfile" ]; then
-        print_warning "runner/Dockerfile not found"
-        print_info "Skipping Docker image build"
+    if [ ! -f "docker-compose.yml" ]; then
+        print_warning "docker-compose.yml not found, skipping Docker image build"
         return
     fi
 
-    print_info "Building agent-runner-claude image..."
-    docker build -t agent-runner-claude:latest agent-runners/claude-code/
+    print_info "Building agent runner Docker image..."
+    npm run dev:setup 2>/dev/null || {
+        print_warning "Docker image build failed (may need docker-compose.yml updates)"
+        print_info "You can build later with: npm run dev:setup"
+    }
 
     print_success "Docker images built"
 }
@@ -370,14 +386,48 @@ verify_claude_auth() {
     fi
 }
 
+# Install Discharge CLI
+install_discharge_cli() {
+    print_header "Discharge CLI"
+
+    print_info "The Discharge CLI lets you submit AI tasks from any project."
+    echo ""
+    read -p "Install the CLI globally? (Y/n): " -n 1 -r
+    echo
+
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+        print_info "Skipping CLI install"
+        print_info "You can install later with: npm link -w packages/cli"
+        return
+    fi
+
+    print_info "Linking Discharge CLI..."
+    cd packages/cli
+    npx tsc 2>/dev/null || true
+    cd ../..
+    npm link -w packages/cli 2>/dev/null || {
+        print_warning "npm link failed, trying alternative..."
+        npm install -g ./packages/cli 2>/dev/null || {
+            print_warning "Global install failed"
+            print_info "You can run it locally with: npx discharge"
+            return
+        }
+    }
+
+    if command_exists discharge; then
+        print_success "Discharge CLI installed"
+        print_info "Run 'discharge init' from any project to connect it"
+    else
+        print_info "CLI installed but may need a new terminal session"
+    fi
+}
+
 # Run tests
 run_tests() {
     print_header "Running Tests"
 
-    cd router
-
     print_info "Running unit tests..."
-    if npm test 2>&1 | tee /tmp/test-output.txt; then
+    if npm run test:unit 2>&1 | tee /tmp/discharge-test-output.txt; then
         print_success "All tests passed"
     else
         print_warning "Some tests failed"
@@ -390,8 +440,6 @@ run_tests() {
             exit 1
         fi
     fi
-
-    cd ..
 }
 
 # Run main function
