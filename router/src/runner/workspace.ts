@@ -513,26 +513,32 @@ export interface SecondaryRepoInfo {
   repoFullName: string;  // owner/repo
   repoUrl: string;       // Git URL
   branch: string;
+  localPath?: string;    // If set, skip clone and use this path directly
 }
 
 /**
  * Resolve secondary repo references to full repo info
  *
- * @param repos - Array of "owner/repo" strings
+ * @param repos - Array of "owner/repo" strings or { repo, localPath } objects
  * @param vcsType - VCS type (github, gitlab)
  * @returns Array of resolved repo info
  */
 export function resolveSecondaryRepos(
-  repos: string[],
+  repos: (string | { repo: string; localPath: string })[],
   vcsType: string
 ): SecondaryRepoInfo[] {
-  return repos.map(repoFullName => ({
-    repoFullName,
-    repoUrl: vcsType === 'github'
-      ? `https://github.com/${repoFullName}.git`
-      : `https://gitlab.com/${repoFullName}.git`,
-    branch: 'main', // Default branch, could be made configurable
-  }));
+  return repos.map(entry => {
+    const repoFullName = typeof entry === 'string' ? entry : entry.repo;
+    const localPath = typeof entry === 'object' ? entry.localPath : undefined;
+    return {
+      repoFullName,
+      repoUrl: vcsType === 'github'
+        ? `https://github.com/${repoFullName}.git`
+        : `https://gitlab.com/${repoFullName}.git`,
+      branch: 'main', // Default branch, could be made configurable
+      localPath,
+    };
+  });
 }
 
 /**
@@ -602,6 +608,17 @@ export async function cloneSecondaryRepos(
 
   for (const repo of repos) {
     const repoName = repo.repoFullName.split('/')[1];
+
+    // If a local path is specified, use it directly instead of cloning
+    if (repo.localPath) {
+      logger.info('Using local path for secondary repository', {
+        repo: repo.repoFullName,
+        localPath: repo.localPath,
+      });
+      paths.set(repo.repoFullName, repo.localPath);
+      continue;
+    }
+
     const targetPath = join(secondaryDir, repoName);
 
     logger.info('Setting up secondary repository', {
@@ -644,13 +661,16 @@ export async function cloneSecondaryRepos(
 /**
  * Clean up secondary repository worktrees
  * Properly removes worktrees from their bare repos to avoid orphaned refs
+ * Skips cleanup for repos that used a local path (don't delete the user's repo)
  *
  * @param basePath - Base workspace path (main repo path)
  * @param repoPaths - Map of repoFullName -> local worktree path
+ * @param localPathRepos - Set of repoFullNames that used local paths (skip cleanup)
  */
 export async function cleanupSecondaryRepos(
   basePath: string,
-  repoPaths?: Map<string, string>
+  repoPaths?: Map<string, string>,
+  localPathRepos?: Set<string>
 ): Promise<void> {
   const secondaryDir = join(basePath, '..', 'workspace-secondary');
   const secondaryCacheDir = join(WORKSPACE_ROOT, '_secondary-cache');
@@ -658,6 +678,12 @@ export async function cleanupSecondaryRepos(
   // If we have paths, properly remove worktrees from their bare repos
   if (repoPaths && repoPaths.size > 0) {
     for (const [repoFullName, worktreePath] of repoPaths) {
+      // Skip cleanup for repos using a local path — don't delete the user's repo
+      if (localPathRepos?.has(repoFullName)) {
+        logger.debug('Skipping cleanup for local-path secondary repo', { repo: repoFullName });
+        continue;
+      }
+
       try {
         const safeRepoName = repoFullName.replace('/', '__');
         const bareRepoPath = join(secondaryCacheDir, `${safeRepoName}.git`);

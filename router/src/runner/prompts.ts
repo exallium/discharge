@@ -3,6 +3,7 @@ import {
   AiBugsConfig,
   ResolvedRule,
   InvestigationContext,
+  SecondaryRepoEntry,
   getAvailableAgents,
 } from './bug-config';
 
@@ -12,14 +13,15 @@ import {
  */
 export function buildSecondaryReposSection(
   mainRepoFullName: string,
-  secondaryRepos: string[]
+  secondaryRepos: SecondaryRepoEntry[]
 ): string {
   if (!secondaryRepos || secondaryRepos.length === 0) {
     return '';
   }
 
   const secondaryList = secondaryRepos
-    .map(repo => {
+    .map(entry => {
+      const repo = typeof entry === 'string' ? entry : entry.repo;
       const repoName = repo.split('/')[1];
       return `- \`${repo}\` at \`/workspace-secondary/${repoName}\``;
     })
@@ -301,7 +303,7 @@ export function buildAgentPrompt(
   tools: Tool[],
   investigationContext?: InvestigationContext,
   mainRepoFullName?: string,
-  secondaryRepos?: string[],
+  secondaryRepos?: SecondaryRepoEntry[],
   prefetchedData?: PrefetchedData
 ): string {
   const parts: string[] = [];

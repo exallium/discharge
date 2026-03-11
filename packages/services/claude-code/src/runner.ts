@@ -354,6 +354,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
 
     // Track secondary repos for cleanup
     let secondaryRepoPaths = new Map<string, string>();
+    const localPathRepos = new Set<string>();
 
     logger.info(`[ClaudeCode:${jobId}] Starting execution`, {
       repo: options.repoUrl,
@@ -428,10 +429,16 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       const secondaryRepos = bugConfig?.config?.secondaryRepos || [];
 
       if (secondaryRepos.length > 0) {
-        logger.info(`[ClaudeCode:${jobId}] Cloning ${secondaryRepos.length} secondary repos`);
+        logger.info(`[ClaudeCode:${jobId}] Setting up ${secondaryRepos.length} secondary repos`);
         const secondaryRepoInfos = resolveSecondaryRepos(secondaryRepos, 'github');
+        // Track which repos use local paths so we skip cleanup for them
+        for (const info of secondaryRepoInfos) {
+          if (info.localPath) {
+            localPathRepos.add(info.repoFullName);
+          }
+        }
         secondaryRepoPaths = await cloneSecondaryRepos(workspacePath, secondaryRepoInfos);
-        logger.info(`[ClaudeCode:${jobId}] Cloned ${secondaryRepoPaths.size} secondary repos`);
+        logger.info(`[ClaudeCode:${jobId}] Ready: ${secondaryRepoPaths.size} secondary repos`);
       }
 
       // Write tools to workspace if provided
@@ -631,7 +638,7 @@ export class ClaudeCodeRunner implements RunnerPlugin {
       // Cleanup secondary repositories
       if (secondaryRepoPaths.size > 0) {
         logger.debug(`[ClaudeCode:${jobId}] Cleaning up secondary repos...`);
-        await cleanupSecondaryRepos(workspacePath, secondaryRepoPaths).catch((err) => {
+        await cleanupSecondaryRepos(workspacePath, secondaryRepoPaths, localPathRepos).catch((err) => {
           logger.error(
             `[ClaudeCode:${jobId}] Failed to cleanup secondary repos:`,
             { error: getErrorMessage(err) }
@@ -641,7 +648,22 @@ export class ClaudeCodeRunner implements RunnerPlugin {
 
       // Cleanup workspace
       logger.debug(`[ClaudeCode:${jobId}] Cleaning up workspace...`);
-      if (useWorktrees && options.projectId) {
+      if (options.localRepoPath) {
+        // CLI mode: remove the worktree from the parent repo so the branch
+        // becomes accessible, then delete the worktree directory
+        await execAsync(`git worktree remove "${workspacePath}" --force`, {
+          cwd: options.localRepoPath,
+        }).catch(() => {
+          // If git worktree remove fails, fall back to manual cleanup
+        });
+        // Prune orphaned worktree refs
+        await execAsync('git worktree prune', { cwd: options.localRepoPath }).catch(() => {});
+        // Remove directory if it still exists
+        if (existsSync(workspacePath)) {
+          await rm(workspacePath, { recursive: true, force: true }).catch(() => {});
+        }
+        logger.debug(`[ClaudeCode:${jobId}] Local worktree cleaned up, branch ${fixBranch} available in parent repo`);
+      } else if (useWorktrees && options.projectId) {
         // Use workspace manager for worktree cleanup
         await removeWorktree(options.projectId, jobId).catch((err) => {
           logger.error(
@@ -649,8 +671,8 @@ export class ClaudeCodeRunner implements RunnerPlugin {
             { error: getErrorMessage(err) }
           );
         });
-      } else if (!options.localRepoPath) {
-        // Traditional cleanup (don't clean up local repo worktrees)
+      } else {
+        // Traditional cleanup
         await rm(workspacePath, { recursive: true, force: true }).catch((err) => {
           logger.error(
             `[ClaudeCode:${jobId}] Failed to cleanup workspace:`,

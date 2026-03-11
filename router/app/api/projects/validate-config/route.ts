@@ -94,7 +94,8 @@ export async function POST(request: NextRequest) {
 
     // Check access to secondary repos
     const secondaryAccess = await Promise.all(
-      secondaryRepos.map(async (repoName: string) => {
+      secondaryRepos.map(async (entry) => {
+        const repoName = typeof entry === 'string' ? entry : entry.repo;
         const secondaryOctokit = await getOctokitForRepo(repoName);
         return { repo: repoName, hasAccess: !!secondaryOctokit };
       })

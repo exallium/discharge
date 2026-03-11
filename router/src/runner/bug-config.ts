@@ -109,9 +109,14 @@ export interface CliConfigOptions {
   gitAuthor?: 'auto' | { name: string; email: string };
 }
 
+/**
+ * Secondary repo entry - either a simple "owner/repo" string or an object with a local path
+ */
+export type SecondaryRepoEntry = string | { repo: string; localPath: string };
+
 export interface AiBugsConfigOptions {
   /** Secondary repos for cross-referencing */
-  secondaryRepos?: string[];
+  secondaryRepos?: SecondaryRepoEntry[];
 
   /** Sentry error tracking configuration */
   sentry?: SentryConfig;
@@ -506,8 +511,19 @@ export function validateBugConfig(
         return { valid: false, error: 'secondaryRepos must be an array' };
       }
       for (const repo of configOptions.secondaryRepos) {
-        if (typeof repo !== 'string' || !repo.includes('/')) {
-          return { valid: false, error: `Invalid repo format: ${repo}. Use 'owner/repo'` };
+        if (typeof repo === 'string') {
+          if (!repo.includes('/')) {
+            return { valid: false, error: `Invalid repo format: ${repo}. Use 'owner/repo'` };
+          }
+        } else if (typeof repo === 'object' && repo !== null) {
+          if (typeof repo.repo !== 'string' || !repo.repo.includes('/')) {
+            return { valid: false, error: `Invalid repo format in object entry. 'repo' must be 'owner/repo'` };
+          }
+          if (typeof repo.localPath !== 'string' || repo.localPath.trim().length === 0) {
+            return { valid: false, error: `Invalid localPath for repo '${repo.repo}'. Must be a non-empty string` };
+          }
+        } else {
+          return { valid: false, error: `Invalid secondaryRepos entry: ${JSON.stringify(repo)}. Use 'owner/repo' string or { repo, localPath } object` };
         }
       }
     }
